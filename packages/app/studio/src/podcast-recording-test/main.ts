@@ -6,6 +6,7 @@ import {
     PodcastRecordingTestResult,
     runPodcastRecordingTest
 } from "./runner"
+import {isDefined} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 
 const logEl = document.getElementById("log") as HTMLPreElement
@@ -137,11 +138,11 @@ log("ready — click 'Start test' to begin, or pass ?autorun=1&duration=N to aut
 const params = new URLSearchParams(window.location.search)
 if (params.get("autorun") === "1") {
     const autoDuration = params.get("duration")
-    if (autoDuration !== null) {durationInput.value = autoDuration}
+    if (isDefined(autoDuration)) {durationInput.value = autoDuration}
     const autoChannels = params.get("channels")
-    if (autoChannels !== null) {channelsInput.value = autoChannels}
+    if (isDefined(autoChannels)) {channelsInput.value = autoChannels}
     const autoFramesPerChunk = params.get("framesPerChunk")
-    if (autoFramesPerChunk !== null) {framesPerChunkInput.value = autoFramesPerChunk}
+    if (isDefined(autoFramesPerChunk)) {framesPerChunkInput.value = autoFramesPerChunk}
     const autoSource = params.get("source")
     if (autoSource === "getUserMedia" || autoSource === "synthetic") {captureKindSelect.value = autoSource}
     log("autorun=1 detected — starting test")

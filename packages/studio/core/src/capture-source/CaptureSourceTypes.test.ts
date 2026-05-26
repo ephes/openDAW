@@ -7,27 +7,12 @@ const exampleMetadata = (overrides: Partial<CaptureSourceMetadata> = {}): Captur
     requestedSampleRate: 48000,
     requestedChannels: 2,
     actualSampleRate: 48000,
+    deviceChannels: 2,
     actualChannels: 2,
     autoGainControl: false,
     echoCancellation: false,
     noiseSuppression: false,
     ...overrides
-})
-
-describe("CaptureSourceMetadata.toLongRecordingSource", () => {
-    it("maps to a LongRecordingSource-shaped object preserving requested vs actual", () => {
-        const source = CaptureSourceMetadata.toLongRecordingSource(exampleMetadata({
-            actualSampleRate: 44100,
-            actualChannels: 1,
-            label: "my-mic"
-        }))
-        expect(source.kind).toBe("getUserMedia")
-        expect(source.label).toBe("my-mic")
-        expect(source.requestedSampleRate).toBe(48000)
-        expect(source.actualSampleRate).toBe(44100)
-        expect(source.requestedChannels).toBe(2)
-        expect(source.actualChannels).toBe(1)
-    })
 })
 
 describe("CaptureSourceMetadata.mismatches", () => {
@@ -52,6 +37,15 @@ describe("CaptureSourceMetadata.mismatches", () => {
     it("reports auto-processing modifications", () => {
         const mismatches = CaptureSourceMetadata.mismatches(exampleMetadata({autoGainControl: true}))
         expect(mismatches.some(report => report.kind === "auto-processing-modified")).toBe(true)
+    })
+
+    it("treats actualChannels as the post-mapping count, distinct from deviceChannels", () => {
+        const mismatches = CaptureSourceMetadata.mismatches(exampleMetadata({
+            requestedChannels: 4,
+            deviceChannels: 6,
+            actualChannels: 4
+        }))
+        expect(mismatches.some(report => report.kind === "channel-count")).toBe(false)
     })
 
     it("reports multiple issues independently", () => {

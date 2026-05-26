@@ -1,4 +1,4 @@
-import {Notifier, Observer, Subscription, UUID} from "@opendaw/lib-std"
+import {isDefined, Notifier, Observer, Subscription, UUID} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {
     AudioWorklets,
@@ -93,7 +93,7 @@ const buildCaptureSource = async (
     context: AudioContext,
     config: PodcastRecordingTestConfig
 ): Promise<CaptureSource> => {
-    if (config.captureSourceFactory !== undefined) {
+    if (isDefined(config.captureSourceFactory)) {
         const result = config.captureSourceFactory(context)
         return result instanceof Promise ? result : Promise.resolve(result)
     }

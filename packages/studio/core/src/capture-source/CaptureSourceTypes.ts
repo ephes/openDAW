@@ -10,6 +10,16 @@ export interface CaptureSourceMetadata {
     readonly requestedSampleRate: int
     readonly requestedChannels: int
     readonly actualSampleRate: int
+    /**
+     * Channels delivered by the underlying device before any channel mapping is applied.
+     * For getUserMedia this is `MediaStreamTrack.getSettings().channelCount`; for synthetic sources
+     * it is the oscillator count.
+     */
+    readonly deviceChannels: int
+    /**
+     * Channels in the source's `outputNode` after any `CaptureChannelMap` is applied. This is the value
+     * that downstream recording uses for chunk encoding and that the manifest persists as `actualChannels`.
+     */
     readonly actualChannels: int
     readonly autoGainControl?: boolean
     readonly echoCancellation?: boolean
@@ -40,22 +50,6 @@ export interface CaptureSourceMismatch {
 }
 
 export namespace CaptureSourceMetadata {
-    export const toLongRecordingSource = (metadata: CaptureSourceMetadata): {
-        readonly kind: "getUserMedia" | "synthetic"
-        readonly label: string
-        readonly requestedSampleRate: int
-        readonly requestedChannels: int
-        readonly actualSampleRate: int
-        readonly actualChannels: int
-    } => ({
-        kind: metadata.kind,
-        label: metadata.label,
-        requestedSampleRate: metadata.requestedSampleRate,
-        requestedChannels: metadata.requestedChannels,
-        actualSampleRate: metadata.actualSampleRate,
-        actualChannels: metadata.actualChannels
-    })
-
     export const mismatches = (metadata: CaptureSourceMetadata): ReadonlyArray<CaptureSourceMismatch> => {
         const reports: Array<CaptureSourceMismatch> = []
         if (metadata.requestedSampleRate !== metadata.actualSampleRate) {

@@ -1,4 +1,4 @@
-import {int, Option} from "@opendaw/lib-std"
+import {int, isDefined, Option} from "@opendaw/lib-std"
 import {LongRecordingChunkEntry, LongRecordingManifest} from "./LongRecordingManifest"
 
 export type LongRecordingChunkStatus =
@@ -33,7 +33,7 @@ export namespace LongRecordingRecovery {
 
     export const parseChunkIndex = (fileName: string): Option<int> => {
         const match = FILE_PATTERN.exec(fileName)
-        if (match === null) {return Option.None}
+        if (!isDefined(match)) {return Option.None}
         const parsed = Number.parseInt(match[1], 10)
         if (!Number.isFinite(parsed) || parsed < 0) {return Option.None}
         return Option.wrap(parsed)
@@ -54,7 +54,7 @@ export namespace LongRecordingRecovery {
             declaredIndexes.add(entry.index)
             const expectedBytes = expectedBytesFor(entry, manifest)
             const probe = probeByIndex.get(entry.index)
-            if (probe === undefined) {
+            if (!isDefined(probe)) {
                 statuses.push({
                     type: "missing",
                     index: entry.index,

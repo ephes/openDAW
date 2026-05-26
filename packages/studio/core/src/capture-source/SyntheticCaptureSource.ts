@@ -49,6 +49,7 @@ export class SyntheticCaptureSource implements CaptureSource {
             requestedSampleRate: context.sampleRate,
             requestedChannels: numberOfChannels,
             actualSampleRate: context.sampleRate,
+            deviceChannels: numberOfChannels,
             actualChannels: channelMap.length,
             autoGainControl: false,
             echoCancellation: false,

@@ -1,4 +1,5 @@
 export * from "./LongRecordingArtifact"
+export * from "./LongRecordingBundleAdapter"
 export * from "./LongRecordingChunkBuffer"
 export * from "./LongRecordingManifest"
 export * from "./LongRecordingMedia"
