@@ -253,6 +253,7 @@ export const describeResult = (result: PodcastRecordingTestResult): ResultSummar
                 overviewBins: result.overviewBinCount,
                 requestedSampleRate: result.captureMetadata.requestedSampleRate,
                 actualSampleRate: result.captureMetadata.actualSampleRate,
+                deviceSampleRate: result.captureMetadata.deviceSampleRate ?? null,
                 requestedChannels: result.captureMetadata.requestedChannels,
                 actualChannels: result.captureMetadata.actualChannels
             }),

@@ -20,9 +20,9 @@ Tests:
 | File | Coverage |
 | --- | --- |
 | `CaptureChannelMap.test.ts` | Identity / swap / mono-from-channel / `apply` / `applyInPlace` / validation. 9 cases. |
-| `CaptureSourceTypes.test.ts` | `mismatches()` reports sample-rate / channel-count / auto-processing drift; `toLongRecordingSource()` projects metadata correctly. 6 cases. |
+| `CaptureSourceTypes.test.ts` | `mismatches()` reports sample-rate / channel-count / auto-processing drift; `device-sample-rate` warning when the device-reported rate differs from the graph rate; `toLongRecordingSource()` projects metadata correctly. 9 cases. |
 
-15 capture-source tests, all hardware-independent.
+18 capture-source tests, all hardware-independent.
 
 ## The `CaptureSource` Contract
 
@@ -87,8 +87,13 @@ Metadata always reports `kind: "synthetic"`, with `requested === actual` for sam
 autoGainControl?, channelMap?})` opens a `MediaStream` with the requested constraints (defaulting all browser
 audio processing to `false`), inspects `track.getSettings()` and `track.label`, and exposes:
 
-- `actualSampleRate` = `track.getSettings().sampleRate ?? context.sampleRate` (which is what
-  `MediaStreamAudioSourceNode` actually feeds into the graph).
+- `actualSampleRate` = `context.sampleRate`. This is the rate of the PCM that flows from
+  `MediaStreamAudioSourceNode` into the worklet — the recorder's clock. The browser may resample between the
+  input device and the graph; using the device-reported rate as the recorder rate would produce wrong manifest
+  durations (`totalFrames / actualSampleRate`) and wrong `LongRecordingMediaReference.durationSeconds`.
+- `deviceSampleRate` = `track.getSettings().sampleRate` (when the browser reports one). Diagnostic only:
+  if it differs from `actualSampleRate`, `CaptureSourceMetadata.mismatches` emits a `device-sample-rate`
+  warning so a UI can flag silent browser resampling.
 - `actualChannels` = `track.getSettings().channelCount ?? requestedChannels`. The implementation respects whatever
   the browser hands back, even if it exceeds 2 — the historic `CaptureAudio` clamp to mono/stereo is **not**
   applied here.

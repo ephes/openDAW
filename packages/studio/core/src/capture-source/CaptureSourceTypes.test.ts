@@ -48,6 +48,30 @@ describe("CaptureSourceMetadata.mismatches", () => {
         expect(mismatches.some(report => report.kind === "channel-count")).toBe(false)
     })
 
+    it("reports a device-sample-rate mismatch when device differs from the graph rate", () => {
+        const mismatches = CaptureSourceMetadata.mismatches(exampleMetadata({
+            actualSampleRate: 48000,
+            deviceSampleRate: 44100
+        }))
+        expect(mismatches).toHaveLength(1)
+        expect(mismatches[0].kind).toBe("device-sample-rate")
+        expect(mismatches[0].requested).toBe(48000)
+        expect(mismatches[0].actual).toBe(44100)
+    })
+
+    it("does not report a device-sample-rate mismatch when deviceSampleRate is omitted", () => {
+        const mismatches = CaptureSourceMetadata.mismatches(exampleMetadata({actualSampleRate: 48000}))
+        expect(mismatches.some(report => report.kind === "device-sample-rate")).toBe(false)
+    })
+
+    it("does not report a device-sample-rate mismatch when device and graph agree", () => {
+        const mismatches = CaptureSourceMetadata.mismatches(exampleMetadata({
+            actualSampleRate: 48000,
+            deviceSampleRate: 48000
+        }))
+        expect(mismatches.some(report => report.kind === "device-sample-rate")).toBe(false)
+    })
+
     it("reports multiple issues independently", () => {
         const mismatches = CaptureSourceMetadata.mismatches(exampleMetadata({
             actualSampleRate: 32000,
