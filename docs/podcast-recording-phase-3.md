@@ -159,11 +159,10 @@ and re-throwing on failure so callers see a real rejection. Live-stream errors a
   `LongRecordingService.startFromSource`. The harness exposes a source selector (`synthetic` / `getUserMedia`)
   and renders a `data-test="metadata"` table with the requested vs actual sample rate / channels and the
   detected mismatches — visible to humans and selectable by future Playwright assertions.
-- `CaptureAudioBridgeSource` adapts the existing musical-take `CaptureAudio` chain to the `CaptureSource`
-  interface so callers that want to drive long recording from the legacy capture flow can do so without forking
-  the audio chain. The musical-take path itself is unchanged: `CaptureAudio.startRecording` still uses
-  `RecordingWorklet`, while the long-recording path goes through `LongRecordingService`. The bridge is the
-  contract that lets future code unify them.
+The musical-take path itself is unchanged: `CaptureAudio.startRecording` still uses `RecordingWorklet`, while
+the long-recording path goes through `LongRecordingService`. The `CaptureSource` interface is the contract a
+future unification would target, but no bridge implementation ships in this phase — only `CaptureSource`
+instances that own their own audio graph (`SyntheticCaptureSource`, `GetUserMediaCaptureSource`) are exported.
 
 ## Acceptance Check (Phase 3)
 

@@ -1,4 +1,3 @@
-export * from "./CaptureAudioBridgeSource"
 export * from "./CaptureChannelMap"
 export * from "./CaptureSourceTypes"
 export * from "./GetUserMediaCaptureSource"

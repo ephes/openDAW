@@ -1,59 +1,13 @@
 import {beforeEach, describe, expect, it} from "vitest"
 import {DefaultObservableValue, UUID} from "@opendaw/lib-std"
 import {ConstantTempoMap, PPQN, TimeBase, TimeBaseConverter} from "@opendaw/lib-dsp"
-import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {LongRecordingMediaAccess, LongRecordingMediaReference} from "./LongRecordingMedia"
 import {LongRecordingSession} from "./LongRecordingSession"
 import {LongRecordingStorage} from "./LongRecordingStorage"
 import {LongRecordingSource} from "./LongRecordingManifest"
+import {InMemoryOpfs} from "./__test_support__/InMemoryOpfs"
 
 const TEST_UUID = UUID.asString("00000000-0000-4000-8000-000000000040")
-
-class InMemoryOpfs implements OpfsProtocol {
-    readonly files = new Map<string, Uint8Array>()
-    async write(path: string, data: Uint8Array): Promise<void> {
-        this.files.set(normalize(path), new Uint8Array(data))
-    }
-    async read(path: string): Promise<Uint8Array> {
-        const data = this.files.get(normalize(path))
-        if (data === undefined) {throw new Error(`No such file: ${path}`)}
-        return new Uint8Array(data)
-    }
-    async exists(path: string): Promise<boolean> {return this.files.has(normalize(path))}
-    async delete(path: string): Promise<void> {
-        const normalized = normalize(path)
-        if (normalized === "") {this.files.clear(); return}
-        const prefix = `${normalized}/`
-        for (const key of [...this.files.keys()]) {
-            if (key === normalized || key.startsWith(prefix)) {this.files.delete(key)}
-        }
-    }
-    async list(path: string): Promise<ReadonlyArray<OpfsProtocol.Entry>> {
-        const normalized = normalize(path)
-        const prefix = normalized === "" ? "" : `${normalized}/`
-        const seen = new Map<string, OpfsProtocol.Entry>()
-        for (const key of this.files.keys()) {
-            if (!key.startsWith(prefix)) {continue}
-            const remainder = key.slice(prefix.length)
-            if (remainder.length === 0) {continue}
-            const slashIndex = remainder.indexOf("/")
-            if (slashIndex === -1) {
-                seen.set(remainder, {name: remainder, kind: "file"})
-            } else {
-                const dirName = remainder.slice(0, slashIndex)
-                if (!seen.has(dirName)) {seen.set(dirName, {name: dirName, kind: "directory"})}
-            }
-        }
-        return [...seen.values()]
-    }
-    async size(path: string): Promise<number> {
-        const data = this.files.get(normalize(path))
-        if (data === undefined) {throw new Error(`No such file: ${path}`)}
-        return data.byteLength
-    }
-}
-
-const normalize = (path: string): string => path.replace(/^\/+|\/+$/g, "")
 
 const exampleSource = (): LongRecordingSource => ({
     kind: "test",

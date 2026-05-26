@@ -62,6 +62,7 @@ export class GetUserMediaCaptureSource implements CaptureSource {
             requestedSampleRate: context.sampleRate,
             requestedChannels,
             actualSampleRate,
+            deviceChannels: actualChannels,
             actualChannels: channelMap.length,
             autoGainControl: trackSettings.autoGainControl,
             echoCancellation: trackSettings.echoCancellation,

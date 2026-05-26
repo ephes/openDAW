@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest"
-import {UUID} from "@opendaw/lib-std"
+import {isDefined, UUID} from "@opendaw/lib-std"
 import {LongRecordingManifest, LongRecordingSource} from "./LongRecordingManifest"
 import {LongRecordingRecovery} from "./LongRecordingRecovery"
 
@@ -83,7 +83,7 @@ describe("LongRecordingRecovery.classify", () => {
         ])
         expect(report.overall).toBe("recoverable")
         const missing = report.chunks.find(status => status.type === "missing")
-        expect(missing).toBeDefined()
+        expect(isDefined(missing)).toBe(true)
         expect(report.recoverableFrames).toBe(24000)
     })
 
@@ -121,8 +121,8 @@ describe("LongRecordingRecovery.classify", () => {
             {index: 1, bytes: expectedBytes(24000)}
         ])
         const extra = report.chunks.find(status => status.type === "extra")
-        expect(extra).toBeDefined()
-        if (extra !== undefined && extra.type === "extra") {
+        expect(isDefined(extra)).toBe(true)
+        if (isDefined(extra) && extra.type === "extra") {
             expect(extra.index).toBe(1)
         }
         expect(report.overall).toBe("clean")
