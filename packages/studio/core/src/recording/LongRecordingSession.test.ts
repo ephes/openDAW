@@ -1,5 +1,5 @@
 import {beforeEach, describe, expect, it} from "vitest"
-import {UUID} from "@opendaw/lib-std"
+import {Nullable, tryCatch, UUID} from "@opendaw/lib-std"
 import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {LongRecordingSource} from "./LongRecordingManifest"
 import {LongRecordingChunkBuffer} from "./LongRecordingChunkBuffer"
@@ -11,7 +11,7 @@ const TEST_UUID = UUID.asString("00000000-0000-4000-8000-000000000020")
 
 class InMemoryOpfs implements OpfsProtocol {
     readonly files = new Map<string, Uint8Array>()
-    failWriteOn: string | null = null
+    failWriteOn: Nullable<string> = null
 
     async write(path: string, data: Uint8Array): Promise<void> {
         if (this.failWriteOn !== null && path.endsWith(this.failWriteOn)) {
@@ -228,10 +228,11 @@ describe("LongRecordingSession", () => {
     it("assertOpfsSupported throws when navigator.storage.getDirectory is missing", () => {
         const originalNavigator = globalThis.navigator
         Reflect.set(globalThis, "navigator", {})
-        try {
-            expect(() => LongRecordingSession.assertOpfsSupported()).toThrow(/OPFS is not available/)
-        } finally {
-            Reflect.set(globalThis, "navigator", originalNavigator)
+        const result = tryCatch(() => LongRecordingSession.assertOpfsSupported())
+        Reflect.set(globalThis, "navigator", originalNavigator)
+        expect(result.status).toBe("failure")
+        if (result.status === "failure") {
+            expect(String(result.error)).toMatch(/OPFS is not available/)
         }
     })
 })

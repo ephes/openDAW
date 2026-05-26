@@ -10,6 +10,7 @@ import {SampleStorage} from "../samples"
 import type JSZip from "jszip"
 import {SoundfontStorage} from "../soundfont"
 import {ExternalLib} from "../ExternalLib"
+import {LongRecordingArtifact, LongRecordingStorage} from "../recording"
 
 export namespace ProjectBundle {
     export const encode = async ({uuid, project, meta, cover}: ProjectProfile,
@@ -30,16 +31,26 @@ export namespace ProjectBundle {
         cover.ifSome(buffer => zip.file(ProjectPaths.ProjectCoverFile, buffer, {binary: true}))
         const samples = asDefined(zip.folder("samples"), "Could not create folder samples")
         const soundfonts = asDefined(zip.folder("soundfonts"), "Could not create folder soundfonts")
+        const longRecordings = asDefined(zip.folder("recordings"), "Could not create folder recordings")
         const audioFileBoxes = project.boxGraph.boxes().filter(box => box instanceof AudioFileBox)
         const soundfontFileBoxes = project.boxGraph.boxes().filter(box => box instanceof SoundfontFileBox)
+        const recordingClassification = await classifyAudioFileBoxes(audioFileBoxes)
         const blob = await Promise.all([
-            ...audioFileBoxes
-                .map(async ({address: {uuid}}, index) => {
+            ...recordingClassification.sampleBoxes
+                .map(async ({uuid}, index) => {
                     const loader: SampleLoader = project.sampleManager.getOrCreate(uuid)
                     const folder = asDefined(samples.folder(UUID.toString(uuid)),
                         "Could not create folder for sample")
                     return pipeSampleLoaderInto(loader, folder)
-                        .then(() => progress(index / audioFileBoxes.length * 0.75))
+                        .then(() => progress(index / Math.max(1, audioFileBoxes.length) * 0.75))
+                }),
+            ...recordingClassification.longRecordings
+                .map(async ({uuid}, index) => {
+                    const folder = asDefined(longRecordings.folder(UUID.toString(uuid)),
+                        "Could not create folder for long recording")
+                    await pipeLongRecordingInto(uuid, folder)
+                    progress((recordingClassification.sampleBoxes.length + index)
+                        / Math.max(1, audioFileBoxes.length) * 0.75)
                 }),
             ...soundfontFileBoxes
                 .map(async ({address: {uuid}}, index) => {
@@ -98,6 +109,15 @@ export namespace ProjectBundle {
                         .write(`${SoundfontStorage.Folder}/${path}`, new Uint8Array(arrayBuffer))))
             })
         }
+        const recordingsFolder = zip.folder("recordings")
+        if (isDefined(recordingsFolder)) {
+            recordingsFolder.forEach((path, file) => {
+                if (file.dir) {return}
+                promises.push(file.async("arraybuffer")
+                    .then(arrayBuffer => Workers.Opfs
+                        .write(`${LongRecordingStorage.ROOT}/${path}`, new Uint8Array(arrayBuffer))))
+            })
+        }
         await Promise.all(promises)
         const projectData = await asDefined(zip.file(ProjectPaths.ProjectFile)).async("arraybuffer")
         const project = await Project.loadAnyVersion(env, projectData)
@@ -105,6 +125,41 @@ export namespace ProjectBundle {
         const coverFile = zip.file(ProjectPaths.ProjectCoverFile)
         const cover: Option<ArrayBuffer> = Option.wrap(await coverFile?.async("arraybuffer"))
         return new ProjectProfile(bundleUUID, project, meta, cover)
+    }
+
+    interface ClassifiedAudioBox {
+        readonly uuid: UUID.Bytes
+    }
+
+    interface AudioFileBoxClassification {
+        readonly sampleBoxes: ReadonlyArray<ClassifiedAudioBox>
+        readonly longRecordings: ReadonlyArray<ClassifiedAudioBox>
+    }
+
+    const classifyAudioFileBoxes = async (
+        audioFileBoxes: ReadonlyArray<AudioFileBox>
+    ): Promise<AudioFileBoxClassification> => {
+        const sampleBoxes: Array<ClassifiedAudioBox> = []
+        const longRecordings: Array<ClassifiedAudioBox> = []
+        for (const box of audioFileBoxes) {
+            const uuid = box.address.uuid
+            const recordingId = UUID.asString(UUID.toString(uuid))
+            const isRecording = await LongRecordingArtifact.isLongRecording(Workers.Opfs, recordingId)
+            if (isRecording) {
+                longRecordings.push({uuid})
+            } else {
+                sampleBoxes.push({uuid})
+            }
+        }
+        return {sampleBoxes, longRecordings}
+    }
+
+    const pipeLongRecordingInto = async (uuid: UUID.Bytes, zip: JSZip): Promise<void> => {
+        const recordingId = UUID.asString(UUID.toString(uuid))
+        const files = await LongRecordingArtifact.collect(Workers.Opfs, recordingId)
+        for (const file of files) {
+            zip.file(file.path, file.bytes, {binary: true})
+        }
     }
 
     const pipeSampleLoaderInto = async (loader: SampleLoader, zip: JSZip): Promise<void> => {

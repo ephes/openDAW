@@ -89,10 +89,19 @@
     <label class="inline">frames/chunk
         <input type="number" id="framesPerChunk" value="24000" min="128" step="128"/>
     </label>
+    <label class="inline">source
+        <select id="captureKind">
+            <option value="synthetic">synthetic</option>
+            <option value="getUserMedia">getUserMedia</option>
+        </select>
+    </label>
     <button id="run" data-test="start">Start test</button>
     <button id="clean">Clear OPFS state</button>
     <span id="status" class="status">idle</span>
 </div>
+<table id="metadata" data-test="metadata" style="border-collapse:collapse;margin-bottom:1em">
+    <tbody></tbody>
+</table>
 <pre id="log" data-test="log"></pre>
 <script type="module" src="/src/podcast-recording-test/main.ts"></script>
 </body>

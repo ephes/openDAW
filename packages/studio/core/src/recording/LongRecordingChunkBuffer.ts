@@ -1,4 +1,4 @@
-import {assert, int} from "@opendaw/lib-std"
+import {assert, int, Option} from "@opendaw/lib-std"
 
 export interface FlushedChunk {
     readonly bytes: Uint8Array
@@ -48,14 +48,14 @@ export class LongRecordingChunkBuffer {
         return flushed
     }
 
-    flushPartial(): FlushedChunk | undefined {
-        if (this.#framesFilled === 0) {return undefined}
+    flushPartial(): Option<FlushedChunk> {
+        if (this.#framesFilled === 0) {return Option.None}
         const usedSamples = this.#framesFilled * this.#numberOfChannels
         const bytes = new Uint8Array(this.#buffer.buffer.slice(0, usedSamples * Float32Array.BYTES_PER_ELEMENT))
         const frames = this.#framesFilled
         this.#framesFilled = 0
         this.#buffer = new Float32Array(this.#numberOfChannels * this.#framesPerChunk)
-        return {bytes, frames}
+        return Option.wrap({bytes, frames})
     }
 
     #emitFullChunk(): FlushedChunk {
