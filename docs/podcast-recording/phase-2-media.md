@@ -1,6 +1,6 @@
 # Podcast Recording — Phase 2: Tempo-Independent Project Media
 
-Builds on Phase 1 (`docs/podcast-recording-phase-1.md`). Phase 2 adds the on-disk and in-memory shape needed for a
+Builds on Phase 1 (`docs/podcast-recording/phase-1-opfs.md`). Phase 2 adds the on-disk and in-memory shape needed for a
 project to point at a long recording without loading its audio, and verifies that tempo changes do not stretch or
 move the resulting media.
 
