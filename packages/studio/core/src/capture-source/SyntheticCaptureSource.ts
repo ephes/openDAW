@@ -1,4 +1,4 @@
-import {Arrays, int, Notifier, Observer, Subscription, Terminator} from "@opendaw/lib-std"
+import {Arrays, int, Notifier, Observer, Subscription, Terminator, tryCatch} from "@opendaw/lib-std"
 import {CaptureChannelMap} from "./CaptureChannelMap"
 import {CaptureContinuityReport, CaptureSource, CaptureSourceMetadata} from "./CaptureSourceTypes"
 
@@ -57,7 +57,7 @@ export class SyntheticCaptureSource implements CaptureSource {
         this.#terminator.own({
             terminate: () => {
                 for (const oscillator of this.#oscillators) {
-                    try {oscillator.stop()} catch {/* already stopped */}
+                    tryCatch(() => oscillator.stop())
                     oscillator.disconnect()
                 }
                 sourceMerger.disconnect()

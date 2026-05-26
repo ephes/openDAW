@@ -28,15 +28,15 @@ const expectedBytes = (frames: number, channels = 2, bytesPerSample = 4): number
 
 describe("LongRecordingRecovery.parseChunkIndex", () => {
     it("parses zero-padded indexes", () => {
-        expect(LongRecordingRecovery.parseChunkIndex("000000.pcm")).toBe(0)
-        expect(LongRecordingRecovery.parseChunkIndex("000123.pcm")).toBe(123)
-        expect(LongRecordingRecovery.parseChunkIndex("123456.pcm")).toBe(123456)
+        expect(LongRecordingRecovery.parseChunkIndex("000000.pcm").unwrapOrNull()).toBe(0)
+        expect(LongRecordingRecovery.parseChunkIndex("000123.pcm").unwrapOrNull()).toBe(123)
+        expect(LongRecordingRecovery.parseChunkIndex("123456.pcm").unwrapOrNull()).toBe(123456)
     })
 
     it("rejects non-chunk file names", () => {
-        expect(LongRecordingRecovery.parseChunkIndex("manifest.json")).toBeUndefined()
-        expect(LongRecordingRecovery.parseChunkIndex("abc.pcm")).toBeUndefined()
-        expect(LongRecordingRecovery.parseChunkIndex("00.pcm")).toBeUndefined()
+        expect(LongRecordingRecovery.parseChunkIndex("manifest.json").isEmpty()).toBe(true)
+        expect(LongRecordingRecovery.parseChunkIndex("abc.pcm").isEmpty()).toBe(true)
+        expect(LongRecordingRecovery.parseChunkIndex("00.pcm").isEmpty()).toBe(true)
     })
 })
 

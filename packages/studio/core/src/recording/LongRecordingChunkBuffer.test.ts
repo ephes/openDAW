@@ -47,12 +47,13 @@ describe("LongRecordingChunkBuffer", () => {
         const buffer = new LongRecordingChunkBuffer(1, 4)
         buffer.append([channel(1, 2)])
         const residual = buffer.flushPartial()
-        expect(residual).toBeDefined()
-        expect(residual!.frames).toBe(2)
-        const decoded = LongRecordingChunkBuffer.deinterleave(residual!.bytes, 1, residual!.frames)
+        expect(residual.nonEmpty()).toBe(true)
+        const flushed = residual.unwrap()
+        expect(flushed.frames).toBe(2)
+        const decoded = LongRecordingChunkBuffer.deinterleave(flushed.bytes, 1, flushed.frames)
         expect(Array.from(decoded[0])).toEqual([1, 2])
         expect(buffer.framesFilled).toBe(0)
-        expect(buffer.flushPartial()).toBeUndefined()
+        expect(buffer.flushPartial().isEmpty()).toBe(true)
     })
 
     it("never reuses the emitted buffer", () => {

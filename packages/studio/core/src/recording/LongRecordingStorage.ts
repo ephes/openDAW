@@ -88,16 +88,18 @@ class OpfsLongRecordingStorage implements LongRecordingStorage {
     }
 
     async listChunkProbes(): Promise<ReadonlyArray<ChunkProbe>> {
-        const entries = await this.#opfs.list(this.#chunksDir).catch(() => Arrays.empty<OpfsProtocol.Entry>())
+        const listResult = await Promises.tryCatch(this.#opfs.list(this.#chunksDir))
+        const entries: ReadonlyArray<OpfsProtocol.Entry> =
+            listResult.status === "resolved" ? listResult.value : Arrays.empty()
         const probes: Array<ChunkProbe> = []
         for (const entry of entries) {
             if (entry.kind !== "file") {continue}
             if (LongRecordingOverview.isOverviewFileName(entry.name)) {continue}
-            const index = LongRecordingRecovery.parseChunkIndex(entry.name)
-            if (index === undefined) {continue}
-            const size = await this.#opfs.size(`${this.#chunksDir}/${entry.name}`).catch(() => -1)
-            if (size < 0) {continue}
-            probes.push({index, bytes: size})
+            const indexOption = LongRecordingRecovery.parseChunkIndex(entry.name)
+            if (indexOption.isEmpty()) {continue}
+            const sizeResult = await Promises.tryCatch(this.#opfs.size(`${this.#chunksDir}/${entry.name}`))
+            if (sizeResult.status === "rejected") {continue}
+            probes.push({index: indexOption.unwrap(), bytes: sizeResult.value})
         }
         probes.sort((left, right) => left.index - right.index)
         return probes

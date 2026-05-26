@@ -1,4 +1,4 @@
-import {int} from "@opendaw/lib-std"
+import {int, Option} from "@opendaw/lib-std"
 import {LongRecordingChunkEntry, LongRecordingManifest} from "./LongRecordingManifest"
 
 export type LongRecordingChunkStatus =
@@ -31,12 +31,12 @@ export interface ChunkProbe {
 export namespace LongRecordingRecovery {
     export const FILE_PATTERN = /^(\d{6,})\.pcm$/
 
-    export const parseChunkIndex = (fileName: string): int | undefined => {
+    export const parseChunkIndex = (fileName: string): Option<int> => {
         const match = FILE_PATTERN.exec(fileName)
-        if (match === null) {return undefined}
+        if (match === null) {return Option.None}
         const parsed = Number.parseInt(match[1], 10)
-        if (!Number.isFinite(parsed) || parsed < 0) {return undefined}
-        return parsed
+        if (!Number.isFinite(parsed) || parsed < 0) {return Option.None}
+        return Option.wrap(parsed)
     }
 
     export const classify = (

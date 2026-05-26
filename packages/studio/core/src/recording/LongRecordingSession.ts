@@ -121,8 +121,9 @@ export class LongRecordingSession {
         const initial: LongRecordingSessionState = this.#sessionState
         if (initial === "stopped" || initial === "failed") {return}
         this.#setSessionState("stopping")
-        const residual = this.#buffer.flushPartial()
-        if (isDefined(residual)) {
+        const residualOption = this.#buffer.flushPartial()
+        if (residualOption.nonEmpty()) {
+            const residual = residualOption.unwrap()
             const index = this.#nextChunkIndex++
             const entry: LongRecordingChunkEntry = {
                 index, frames: residual.frames, bytes: residual.bytes.byteLength
