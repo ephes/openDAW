@@ -86,50 +86,64 @@ Status types:
 
 Calling code can use `recoverableFrames` to decide how much of a partially failed recording to import.
 
-## Browser Verification Harness
+## Browser Verification
 
-Phase 0 promised an automation strategy; Phase 1 implements the manual half of it. New build entry:
+Phase 1 ships **both** an interactive page and an automated headless check that drive the same code path.
 
-- `packages/app/studio/podcast-recording-test.html` — standalone page at route `/podcast-recording-test`.
-- `packages/app/studio/src/podcast-recording-test/main.ts` — bootstraps `Workers.install` + `AudioWorklets.install`,
-  generates a UUID, builds an oscillator → channel-merger → `LongRecordingWorklet`, runs for the configured number
-  of seconds, stops, then reloads the manifest from OPFS and runs `LongRecordingRecovery.classify` on it.
-- Vite config adds the page to `rollupOptions.input` and to the SPA middleware so `/podcast-recording-test`
-  serves the HTML in dev mode.
+Interactive page:
 
-The page renders a PASS/FAIL status and a structured log. Because `AudioContext.resume()` requires a user gesture,
-the page exposes a "Start test" button rather than auto-starting; the `data-test="start"` attribute makes it
-addressable by a future Playwright runner without further changes.
+- `packages/app/studio/podcast-recording-test.html` — built as a Vite entry at `/podcast-recording-test.html`.
+- `packages/app/studio/src/podcast-recording-test/main.ts` — UI glue.
+- `packages/app/studio/src/podcast-recording-test/runner.ts` — the testable runner. Generates a UUID, builds a
+  synthetic source via `SyntheticCaptureSource`, hands it to `LongRecordingService.startFromSource`, waits the
+  configured duration, stops, reloads the manifest from OPFS, runs `LongRecordingRecovery.classify`, and reads
+  back media-reference + overview bins. Emits structured log/progress/state events.
 
-How to run manually (no microphone or specific hardware required):
+Automated headless check (no user interaction):
+
+- `packages/app/studio/scripts/podcast-recording-browser-check.mjs` builds the studio app (`npx vite build`),
+  serves `dist/` over plain HTTP with `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy`, and
+  `Cross-Origin-Resource-Policy` headers (localhost is treated as a secure context, so `SharedArrayBuffer` and
+  OPFS work without TLS), launches the system Chrome via Playwright Core with
+  `--autoplay-policy=no-user-gesture-required`, navigates to `?autorun=1&duration=N`, waits for
+  `#status[data-test-status]` to settle, and exits 0 on `pass` / 1 on `fail` / 2 on environment errors.
+
+How to run (CI-style):
 
 ```
-npm run dev:studio
-# then visit https://localhost:8080/podcast-recording-test
-# click "Start test"
+cd packages/app/studio
+npx vite build
+npm run test:podcast-recording-browser          # default duration=2s, channels=2, framesPerChunk=12000
+# or: node scripts/podcast-recording-browser-check.mjs --duration=2 --headed
 ```
 
-Expected output for a successful clean stop:
+A passing run prints structured JSON on stdout, e.g.:
 
-- `manifest.state = stopped`
-- `overall = clean`
-- `manifest.totalFrames` within half a second of `duration × sampleRate` (allowing for one render-quantum drift on
-  start/stop).
-- No `STORAGE ERROR` entries in the log.
+```
+{
+  "status": "pass",
+  "summary": "{\"overall\":\"clean\",\"totalFrames\":92032,\"chunks\":8,\"overviewBins\":722,...}",
+  "recordingId": "8de35f91-d0bc-44e0-af15-96c86bd1f8f6",
+  "duration": 2,
+  "channels": 2,
+  "framesPerChunk": 12000
+}
+```
 
-The harness also exposes a "Clear OPFS state" button that calls `LongRecordingStorage.listAll` and deletes every
-known recording directory. Use it between runs to keep OPFS tidy.
+The same `runner.ts` powers both modes; in the interactive page a click on "Start test" runs it, and a
+"Clear OPFS state" button calls `LongRecordingStorage.listAll` plus `delete()` to clean OPFS between runs.
 
 ## Tests vs. Browser Verification
 
 Test discipline matches the plan's "Implementation Discipline" section:
 
 - **TDD-first units** for every pure piece (manifest serialization, recovery classification, chunk buffer
-  interleaving, session orchestration, storage layout). 44 tests.
-- **Browser verification harness** for the end-to-end path that needs real `AudioContext` + OPFS. Manual click to
-  start; reports structured pass/fail.
-- **No hardware dependency.** The harness uses a synthetic oscillator. ZOOM L-12 / virtual-device routes remain
-  manual checks for Phase 3.
+  interleaving, session orchestration, storage layout). 44+ vitest cases live under
+  `packages/studio/core/src/recording/*.test.ts`.
+- **Automated headless browser check** (`scripts/podcast-recording-browser-check.mjs`) drives the full
+  `AudioContext` + OPFS + worklet path without user interaction. Returns a non-zero exit code on any failure.
+- **No hardware dependency.** The harness uses a synthetic oscillator. ZOOM L-12 / virtual-device routes stay
+  manual per `plans/podcast-recording.md` and are documented separately (Phase 3 doc).
 
 ## Why a Separate Artifact
 
@@ -139,15 +153,8 @@ Test discipline matches the plan's "Implementation Discipline" section:
 - Multiple chunk files, not one monolithic WAV.
 - A live `state` field that distinguishes `active`, `stopped`, `abandoned`, `failed`.
 
-`SampleService.importRecording` continues to work unchanged for ordinary musical takes. Phase 2 will design how a
+`SampleService.importRecording` continues to work unchanged for ordinary musical takes. Phase 2 designs how a
 long recording is *referenced* by project state without copying it into the sample store.
-
-## Outstanding Items For Phase 2
-
-- Project-graph reference type for long recordings.
-- Waveform overview cached separately from raw chunks.
-- How tempo changes interact with recorded podcast media (must not move/stretch).
-- Edit operations (trim/split/fade/ripple) on chunk-backed media.
 
 ## Acceptance Check (Phase 1)
 
@@ -157,4 +164,4 @@ long recording is *referenced* by project state without copying it into the samp
 | Stopped recording has enough metadata to be referenced or exported later | Manifest preserves sample rate, channel count, channel order, duration, chunk index, source kind, requested vs actual configuration. |
 | Interrupted recording appears recoverable or failed, not silently lost | `LongRecordingRecovery.classify` emits `"recoverable" \| "corrupt" \| "failed"`; manifest is durable from arm time onward. |
 | Corrupt/missing chunks reported explicitly | `LongRecordingChunkStatus` covers `missing`, `truncated`, `corrupt`, `extra`; reported without zero-padding. |
-| Isolated tests for recoverable logic + browser verification for the recording path | 44 Vitest units (hardware-independent) + `podcast-recording-test.html` harness driving a real `AudioContext`. |
+| Isolated tests for recoverable logic + browser verification for the recording path | 80+ hardware-independent vitest cases (recording + capture-source) plus `scripts/podcast-recording-browser-check.mjs`, an automated Playwright-driven headless run against the system Chrome that exercises the full `AudioContext` + worklet + OPFS path and returns a non-zero exit on any failure. |

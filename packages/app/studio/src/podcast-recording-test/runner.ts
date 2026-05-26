@@ -162,8 +162,8 @@ const performRun = async (config: InternalConfig): Promise<PodcastRecordingTestR
             status: "fail",
             reason: "manifest missing after stop",
             recordingId,
-            recovery: LongRecordingRecovery.classify(session.manifest, []),
-            manifest: session.manifest
+            recovery: LongRecordingRecovery.classify(handle.session.manifest, []),
+            manifest: handle.session.manifest
         }
     }
     const reloaded = reloadedOption.unwrap()

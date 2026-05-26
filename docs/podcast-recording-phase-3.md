@@ -137,27 +137,41 @@ Concrete recommendation:
   browser harness can be repointed at `GetUserMediaCaptureSource.open(...)` with a known `deviceId` for ad-hoc
   validation. No new dependencies are needed for that step.
 
-## Why No `try/catch`
+## Error Handling
 
 `GetUserMediaCaptureSource.open` follows the project rule (no inline `try/catch`) by using `Promises.tryCatch`
-and re-throwing on failure so callers see a real rejection. Errors from a live stream are surfaced through the
-`subscribeErrors` channel.
+and re-throwing on failure so callers see a real rejection. Live-stream errors are surfaced through the
+`subscribeErrors` channel; continuity drift through `subscribeContinuity`.
 
-## Open Items
+## Integration Into The Long-Recording Flow
 
-- A future PR can plumb a real `CaptureSource` continuity reporter for `getUserMedia` (e.g. observing
-  `MediaStreamTrack.onmute` / `onended` / `applyConstraints` to detect re-config). The notifier is wired today;
-  populating it is data-driven.
-- Bridging the existing `CaptureAudio` to `CaptureSource` so all recording paths go through the same abstraction
-  is left for a follow-up. The existing musical-take path keeps working unchanged; only the long-recording path
-  uses `CaptureSource` so far.
+`CaptureSource` is now the production-style entry point to the recording pipeline, not an isolated abstraction:
+
+- `LongRecordingService.startFromSource({worklets, storage, captureSource, framesPerChunk})` arms a
+  `LongRecordingSession` whose `sampleRate` and `numberOfChannels` are read from the capture source's actual
+  metadata, wires `captureSource.outputNode` into a `LongRecordingWorklet`, and returns a typed `handle.stop()`
+  that drains the write queue, terminates the source, and terminates the worklet.
+- The manifest's `source` block is populated via `CaptureSourceMetadata.toLongRecordingSource(metadata)`, so the
+  requested-vs-actual numbers the capture source observed end up in the persisted manifest. This is locked by
+  `LongRecordingService.test.ts`, which feeds a stub source whose actual values differ from the requested ones
+  and asserts the manifest preserves both sides.
+- The browser harness (`/podcast-recording-test.html`) and its headless companion both go through
+  `LongRecordingService.startFromSource`. The harness exposes a source selector (`synthetic` / `getUserMedia`)
+  and renders a `data-test="metadata"` table with the requested vs actual sample rate / channels and the
+  detected mismatches — visible to humans and selectable by future Playwright assertions.
+- `CaptureAudioBridgeSource` adapts the existing musical-take `CaptureAudio` chain to the `CaptureSource`
+  interface so callers that want to drive long recording from the legacy capture flow can do so without forking
+  the audio chain. The musical-take path itself is unchanged: `CaptureAudio.startRecording` still uses
+  `RecordingWorklet`, while the long-recording path goes through `LongRecordingService`. The bridge is the
+  contract that lets future code unify them.
 
 ## Acceptance Check (Phase 3)
 
 | Acceptance criterion (from plan §"Phase 3") | Where it is satisfied |
 | --- | --- |
 | Capture-source interface around stream metadata, audio blocks, channel mapping, errors, continuity | `CaptureSource`, `CaptureSourceMetadata`, `CaptureChannelMap`, `subscribeContinuity`, `subscribeErrors`. |
-| `getUserMedia` kept as the first implementation | `GetUserMediaCaptureSource.open` is the default. The harness's synthetic source is for tests; production code uses `GetUserMediaCaptureSource`. |
-| Reports requested vs actual sample rate / channel count | `CaptureSourceMetadata` carries both; `mismatches()` surfaces drift; harness logs them and forwards to the manifest's `source` block. |
-| Channel-to-track mapping for >2-channel devices | `CaptureChannelMap` + splitter/merger routing in both capture-source impls. |
-| Evaluation of multichannel browser capture | This document, §"Multichannel Browser Capability — Evaluation". Default stays mono/stereo; multichannel is opt-in via `requestedChannels` + `channelMap`. |
+| `getUserMedia` kept as the first implementation | `GetUserMediaCaptureSource.open` is the default; selectable via the harness `source=getUserMedia` URL parameter and the source dropdown. The synthetic source is opt-in for tests. |
+| Reports requested vs actual sample rate / channel count | `CaptureSourceMetadata` carries both; `mismatches()` reports drift; `CaptureSourceMetadata.toLongRecordingSource` flows the pair into the persisted manifest. `LongRecordingService.test.ts` asserts the manifest round trip. The browser harness renders a `data-test=metadata` table so the same numbers are visible on the app surface. |
+| Channel-to-track mapping for >2-channel devices | `CaptureChannelMap` + splitter/merger routing in `SyntheticCaptureSource` and `GetUserMediaCaptureSource`. `CaptureChannelMap.test.ts` covers identity / swap / mono / multi-channel reorder / in-place / out-of-range validation. |
+| Evaluation of multichannel browser capture | §"Multichannel Browser Capability — Evaluation" above. Default stays mono/stereo; multichannel is opt-in via `requestedChannels` + `channelMap`. The `CaptureAudio` legacy clamp is **not** applied at the capture-source layer, so a future caller can request the channel count the device exposes. |
+| Capture-source integrated into the recording flow | `LongRecordingService.startFromSource` is the production-style entry point; the browser harness and the headless check both drive recording through it; `LongRecordingService.test.ts` pins requested vs actual metadata flowing through the manifest. |
