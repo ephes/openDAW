@@ -2,12 +2,14 @@ import workersUrl from "@opendaw/studio-core/workers-main.js?worker&url"
 import workletsUrl from "@opendaw/studio-core/processors.js?url"
 import {
     AudioWorklets,
+    CaptureSourceMetadata,
     LongRecordingChunkBuffer,
     LongRecordingMediaAccess,
     LongRecordingMediaReference,
     LongRecordingRecovery,
     LongRecordingSession,
     LongRecordingStorage,
+    SyntheticCaptureSource,
     Workers
 } from "@opendaw/studio-core"
 import {UUID} from "@opendaw/lib-std"
@@ -83,19 +85,21 @@ const runTest = async (): Promise<void> => {
         const recordingId = UUID.asString(crypto.randomUUID())
         log(`recording id: ${recordingId}`)
         const storage = LongRecordingStorage.create(recordingId, Workers.Opfs)
+        const captureSource = new SyntheticCaptureSource({
+            context,
+            numberOfChannels: channels,
+            label: `oscillator-${channels}ch-${duration}s`
+        })
+        for (const mismatch of CaptureSourceMetadata.mismatches(captureSource.metadata)) {
+            log(`capture-source warning: ${mismatch.message}`)
+        }
+        log(`capture-source metadata: ${JSON.stringify(captureSource.metadata)}`)
         const session = new LongRecordingSession({
             storage,
             sampleRate: context.sampleRate,
             numberOfChannels: channels,
             framesPerChunk,
-            source: {
-                kind: "synthetic",
-                label: `oscillator-${channels}ch-${duration}s`,
-                requestedSampleRate: 48000,
-                requestedChannels: channels,
-                actualSampleRate: context.sampleRate,
-                actualChannels: channels
-            }
+            source: CaptureSourceMetadata.toLongRecordingSource(captureSource.metadata)
         })
         session.subscribeProgress(progress => {
             log(`progress: frames=${progress.frames} chunks=${progress.chunks} bytes=${progress.bytes} elapsed=${progress.elapsedSeconds.toFixed(2)}s`)
@@ -104,25 +108,11 @@ const runTest = async (): Promise<void> => {
         session.subscribeStorageErrors(error => log(`STORAGE ERROR: ${String(error)}`))
         await session.arm()
         const worklet = worklets.createLongRecording(session, channels)
-        const sources: Array<OscillatorNode> = []
-        const merger = context.createChannelMerger(channels)
-        const baseFreq = 440
-        for (let channelIndex = 0; channelIndex < channels; channelIndex++) {
-            const oscillator = context.createOscillator()
-            oscillator.type = "sine"
-            oscillator.frequency.value = baseFreq * (channelIndex + 1)
-            const gain = context.createGain()
-            gain.gain.value = 0.25
-            oscillator.connect(gain)
-            gain.connect(merger, 0, channelIndex)
-            oscillator.start()
-            sources.push(oscillator)
-        }
-        merger.connect(worklet)
-        log(`oscillators started (${channels} ch) — recording for ${duration}s`)
+        captureSource.outputNode.connect(worklet)
+        log(`capture-source connected — recording for ${duration}s`)
         await new Promise(resolve => setTimeout(resolve, duration * 1000))
-        for (const source of sources) {source.stop()}
-        merger.disconnect()
+        captureSource.outputNode.disconnect()
+        captureSource.terminate()
         worklet.disconnect()
         await session.stop()
         worklet.terminate()

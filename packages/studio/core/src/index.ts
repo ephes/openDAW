@@ -1,4 +1,5 @@
 export * from "./capture"
+export * from "./capture-source"
 export * from "./cloud"
 export * from "./dawproject"
 export type * from "./ffmpeg"
