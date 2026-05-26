@@ -21,6 +21,11 @@ export interface LongRecordingChunkEntry {
     bytes: int
 }
 
+export interface LongRecordingOverviewSpecJson {
+    samplesPerBin: int
+    bytesPerBin: int
+}
+
 export interface LongRecordingManifest {
     schema: typeof LONG_RECORDING_SCHEMA_VERSION
     recordingId: UUID.String
@@ -34,6 +39,7 @@ export interface LongRecordingManifest {
     chunks: ReadonlyArray<LongRecordingChunkEntry>
     totalFrames: int
     source: LongRecordingSource
+    overview: LongRecordingOverviewSpecJson
 }
 
 export namespace LongRecordingManifest {
@@ -53,6 +59,7 @@ export namespace LongRecordingManifest {
         framesPerChunk: int
         bytesPerSample?: int
         source: LongRecordingSource
+        overview?: LongRecordingOverviewSpecJson
     }): LongRecordingManifest => ({
         schema: LONG_RECORDING_SCHEMA_VERSION,
         recordingId: params.recordingId,
@@ -65,7 +72,11 @@ export namespace LongRecordingManifest {
         bytesPerSample: params.bytesPerSample ?? Float32Array.BYTES_PER_ELEMENT,
         chunks: [],
         totalFrames: 0,
-        source: params.source
+        source: params.source,
+        overview: params.overview ?? {
+            samplesPerBin: 256,
+            bytesPerBin: params.numberOfChannels * 4
+        }
     })
 
     export const withChunkAppended = (
@@ -127,6 +138,8 @@ export namespace LongRecordingManifest {
         }
         const source = validateSource(value["source"])
         if (source.isEmpty()) {return Option.None}
+        const overview = validateOverview(value["overview"], numberOfChannels)
+        if (overview.isEmpty()) {return Option.None}
         return Option.wrap<LongRecordingManifest>({
             schema: LONG_RECORDING_SCHEMA_VERSION,
             recordingId,
@@ -139,7 +152,8 @@ export namespace LongRecordingManifest {
             bytesPerSample,
             totalFrames,
             chunks,
-            source: source.unwrap()
+            source: source.unwrap(),
+            overview: overview.unwrap()
         })
     }
 
@@ -152,6 +166,18 @@ export namespace LongRecordingManifest {
             return Option.None
         }
         return Option.wrap({index, frames, bytes})
+    }
+
+    const validateOverview = (value: unknown, numberOfChannels: int): Option<LongRecordingOverviewSpecJson> => {
+        if (!isDefined(value)) {
+            return Option.wrap({samplesPerBin: 256, bytesPerBin: numberOfChannels * 4})
+        }
+        if (!isPlainRecord(value)) {return Option.None}
+        const samplesPerBin = value["samplesPerBin"]
+        const bytesPerBin = value["bytesPerBin"]
+        if (!isPositiveOrZeroInt(samplesPerBin) || samplesPerBin <= 0) {return Option.None}
+        if (!isPositiveOrZeroInt(bytesPerBin) || bytesPerBin <= 0) {return Option.None}
+        return Option.wrap({samplesPerBin, bytesPerBin})
     }
 
     const validateSource = (value: unknown): Option<LongRecordingSource> => {

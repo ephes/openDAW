@@ -7,6 +7,7 @@ import {
     LongRecordingSource,
     LongRecordingState
 } from "./LongRecordingManifest"
+import {LongRecordingOverview, OVERVIEW_DEFAULT_SAMPLES_PER_BIN} from "./LongRecordingOverview"
 import {LongRecordingStorage} from "./LongRecordingStorage"
 
 export interface LongRecordingProgress {
@@ -25,6 +26,7 @@ export interface LongRecordingSessionConfig {
     readonly framesPerChunk: int
     readonly source: LongRecordingSource
     readonly now?: () => int
+    readonly overviewSamplesPerBin?: int
 }
 
 export class LongRecordingSession {
@@ -45,6 +47,8 @@ export class LongRecordingSession {
     #writeQueue: Promise<void> = Promise.resolve()
     #lastStorageError: unknown = undefined
 
+    readonly #overviewSamplesPerBin: int
+
     constructor(config: LongRecordingSessionConfig) {
         this.#storage = config.storage
         this.#sampleRate = config.sampleRate
@@ -52,14 +56,17 @@ export class LongRecordingSession {
         this.#framesPerChunk = config.framesPerChunk
         this.#source = config.source
         this.#now = config.now ?? (() => Date.now())
+        this.#overviewSamplesPerBin = config.overviewSamplesPerBin ?? OVERVIEW_DEFAULT_SAMPLES_PER_BIN
         this.#buffer = new LongRecordingChunkBuffer(this.#numberOfChannels, this.#framesPerChunk)
+        const overviewSpec = LongRecordingOverview.spec(this.#numberOfChannels, this.#overviewSamplesPerBin)
         this.#manifest = LongRecordingManifest.create({
             recordingId: this.#storage.recordingId,
             now: this.#now(),
             sampleRate: this.#sampleRate,
             numberOfChannels: this.#numberOfChannels,
             framesPerChunk: this.#framesPerChunk,
-            source: this.#source
+            source: this.#source,
+            overview: {samplesPerBin: overviewSpec.samplesPerBin, bytesPerBin: overviewSpec.bytesPerBin}
         })
     }
 
@@ -99,8 +106,15 @@ export class LongRecordingSession {
         for (const chunk of flushed) {
             const index = this.#nextChunkIndex++
             const entry: LongRecordingChunkEntry = {index, frames: chunk.frames, bytes: chunk.bytes.byteLength}
-            this.#enqueueChunkWrite(entry, chunk.bytes)
+            const overviewBytes = this.#buildOverview(chunk.bytes, chunk.frames)
+            this.#enqueueChunkWrite(entry, chunk.bytes, overviewBytes)
         }
+    }
+
+    #buildOverview(interleavedBytes: Uint8Array, frames: int): Uint8Array {
+        const deinterleaved = LongRecordingChunkBuffer.deinterleave(
+            interleavedBytes, this.#numberOfChannels, frames)
+        return LongRecordingOverview.encodeChunkOverview(deinterleaved, this.#overviewSamplesPerBin)
     }
 
     async stop(): Promise<void> {
@@ -113,7 +127,8 @@ export class LongRecordingSession {
             const entry: LongRecordingChunkEntry = {
                 index, frames: residual.frames, bytes: residual.bytes.byteLength
             }
-            this.#enqueueChunkWrite(entry, residual.bytes)
+            const overviewBytes = this.#buildOverview(residual.bytes, residual.frames)
+            this.#enqueueChunkWrite(entry, residual.bytes, overviewBytes)
         }
         await this.#writeQueue
         const afterFlush: LongRecordingSessionState = this.#sessionState
@@ -141,13 +156,18 @@ export class LongRecordingSession {
         this.#setSessionState("stopped")
     }
 
-    #enqueueChunkWrite(entry: LongRecordingChunkEntry, data: Uint8Array): void {
+    #enqueueChunkWrite(entry: LongRecordingChunkEntry, data: Uint8Array, overviewBytes: Uint8Array): void {
         this.#writeQueue = this.#writeQueue.then(async () => {
             if (this.#sessionState === "failed") {return}
-            const {status, error} = await Promises.tryCatch(this.#storage.writeChunk(entry.index, data))
-            if (status === "rejected") {
-                await this.fail(error)
+            const chunkResult = await Promises.tryCatch(this.#storage.writeChunk(entry.index, data))
+            if (chunkResult.status === "rejected") {
+                await this.fail(chunkResult.error)
                 return
+            }
+            const overviewResult = await Promises.tryCatch(
+                this.#storage.writeChunkOverview(entry.index, overviewBytes))
+            if (overviewResult.status === "rejected") {
+                this.#storageErrorNotifier.notify(overviewResult.error)
             }
             this.#manifest = LongRecordingManifest.withChunkAppended(this.#manifest, entry, this.#now())
             this.#totalBytes += entry.bytes

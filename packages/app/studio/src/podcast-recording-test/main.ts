@@ -3,6 +3,8 @@ import workletsUrl from "@opendaw/studio-core/processors.js?url"
 import {
     AudioWorklets,
     LongRecordingChunkBuffer,
+    LongRecordingMediaAccess,
+    LongRecordingMediaReference,
     LongRecordingRecovery,
     LongRecordingSession,
     LongRecordingStorage,
@@ -144,6 +146,15 @@ const runTest = async (): Promise<void> => {
             const sample = await storage.readChunk(0)
             const first = LongRecordingChunkBuffer.deinterleave(sample, channels, Math.min(reloaded.chunks[0].frames, 8))
             log(`first chunk preview ch0: [${Array.from(first[0]).slice(0, 8).map(v => v.toFixed(3)).join(", ")}]`)
+            const reference = LongRecordingMediaReference.fromManifest(reloaded)
+            log(`media reference: ${JSON.stringify({
+                durationSeconds: Number(reference.durationSeconds.toFixed(3)),
+                framesPerChunk: reference.framesPerChunk,
+                overviewSamplesPerBin: reference.overviewSamplesPerBin
+            })}`)
+            const access = LongRecordingMediaAccess.create(reference, storage)
+            const bins = await access.readOverviewBins()
+            log(`overview bins read without loading raw audio: ${bins.length}`)
         } else {
             setStatus("FAIL", "fail")
             log("---\nFAIL")

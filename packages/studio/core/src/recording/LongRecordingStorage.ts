@@ -2,6 +2,7 @@ import {Arrays, int, Option, UUID} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {LongRecordingManifest} from "./LongRecordingManifest"
+import {LongRecordingOverview} from "./LongRecordingOverview"
 import {ChunkProbe, LongRecordingRecovery} from "./LongRecordingRecovery"
 
 export interface LongRecordingStorage {
@@ -15,6 +16,10 @@ export interface LongRecordingStorage {
     writeChunk(index: int, data: Uint8Array): Promise<void>
 
     readChunk(index: int): Promise<Uint8Array>
+
+    writeChunkOverview(index: int, data: Uint8Array): Promise<void>
+
+    readChunkOverview(index: int): Promise<Option<Uint8Array>>
 
     listChunkProbes(): Promise<ReadonlyArray<ChunkProbe>>
 
@@ -72,11 +77,22 @@ class OpfsLongRecordingStorage implements LongRecordingStorage {
         return this.#opfs.read(`${this.#chunksDir}/${LongRecordingManifest.chunkFileName(index)}`)
     }
 
+    async writeChunkOverview(index: int, data: Uint8Array): Promise<void> {
+        await this.#opfs.write(`${this.#chunksDir}/${LongRecordingOverview.overviewFileName(index)}`, data)
+    }
+
+    async readChunkOverview(index: int): Promise<Option<Uint8Array>> {
+        const {status, value} = await Promises.tryCatch(
+            this.#opfs.read(`${this.#chunksDir}/${LongRecordingOverview.overviewFileName(index)}`))
+        return status === "resolved" ? Option.wrap(value) : Option.None
+    }
+
     async listChunkProbes(): Promise<ReadonlyArray<ChunkProbe>> {
         const entries = await this.#opfs.list(this.#chunksDir).catch(() => Arrays.empty<OpfsProtocol.Entry>())
         const probes: Array<ChunkProbe> = []
         for (const entry of entries) {
             if (entry.kind !== "file") {continue}
+            if (LongRecordingOverview.isOverviewFileName(entry.name)) {continue}
             const index = LongRecordingRecovery.parseChunkIndex(entry.name)
             if (index === undefined) {continue}
             const size = await this.#opfs.size(`${this.#chunksDir}/${entry.name}`).catch(() => -1)
