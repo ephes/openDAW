@@ -1,5 +1,6 @@
 export * from "./DefaultSampleLoader"
 export * from "./GlobalSampleLoaderManager"
+export * from "./LongRecordingSampleLoader"
 export * from "./OpenSampleAPI"
 export * from "./SampleAPI"
 export * from "./SampleProvider"

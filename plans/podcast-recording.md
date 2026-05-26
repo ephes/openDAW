@@ -301,6 +301,12 @@ These should not be first-slice requirements, but they are useful once long reco
 
 ## Immediate Next Step
 
-Write a product-integration spec that turns this foundation into a usable mono/stereo local podcast-recording MVP in
-the normal openDAW workflow. Keep Phase 4/native bridge conditional until browser capture fails a concrete MVP
-requirement.
+The product-integration MVP described in `docs/podcast-recording/product-integration-spec.md` is **implemented**.
+Closure note: `docs/podcast-recording/product-integration.md`. The spec resolved the open-questions list above
+(per-track `CaptureAudioBox.longRecording` flag, lazy peaks + on-demand `AudioData` via
+`LongRecordingSampleLoader`, Studio Dashboard "Recoverable Recordings" panel) and the implementation plan
+`docs/podcast-recording/product-integration-plan.md` enumerates the commits.
+
+Phase 4 stays deferred. Documented follow-ups (timeline non-clean region badge, "Resume into project"
+Dashboard action, chunked-streaming export, multichannel re-evaluation) are tracked in the closure note's
+"Deferred follow-ups" section.

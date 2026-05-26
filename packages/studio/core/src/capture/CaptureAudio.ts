@@ -6,7 +6,9 @@ import {
     Nullable,
     Option,
     RuntimeNotifier,
-    Terminable
+    Terminable,
+    tryCatch,
+    UUID
 } from "@opendaw/lib-std"
 import {dbToGain} from "@opendaw/lib-dsp"
 import {Promises} from "@opendaw/lib-runtime"
@@ -14,10 +16,18 @@ import {AudioUnitBox, CaptureAudioBox} from "@opendaw/studio-boxes"
 import {Capture} from "./Capture"
 import {CaptureDevices} from "./CaptureDevices"
 import {RecordAudio} from "./RecordAudio"
+import {RecordAudioLong} from "./RecordAudioLong"
 import {AudioDevices} from "../AudioDevices"
 import {RenderQuantum} from "../RenderQuantum"
 import {RecordingWorklet} from "../RecordingWorklet"
 import {MonitoringMode} from "./MonitoringMode"
+import {CaptureSourceMetadata, WrappingCaptureSource} from "../capture-source"
+import {LongRecordingHandle, LongRecordingService} from "../recording/LongRecordingService"
+import {LongRecordingSession} from "../recording/LongRecordingSession"
+import {LongRecordingStorage} from "../recording/LongRecordingStorage"
+import {Workers} from "../Workers"
+
+const LONG_RECORDING_CHUNK_SECONDS = 0.5
 
 export class CaptureAudio extends Capture<CaptureAudioBox> {
     readonly #stream: MutableObservableOption<MediaStream>
@@ -37,6 +47,7 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
         channelCount: 1 | 2
     }> = null
     #preparedWorklet: Nullable<RecordingWorklet> = null
+    #preparedLongHandle: Nullable<LongRecordingHandle> = null
     #monitorOutputDeviceId: Option<string> = Option.None
     #monitorAudioElement: Nullable<HTMLAudioElement> = null
     #monitorStreamDest: Nullable<MediaStreamAudioDestinationNode> = null
@@ -187,6 +198,10 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
         if (!isDefined(audioChain)) {
             return Promise.reject("No audio chain available for recording.")
         }
+        if (this.captureBox.longRecording.getValue()) {
+            await this.#prepareLongRecording(audioChain)
+            return
+        }
         const {recordGainNode, channelCount} = audioChain
         const recordingWorklet = audioWorklets.createRecording(channelCount, RenderQuantum)
         recordingWorklet.bpm = project.timelineBox.bpm.getValue()
@@ -200,9 +215,24 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
         const {project} = this.manager
         const {env: {audioContext, sampleManager}} = project
         const audioChain = this.#audioChain
+        if (!isDefined(audioChain)) {
+            console.warn("No audio chain available for recording.")
+            return Terminable.Empty
+        }
+        if (isDefined(this.#preparedLongHandle)) {
+            const handle = this.#preparedLongHandle
+            this.#preparedLongHandle = null
+            return RecordAudioLong.start({
+                handle,
+                sampleManager,
+                project,
+                capture: this,
+                outputLatency: audioContext.outputLatency ?? 0
+            })
+        }
         const recordingWorklet = this.#preparedWorklet
-        if (!isDefined(audioChain) || !isDefined(recordingWorklet)) {
-            console.warn("No audio chain or worklet available for recording.")
+        if (!isDefined(recordingWorklet)) {
+            console.warn("No worklet available for recording.")
             return Terminable.Empty
         }
         this.#preparedWorklet = null
@@ -224,6 +254,66 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
             capture: this,
             outputLatency: audioContext.outputLatency ?? 0
         })
+    }
+
+    async #prepareLongRecording(audioChain: {
+        sourceNode: MediaStreamAudioSourceNode
+        recordGainNode: GainNode
+        channelCount: 1 | 2
+    }): Promise<void> {
+        const opfsCheck = tryCatch(() => LongRecordingSession.assertOpfsSupported())
+        if (opfsCheck.status === "failure") {
+            await RuntimeNotifier.info({
+                headline: "Long Recording Unavailable",
+                message: "Your browser does not expose OPFS (origin private file system); long recording cannot start. "
+                    + "Disable 'Long Recording' on this track to use the regular recording path."
+            })
+            return Promise.reject(new Error("OPFS not supported"))
+        }
+        const persisted = await LongRecordingSession.requestPersistence()
+        if (!persisted) {
+            const approved = await RuntimeNotifier.approve({
+                headline: "Storage Not Persisted",
+                message: "Persistent storage was not granted. Your long recording may be evicted under storage pressure. "
+                    + "Proceed anyway?",
+                approveText: "Record",
+                cancelText: "Cancel"
+            })
+            if (!approved) {return Promise.reject(new Error("Recording cancelled (persistent storage denied)"))}
+        }
+        const {project} = this.manager
+        const {env: {audioContext, audioWorklets}} = project
+        const {recordGainNode, channelCount} = audioChain
+        const recordingId = UUID.toString(UUID.generate())
+        const storage = LongRecordingStorage.create(recordingId, Workers.Opfs)
+        const track = this.#stream.unwrapOrNull()?.getAudioTracks().at(0)
+        const trackSettings = track?.getSettings() ?? {}
+        const deviceSampleRate = trackSettings.sampleRate
+        const requestedChannels = this.#requestChannels.unwrapOrElse(channelCount)
+        const metadata: CaptureSourceMetadata = {
+            kind: "getUserMedia",
+            label: track?.label ?? "default",
+            deviceId: trackSettings.deviceId,
+            deviceLabel: track?.label,
+            requestedSampleRate: audioContext.sampleRate,
+            requestedChannels,
+            actualSampleRate: audioContext.sampleRate,
+            deviceSampleRate,
+            deviceChannels: trackSettings.channelCount ?? channelCount,
+            actualChannels: channelCount,
+            autoGainControl: trackSettings.autoGainControl,
+            echoCancellation: trackSettings.echoCancellation,
+            noiseSuppression: trackSettings.noiseSuppression
+        }
+        const captureSource = new WrappingCaptureSource({metadata, outputNode: recordGainNode})
+        const framesPerChunk = Math.max(1, Math.round(audioContext.sampleRate * LONG_RECORDING_CHUNK_SECONDS))
+        const handle = await LongRecordingService.startFromSource({
+            worklets: audioWorklets,
+            storage,
+            captureSource,
+            framesPerChunk
+        })
+        this.#preparedLongHandle = handle
     }
 
     async #updateStream(): Promise<void> {

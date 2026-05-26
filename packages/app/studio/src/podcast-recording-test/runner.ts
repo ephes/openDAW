@@ -6,6 +6,8 @@ import {
     CaptureSourceMetadata,
     ChunkProbe,
     GetUserMediaCaptureSource,
+    GlobalSampleLoaderManager,
+    LongRecordingArtifact,
     LongRecordingChunkBuffer,
     LongRecordingManifest,
     LongRecordingMediaAccess,
@@ -13,12 +15,14 @@ import {
     LongRecordingOverviewBin,
     LongRecordingRecovery,
     LongRecordingRecoveryReport,
+    LongRecordingSampleLoader,
     LongRecordingService,
     LongRecordingSession,
     LongRecordingStorage,
     SyntheticCaptureSource,
     Workers
 } from "@opendaw/studio-core"
+import {SampleLoaderState} from "@opendaw/studio-adapters"
 
 export type CaptureSourceKindArg = "synthetic" | "getUserMedia"
 
@@ -48,6 +52,28 @@ export interface PodcastRecordingTestSuccess {
     }>
     readonly firstChunkPreview: ReadonlyArray<number>
     readonly elapsedFramesDriftFrames: number
+    readonly loaderProbe: LoaderProbeResult
+}
+
+export interface LoaderProbeResult {
+    readonly peaksAvailableImmediately: boolean
+    readonly peakNumFrames: number
+    readonly peakStageCount: number
+    readonly dataMaterialized: boolean
+    readonly materializedFrames: number
+    readonly fallbackResolved: boolean
+    /**
+     * The fallback loader must observe `progress -> loaded` with `data.nonEmpty()` after the long-recording
+     * fallback has populated it. The previous swap-with-error pattern is rejected by the production consumers
+     * (`AudioFileBoxAdapter.audioData`, `EngineWorklet.fetchAudio`, `OfflineEngineRenderer`).
+     */
+    readonly fallbackTerminalState: string
+    readonly fallbackLoaderHasData: boolean
+    readonly fallbackLoaderHasPeaks: boolean
+    readonly fallbackLoaderIsSameInstanceAfterReload: boolean
+    readonly fallbackLoaderAudioFrames: number
+    readonly afterArtifactRestoreLoaderHasData: boolean
+    readonly afterArtifactRestoreLoaderHasPeaks: boolean
 }
 
 export interface PodcastRecordingTestFailure {
@@ -192,6 +218,18 @@ const performRun = async (config: InternalConfig): Promise<PodcastRecordingTestR
         previewBytes, config.numberOfChannels, previewFrames)
     const firstChunkPreview = Array.from(previewChannels[0]).slice(0, 8)
     log(`overview bins read without loading raw audio: ${bins.length}`)
+    const loaderProbe = await probeSampleLoader(recordingId, reference, storage, log)
+    if (!loaderProbe.fallbackResolved
+        || !loaderProbe.afterArtifactRestoreLoaderHasData
+        || !loaderProbe.afterArtifactRestoreLoaderHasPeaks) {
+        return {
+            status: "fail",
+            reason: "long-recording loader contract violated: " + JSON.stringify(loaderProbe),
+            recordingId,
+            recovery,
+            manifest: reloaded
+        }
+    }
     return {
         status: "pass",
         recordingId,
@@ -203,9 +241,90 @@ const performRun = async (config: InternalConfig): Promise<PodcastRecordingTestR
         captureMetadata: captureSource.metadata,
         mismatches,
         firstChunkPreview,
-        elapsedFramesDriftFrames: driftFrames
+        elapsedFramesDriftFrames: driftFrames,
+        loaderProbe
     }
 }
+
+const probeSampleLoader = async (
+    recordingId: UUID.String,
+    reference: LongRecordingMediaReference,
+    storage: LongRecordingStorage,
+    log: (message: string) => void
+): Promise<LoaderProbeResult> => {
+    const uuid = UUID.parse(recordingId)
+    const access = LongRecordingMediaAccess.create(reference, storage)
+    const directLoader = await LongRecordingSampleLoader.create({uuid, reference, access, storage})
+    const peaksAvailableImmediately = directLoader.peaks.nonEmpty()
+    const peakNumFrames = directLoader.peaks.unwrap().numFrames
+    const peakStageCount = directLoader.peaks.unwrap().stages.length
+    log(`loader peaks: numFrames=${peakNumFrames} stages=${peakStageCount} immediate=${peaksAvailableImmediately}`)
+    const audio = await directLoader.materializeAudioData()
+    const dataMaterialized = directLoader.data.nonEmpty()
+    log(`loader materialized: frames=${audio.numberOfFrames} channels=${audio.numberOfChannels}`)
+    // Production-path: GlobalSampleLoaderManager.getOrCreate must transition the same loader instance
+    // to "loaded" with data + peaks populated. This is the contract `AudioFileBoxAdapter.audioData`,
+    // `EngineWorklet.fetchAudio`, and `OfflineEngineRenderer` all depend on. A second `getOrCreate`
+    // must return the SAME loader (not a swap), and that loader must carry the materialized audio.
+    const fallbackManager = new GlobalSampleLoaderManager({
+        fetch: () => Promise.reject(new Error("api provider must not be invoked for long-recording uuid"))
+    }, {opfsProvider: () => Workers.Opfs})
+    const fallbackLoader = fallbackManager.getOrCreate(uuid)
+    const fallbackTerminal = await waitForLoaderTerminal(fallbackLoader)
+    const sameInstance = fallbackManager.getOrCreate(uuid) === fallbackLoader
+    const fallbackLoaderHasData = fallbackLoader.data.nonEmpty()
+    const fallbackLoaderHasPeaks = fallbackLoader.peaks.nonEmpty()
+    const fallbackLoaderAudioFrames = fallbackLoader.data.mapOr(audio => audio.numberOfFrames, 0)
+    const fallbackResolved = fallbackTerminal.type === "loaded"
+        && fallbackLoaderHasData && fallbackLoaderHasPeaks && sameInstance
+    const errorReason = fallbackTerminal.type === "error" ? fallbackTerminal.reason : ""
+    log(`fallback loader: state=${fallbackTerminal.type}${errorReason ? ` reason="${errorReason}"` : ""}`
+        + ` data=${fallbackLoaderHasData} peaks=${fallbackLoaderHasPeaks}`
+        + ` sameInstance=${sameInstance} frames=${fallbackLoaderAudioFrames}`)
+    // Simulate save/reopen: artifact collected from this OPFS, restored under a fresh recording id
+    // (mirroring `ProjectBundle.encode/decode` which writes the bundle's recordings/<uuid>/ back into
+    // OPFS at recordings/v1/<uuid>/), and resolved through a fresh GlobalSampleLoaderManager.
+    const collected = await LongRecordingArtifact.collect(Workers.Opfs, recordingId)
+    const restoredId = UUID.asString(crypto.randomUUID())
+    const restoredUuid = UUID.parse(restoredId)
+    await LongRecordingArtifact.restore(Workers.Opfs, restoredId, collected)
+    const reloadedManager = new GlobalSampleLoaderManager({
+        fetch: () => Promise.reject(new Error("api provider must not be invoked after artifact restore"))
+    }, {opfsProvider: () => Workers.Opfs})
+    const reloadedLoader = reloadedManager.getOrCreate(restoredUuid)
+    const reloadedTerminal = await waitForLoaderTerminal(reloadedLoader)
+    const afterArtifactRestoreLoaderHasData = reloadedLoader.data.nonEmpty()
+    const afterArtifactRestoreLoaderHasPeaks = reloadedLoader.peaks.nonEmpty()
+    log(`reloaded loader (post artifact restore): state=${reloadedTerminal.type}`
+        + ` data=${afterArtifactRestoreLoaderHasData} peaks=${afterArtifactRestoreLoaderHasPeaks}`)
+    return {
+        peaksAvailableImmediately,
+        peakNumFrames,
+        peakStageCount,
+        dataMaterialized,
+        materializedFrames: audio.numberOfFrames,
+        fallbackResolved,
+        fallbackTerminalState: fallbackTerminal.type,
+        fallbackLoaderHasData,
+        fallbackLoaderHasPeaks,
+        fallbackLoaderIsSameInstanceAfterReload: sameInstance,
+        fallbackLoaderAudioFrames,
+        afterArtifactRestoreLoaderHasData,
+        afterArtifactRestoreLoaderHasPeaks
+    }
+}
+
+const waitForLoaderTerminal = (
+    loader: ReturnType<GlobalSampleLoaderManager["getOrCreate"]>
+): Promise<SampleLoaderState> =>
+    new Promise(resolve => {
+        const subscription = loader.subscribe(state => {
+            if (state.type === "loaded" || state.type === "error") {
+                queueMicrotask(() => subscription.terminate())
+                resolve(state)
+            }
+        })
+    })
 
 export const runPodcastRecordingTest = (config: PodcastRecordingTestConfig): PodcastRecordingTestRunHandle => {
     const events = new Notifier<PodcastRecordingTestEvent>()
@@ -255,7 +374,17 @@ export const describeResult = (result: PodcastRecordingTestResult): ResultSummar
                 actualSampleRate: result.captureMetadata.actualSampleRate,
                 deviceSampleRate: result.captureMetadata.deviceSampleRate ?? null,
                 requestedChannels: result.captureMetadata.requestedChannels,
-                actualChannels: result.captureMetadata.actualChannels
+                actualChannels: result.captureMetadata.actualChannels,
+                loaderPeaksImmediate: result.loaderProbe.peaksAvailableImmediately,
+                loaderDataMaterialized: result.loaderProbe.dataMaterialized,
+                loaderFallbackResolved: result.loaderProbe.fallbackResolved,
+                loaderFallbackTerminal: result.loaderProbe.fallbackTerminalState,
+                loaderFallbackData: result.loaderProbe.fallbackLoaderHasData,
+                loaderFallbackPeaks: result.loaderProbe.fallbackLoaderHasPeaks,
+                loaderFallbackSameInstance: result.loaderProbe.fallbackLoaderIsSameInstanceAfterReload,
+                loaderFallbackFrames: result.loaderProbe.fallbackLoaderAudioFrames,
+                reloadedLoaderData: result.loaderProbe.afterArtifactRestoreLoaderHasData,
+                reloadedLoaderPeaks: result.loaderProbe.afterArtifactRestoreLoaderHasPeaks
             }),
             recordingId: result.recordingId
         }
