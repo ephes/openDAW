@@ -36,15 +36,15 @@ const renderMetadata = (rows: ReadonlyArray<readonly [string, string]>): void =>
     metadataTbody.replaceChildren()
     for (const [key, value] of rows) {
         const tr = document.createElement("tr")
-        const k = document.createElement("td")
-        const v = document.createElement("td")
-        k.textContent = key
-        k.style.padding = "0.15em 0.75em 0.15em 0"
-        k.style.color = "#888"
-        v.textContent = value
-        v.style.padding = "0.15em 0"
-        v.dataset["test"] = `metadata-${key}`
-        tr.append(k, v)
+        const keyCell = document.createElement("td")
+        const valueCell = document.createElement("td")
+        keyCell.textContent = key
+        keyCell.style.padding = "0.15em 0.75em 0.15em 0"
+        keyCell.style.color = "#888"
+        valueCell.textContent = value
+        valueCell.style.padding = "0.15em 0"
+        valueCell.dataset["test"] = `metadata-${key}`
+        tr.append(keyCell, valueCell)
         metadataTbody.appendChild(tr)
     }
 }
