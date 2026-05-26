@@ -1,18 +1,7 @@
 import "../polyfill"
 
-if (typeof Blob !== "undefined" && typeof Blob.prototype.arrayBuffer !== "function") {
-    Blob.prototype.arrayBuffer = function(this: Blob) {
-        return new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(reader.result as ArrayBuffer)
-            reader.onerror = () => reject(reader.error)
-            reader.readAsArrayBuffer(this)
-        })
-    }
-}
-
 import {beforeEach, describe, expect, it} from "vitest"
-import {asDefined, Option, UUID} from "@opendaw/lib-std"
+import {asDefined, isDefined, Option, UUID} from "@opendaw/lib-std"
 import {BoxGraph} from "@opendaw/lib-box"
 import {AudioFileBox, BoxIO, MetaDataBox} from "@opendaw/studio-boxes"
 import {ProjectSkeleton} from "@opendaw/studio-adapters"
@@ -25,18 +14,39 @@ import {LongRecordingStorage} from "../recording/LongRecordingStorage"
 import {LongRecordingSource} from "../recording/LongRecordingManifest"
 
 import {Workers} from "../Workers"
+import {ProjectBundle} from "./ProjectBundle"
+import {ProjectPaths} from "./ProjectPaths"
+import type {ProjectProfile} from "./ProjectProfile"
+import type {ProjectEnv} from "./ProjectEnv"
 
+// jsdom's Blob has no .arrayBuffer() in the version vitest ships; production code
+// (ProjectBundle.encode) calls it. Patch the prototype before any test exercises encode.
+if (typeof Blob !== "undefined" && typeof Blob.prototype.arrayBuffer !== "function") {
+    Blob.prototype.arrayBuffer = function(this: Blob) {
+        return new Promise<ArrayBuffer>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+                const result = reader.result
+                if (result instanceof ArrayBuffer) {resolve(result)}
+                else {reject(new Error("FileReader.result is not ArrayBuffer"))}
+            }
+            reader.onerror = () => reject(reader.error)
+            reader.readAsArrayBuffer(this)
+        })
+    }
+}
+
+// Workers.Opfs is a static @Lazy getter that needs a real worker messenger in production.
+// We override the descriptor before any test reads it so ProjectBundle.encode/decode use
+// the per-test InMemoryOpfs instead. The Lazy decorator caches with configurable:false on
+// first read; this override beats it because no test reads Workers.Opfs before module load
+// completes here.
 let currentOpfs: InMemoryOpfs = new InMemoryOpfs()
 Object.defineProperty(Workers, "Opfs", {
     get: () => currentOpfs,
     configurable: true,
     enumerable: false
 })
-
-import {ProjectBundle} from "./ProjectBundle"
-import {ProjectPaths} from "./ProjectPaths"
-import type {ProjectProfile} from "./ProjectProfile"
-import type {ProjectEnv} from "./ProjectEnv"
 
 const channelOf = (length: number, value: number): Float32Array => {
     const data = new Float32Array(length)
@@ -95,6 +105,12 @@ describe("ProjectBundle.encode wires AudioFileBox → LongRecordingBundleAdapter
             box.value.setValue(JSON.stringify({recordingId}))
         })
         boxGraph.endTransaction()
+        // ProjectBundle.encode destructures {uuid, project, meta, cover} from ProjectProfile
+        // and only reads project.{boxGraph, toArrayBuffer, sampleManager.getOrCreate,
+        // soundfontManager.getOrCreate}. The classification (LongRecordingBundleAdapter)
+        // routes every AudioFileBox here through the long-recording path, so the manager
+        // getters never fire. The cast is intentional: we want production code to drive
+        // the bundle integration, not a re-implemented helper.
         const fakeProject = {
             boxGraph,
             sampleManager: undefined,
@@ -125,7 +141,7 @@ describe("ProjectBundle.encode wires AudioFileBox → LongRecordingBundleAdapter
 })
 
 describe("ProjectBundle.decode restores recordings/ into OPFS via LongRecordingBundleAdapter", () => {
-    it("writes bundled recordings/<uuid>/manifest.json into the target OPFS during decode", async () => {
+    it("writes bundled recordings/<uuid>/manifest.json and chunks into target OPFS during decode", async () => {
         const recordingUuid = UUID.generate()
         const recordingId = UUID.asString(UUID.toString(recordingUuid))
         const skeleton = ProjectSkeleton.empty({createOutputMaximizer: false, createDefaultUser: true})
@@ -150,8 +166,15 @@ describe("ProjectBundle.decode restores recordings/ into OPFS via LongRecordingB
         }
         const arrayBuffer = await zip.generateAsync({type: "arraybuffer"})
         currentOpfs = new InMemoryOpfs()
+        // ProjectBundle.decode passes env to Project.loadAnyVersion → ProjectMigration.migrate
+        // → Project.fromSkeleton → new Project(env, ...). With the empty skeleton above
+        // (no AudioFileBox), ProjectMigration never reaches env.sampleManager, and the Project
+        // constructor only touches env.createEditing?.(...), which short-circuits to BoxEditing
+        // when undefined. The integration path we care about — restoring recordings/ to OPFS
+        // — runs before Project.loadAnyVersion, so this stub is sufficient to demonstrate it.
         const stubEnv = {} as unknown as ProjectEnv
-        await ProjectBundle.decode(stubEnv, arrayBuffer)
+        const restoredProfile = await ProjectBundle.decode(stubEnv, arrayBuffer)
+        expect(isDefined(restoredProfile)).toBe(true)
         const restoredManifestPath = `recordings/v1/${recordingId}/manifest.json`
         expect(await currentOpfs.exists(restoredManifestPath)).toBe(true)
         const restoredManifest = await currentOpfs.read(restoredManifestPath)
