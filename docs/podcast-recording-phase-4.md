@@ -4,13 +4,23 @@ This document records the explicit Phase 4 evaluation called for by the goal: "T
 evaluate and document whether it is needed, but do not implement native/multichannel host capture unless Phases
 0–3 show browser capture cannot satisfy the accepted scope."
 
-**Decision: defer.** A native/multichannel host capture path is **not** required to satisfy the accepted Phase 0–3
-scope. Phases 0–3 already deliver:
+**Decision (re-evaluated after Phases 0–3 are implemented and verified): defer.** A native/multichannel host
+capture path is not required to satisfy the accepted Phase 0–3 scope. Phases 0–3 now deliver concrete code,
+tests, and verification artefacts:
 
-- Browser-native long recording with bounded memory and OPFS-backed incremental writes (Phase 1).
-- Project/timeline representation with tempo-independence and waveform overview (Phase 2).
-- A capture-source abstraction that keeps `getUserMedia` as the default, reports requested vs actual stream
-  parameters, and supports channel mapping for browsers that expose >2 channels (Phase 3).
+- Browser-native long recording with bounded memory and OPFS-backed incremental writes, plus an automated
+  Playwright-driven headless browser check that exercises the full path end-to-end and exits non-zero on any
+  failure (Phase 1, `scripts/podcast-recording-browser-check.mjs`).
+- Project save/load round trip via `ProjectBundle.encode/decode`, with `LongRecordingArtifact.collect/restore`
+  bundling chunks + overviews alongside the `AudioFileBox` reference, verified by
+  `LongRecordingProjectRoundTrip.test.ts` (Phase 2).
+- A `CaptureSource` abstraction integrated into the production-style long-recording flow via
+  `LongRecordingService.startFromSource`, with requested-vs-actual sample rate / channel count surfaced into the
+  manifest source block and into the app surface (`data-test=metadata` table in the harness). `getUserMedia`
+  remains the default; multichannel channel mapping is available via `CaptureChannelMap` (Phase 3).
+
+The most recent automated browser check run on this branch returned `status="pass"` with `recovery="clean"`
+(2-second synthetic recording, 8 chunks, 92,032 frames at 48 kHz stereo).
 
 The remainder of this document records the criteria considered, the evidence weighed, and the conditions under
 which Phase 4 should be promoted from deferred to required.

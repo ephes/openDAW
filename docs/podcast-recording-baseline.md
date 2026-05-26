@@ -122,20 +122,21 @@ The recording path splits into two distinct kinds of behavior:
 Strategy for Phase 1:
 
 - All recovery/manifest/chunk logic is TDD-first under Vitest using the in-memory `OpfsProtocol` mock.
-- Browser verification uses a dev-only entry point in `@opendaw/app-studio` that:
-  - Starts the studio app in a special test mode triggered by a URL flag (e.g.
-    `?podcastRecordingTest=mono-30s`).
-  - Builds a synthetic `MediaStream` from an `OscillatorNode → MediaStreamAudioDestinationNode` — no microphone
-    permission is needed because the stream is generated locally.
-  - Records for the requested duration, stops, and validates the resulting OPFS manifest against the expected
-    chunk count / frame count.
-  - Logs a pass/fail JSON blob to the console where a Playwright (or Cypress) check could read it later.
-- Adopting Playwright as a project-level dependency is **out of scope for Phase 1**. The harness above produces
-  evidence runnable manually in `npm run dev:studio`, which is the minimum needed to satisfy "browser-facing recording
-  changes are not complete until verified in an actual browser". A future PR can wrap it in a Playwright runner if
-  desired.
-- Hardware-dependent checks (ZOOM L-12, virtual multichannel routes) stay manual and live in
-  `docs/podcast-recording-hardware-checks.md` (created in Phase 3 alongside the capture-source abstraction).
+- Browser verification ships in Phase 1 as both an interactive dev page and an automated headless check:
+  - `packages/app/studio/podcast-recording-test.html` (`/podcast-recording-test.html`) — a Vite entry with a
+    `?autorun=1&duration=N&channels=C&source=getUserMedia|synthetic` URL contract.
+  - `packages/app/studio/src/podcast-recording-test/runner.ts` — the reusable `runPodcastRecordingTest(config)`
+    driver. Generates a UUID, builds a `CaptureSource` (synthetic oscillator by default, `getUserMedia` opt-in),
+    runs the long-recording session via `LongRecordingService.startFromSource`, stops, reloads the manifest from
+    OPFS, runs `LongRecordingRecovery.classify`, reads media reference + overview, and returns a typed
+    `{status, manifest, recovery, captureMetadata, mismatches, ...}` result. No microphone permission needed for
+    the default synthetic source.
+  - `packages/app/studio/scripts/podcast-recording-browser-check.mjs` — the automated runner. Builds the studio
+    (`vite build`), serves `dist/` over plain HTTP with COOP/COEP headers, and uses Playwright Core against the
+    system Chrome (autoplay-policy disabled, fake media stream) to drive `?autorun=1`. Exits 0 on pass, 1 on
+    fail, 2 on env error. CI-runnable: `npm run test:podcast-recording-browser`.
+- Hardware-dependent checks (ZOOM L-12, virtual multichannel routes) stay manual per the plan and live alongside
+  the Phase 3 capture-source documentation (`docs/podcast-recording-phase-3.md`).
 
 ## 5. Storage Primitive Decision
 

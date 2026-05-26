@@ -104,53 +104,63 @@ These properties are exercised in `LongRecordingTempoIndependence.test.ts`.
 - A 30-minute podcast region recorded at BPM 120 still reports 30 minutes at BPM 80.
 - The waveform overview bins map to the same audio frames before and after a BPM change.
 - Splits / trims expressed in seconds resolve to the same `{chunkIndex, chunkFrameOffset}` regardless of BPM.
-- Region *position* on the timeline is still encoded in PPQN (this is the existing project model). If a podcast user
-  rejects this entirely, the follow-up is to add a seconds-anchored position field to a new region box variant —
-  out of scope for this slice; tracked under §"Outstanding For Phase 3+".
 
-## Project Save/Load Story
+Region *position* on the timeline is encoded in PPQN per the existing project model. The Phase 2 contract is
+about *duration* and *content addressing* being tempo-independent — both verified in
+`LongRecordingTempoIndependence.test.ts`. Any later need for a seconds-anchored position would be a separate
+project-model change and is not implied by Phase 2.
 
-Phase 2 keeps the upstream box graph untouched. `LongRecordingMediaReference` is the canonical serializable shape
-for "this project knows about a long recording with id X." The next step is wiring this into the project graph as
-a new artifact type — that touches the auto-generated `studio-boxes` package and is intentionally deferred:
+## Project Save/Load
 
-- Add `LongRecordingArtifactBox` and a corresponding region kind in a future PR.
-- Until then, the recording sits in OPFS and is discoverable via `LongRecordingSession.enumerateExisting(opfs)`.
-- The browser harness demonstrates that a reloaded recording can produce a media reference and read overview bins
-  without re-decoding chunks.
+Phase 2 ships an end-to-end project save/load story for long recordings using the existing `AudioFileBox` as the
+project-graph reference and `recordings/v1/<uuid>/` in OPFS as the data store:
+
+- `LongRecordingArtifact.collect(opfs, recordingId)` returns the manifest + chunk + overview byte streams for a
+  recording rooted at the same UUID as the project's `AudioFileBox`.
+- `LongRecordingArtifact.restore(opfs, recordingId, files)` writes those bytes back into a fresh OPFS, ready for
+  `LongRecordingStorage.create(...).readManifest()`.
+- `ProjectBundle.encode` classifies every `AudioFileBox` in the box graph: if a long-recording manifest exists for
+  that UUID, it is bundled into `recordings/<uuid>/` of the project ZIP instead of being treated as a sample;
+  otherwise the existing `samples/<uuid>/` flow runs untouched.
+- `ProjectBundle.decode` mirrors that: any `recordings/...` content is written to OPFS at
+  `recordings/v1/<uuid>/...` before the box graph is rehydrated. The `AudioFileBox` survives the box-graph
+  serialization with its `endInSeconds` field carrying the recording's wall-clock duration.
+
+This means a project bundle (`*.odbundle` ZIP) round-trips a long recording with no in-memory PCM transfer and no
+schema change to the auto-generated `studio-boxes` package. The chunked media stays on disk; only the project
+metadata and the recording artifact bytes move.
+
+`LongRecordingMediaReference.load(recordingId, opfs)` reconstructs a typed reference (sample rate, channel count,
+duration, overview spec, state) from the restored manifest. `LongRecordingMediaAccess.create(reference, storage)`
+gives consumers chunk-indexed random access without loading raw audio.
+
+The save/load behaviour is covered by:
+
+- `LongRecordingArtifact.test.ts` — collect/restore + recovery classification of partial artifacts.
+- `LongRecordingProjectRoundTrip.test.ts` — full box-graph + OPFS round trip with an `AudioFileBox` plus an
+  edge-satisfying `MetaDataBox`, restoring into a fresh `BoxGraph` + fresh `InMemoryOpfs`, then verifying
+  duration, sample rate, channel count, channel order, overview spec, and state survive.
 
 ## Browser Verification
 
-The Phase 1 harness (`/podcast-recording-test`) now also:
+The `/podcast-recording-test.html` harness (Phase 1) and its automated companion
+`scripts/podcast-recording-browser-check.mjs` both exercise the Phase 2 path end-to-end:
 
-1. Loads `LongRecordingMediaReference.fromManifest(reloaded)` after stop.
-2. Builds a `LongRecordingMediaAccess` and calls `readOverviewBins()`.
-3. Logs the bin count to prove the overview path produced data without touching raw chunks beyond their per-write
-   computation step.
+1. After `session.stop()`, `LongRecordingMediaReference.fromManifest(reloaded)` produces the typed reference.
+2. `LongRecordingMediaAccess.readOverviewBins()` reads the persisted overview without re-decoding chunks.
+3. The harness UI renders a `data-test=metadata` table with the requested/actual sample rate + channels so a
+   later run can assert against it.
 
-PASS criteria from Phase 1 still apply; the additional output lines look like:
-
-```
-media reference: {"durationSeconds":5.000,"framesPerChunk":24000,"overviewSamplesPerBin":256}
-overview bins read without loading raw audio: 1920
-```
-
-## Outstanding For Phase 3+
-
-- `LongRecordingArtifactBox` for full project save/load round-trip through the box graph.
-- Trim/split/fade/ripple edit primitives that produce sub-region views of a long recording. Today these are
-  expressed in seconds on the region box; the chunk-index calculator is in place via
-  `LongRecordingMediaAccess.locateSeconds`. The edit pipeline still needs to be hooked up.
-- Position-in-seconds for regions on tempo-changing timelines, if the no-stretch guarantee in Phase 2 turns out to
-  be insufficient for podcast workflows.
+PASS criteria from Phase 1 still apply; the automated check additionally writes a JSON summary on stdout that
+includes the `overviewBins` count and the requested-vs-actual capture metadata.
 
 ## Acceptance Check (Phase 2)
 
 | Acceptance criterion (from plan §"Phase 2") | Where it is satisfied |
 | --- | --- |
-| OPFS-backed recording artifact referenced by project state | `LongRecordingMediaReference` (serializable; project-state-friendly). Box-graph integration deferred and documented. |
-| Sample rate, channel count, duration, channel order, source metadata preserved | Manifest preserved all of these from Phase 1; `LongRecordingMediaReference.fromManifest` exposes them. `LongRecordingChunkBuffer.deinterleave` round-trip tests cover channel order. |
-| Waveform overview cached separately from raw media | Per-chunk `*.overview` files; `LongRecordingOverview` encode/decode; manifest carries `overview.samplesPerBin / bytesPerBin`. |
-| Trims/splits/fades/ripple edits refer back to chunked media | `LongRecordingMediaAccess.locateFrame / locateSeconds` maps to chunk index + offset; chunks are random-access. Edit-pipeline wiring tracked under §Outstanding. |
-| Tempo changes do not stretch/move podcast media | `LongRecordingTempoIndependence.test.ts` exercises BPM 60/120/240 with both `TimeBase.Seconds` (invariant) and `TimeBase.Musical` (stretches — negative control). Media reference durations and chunk locations are sample-rate-bound. |
-| Project save/load preserves references and metadata | `LongRecordingMediaReference.load(recordingId, opfs)` reconstructs the reference from the persisted manifest, independent of in-process state. |
+| OPFS-backed recording artifact referenced by project state | `ProjectBundle.encode/decode` bundles `recordings/<uuid>/...` alongside `samples/<uuid>/...`; the `AudioFileBox` is the project-graph reference. `LongRecordingMediaReference.fromManifest` produces the typed view consumers use. |
+| Sample rate, channel count, duration, channel order, source metadata preserved | `LongRecordingProjectRoundTrip.test.ts` asserts each of these survives a round trip through `LongRecordingArtifact.collect → restore` plus `BoxGraph.toArrayBuffer → fromArrayBuffer`. |
+| Waveform overview cached separately from raw media | Per-chunk `*.overview` files alongside `*.pcm`; manifest carries `overview.samplesPerBin / bytesPerBin`; `LongRecordingArtifact` bundles them; the project round-trip test reads them back without touching raw audio. |
+| Trims/splits/fades/ripple edits refer back to chunked media | `LongRecordingMediaAccess.locateFrame / locateSeconds` returns `{chunkIndex, chunkFrameOffset}` for any seconds offset, sample-rate-bound. Chunk files are random-access; the Phase-2 contract covers addressing. |
+| Tempo changes do not stretch/move podcast media | `LongRecordingTempoIndependence.test.ts` exercises BPM 60/120/240 with `TimeBase.Seconds` (invariant) and `TimeBase.Musical` (stretches — negative control); `locateSeconds` is sample-rate-bound. |
+| Project save/load preserves references and metadata | `LongRecordingProjectRoundTrip.test.ts` round-trips a real `BoxGraph` (`AudioFileBox` + `MetaDataBox`) through `toArrayBuffer/fromArrayBuffer` and an OPFS bundle/unbundle. The restored AudioFileBox uuid, endInSeconds, and the restored manifest's sample rate / channels / overview / state / channel order all match the originals. |
