@@ -118,4 +118,3 @@ describe("Long recording is tempo-independent", () => {
         expect(beforeChange.chunkIndex).toBe(2)
     })
 })
-

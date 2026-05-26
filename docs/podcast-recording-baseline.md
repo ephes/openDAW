@@ -131,10 +131,11 @@ Strategy for Phase 1:
     OPFS, runs `LongRecordingRecovery.classify`, reads media reference + overview, and returns a typed
     `{status, manifest, recovery, captureMetadata, mismatches, ...}` result. No microphone permission needed for
     the default synthetic source.
-  - `packages/app/studio/scripts/podcast-recording-browser-check.mjs` — the automated runner. Builds the studio
-    (`vite build`), serves `dist/` over plain HTTP with COOP/COEP headers, and uses Playwright Core against the
-    system Chrome (autoplay-policy disabled, fake media stream) to drive `?autorun=1`. Exits 0 on pass, 1 on
-    fail, 2 on env error. CI-runnable: `npm run test:podcast-recording-browser`.
+  - `packages/app/studio/scripts/podcast-recording-browser-check.mjs` — the automated runner. Runs
+    `npx vite build` when `dist/` is missing (`--rebuild` forces, `--skip-build` requires pre-built `dist/`),
+    serves `dist/` over plain HTTP with COOP/COEP headers, and uses Playwright Core against the system Chrome
+    (autoplay-policy disabled, fake media stream) to drive `?autorun=1`. Exits 0 on pass, 1 on fail, 2 on env
+    error. CI-runnable: `npm run test:podcast-recording-browser`.
 - Hardware-dependent checks (ZOOM L-12, virtual multichannel routes) stay manual per the plan and live alongside
   the Phase 3 capture-source documentation (`docs/podcast-recording-phase-3.md`).
 
