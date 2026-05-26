@@ -42,7 +42,8 @@ export default defineConfig(({command}) => {
             rollupOptions: {
                 input: {
                     main: resolve(__dirname, "index.html"),
-                    "overlay-preview": resolve(__dirname, "overlay-preview.html")
+                    "overlay-preview": resolve(__dirname, "overlay-preview.html"),
+                    "podcast-recording-test": resolve(__dirname, "podcast-recording-test.html")
                 },
                 output: {
                     format: "es",
@@ -111,6 +112,9 @@ export default defineConfig(({command}) => {
                             if (url === "/overlay-preview") {
                                 const previewPath = resolve(__dirname, "overlay-preview.html")
                                 res.end(readFileSync(previewPath))
+                            } else if (url === "/podcast-recording-test") {
+                                const harnessPath = resolve(__dirname, "podcast-recording-test.html")
+                                res.end(readFileSync(harnessPath))
                             } else {
                                 const indexPath = resolve(__dirname, "index.html")
                                 res.end(readFileSync(indexPath))

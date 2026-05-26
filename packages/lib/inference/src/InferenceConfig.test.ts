@@ -7,7 +7,8 @@ const fakeOpfs = (): OpfsProtocol => ({
     read: async () => new Uint8Array(0),
     exists: async () => false,
     delete: async () => {},
-    list: async () => []
+    list: async () => [],
+    size: async () => 0
 })
 
 describe("InferenceConfig", () => {
