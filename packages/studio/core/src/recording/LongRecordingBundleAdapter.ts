@@ -1,7 +1,6 @@
-import {Arrays, isDefined, UUID} from "@opendaw/lib-std"
+import {Arrays, UUID} from "@opendaw/lib-std"
 import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {LongRecordingArtifact, LongRecordingArtifactFile} from "./LongRecordingArtifact"
-import {LongRecordingStorage} from "./LongRecordingStorage"
 
 export interface BundleFolderWriter {
     file(path: string, data: Uint8Array, options?: {binary: boolean}): void
@@ -87,9 +86,4 @@ export namespace LongRecordingBundleAdapter {
         return restoredIds
     }
 
-    export const opfsPathFor = (recordingId: UUID.String, relativePath: string): string => {
-        const trimmed = relativePath.replace(/^\/+/, "")
-        const dir = LongRecordingStorage.dirFor(recordingId)
-        return isDefined(trimmed) && trimmed.length > 0 ? `${dir}/${trimmed}` : dir
-    }
 }
