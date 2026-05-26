@@ -71,6 +71,21 @@ export const installTrackHeaderMenu = (service: StudioService,
                 }
             })),
         MenuItem.default({
+            label: "Long Recording",
+            checked: captureDevices.get(audioUnitBoxAdapter.uuid)
+                .mapOr(capture => isInstanceOf(capture, CaptureAudio)
+                    ? capture.captureBox.longRecording.getValue()
+                    : false, false),
+            hidden: captureDevices.get(audioUnitBoxAdapter.uuid)
+                .mapOr(capture => !isInstanceOf(capture, CaptureAudio), true)
+        }).setTriggerProcedure(() => captureDevices.get(audioUnitBoxAdapter.uuid)
+            .ifSome(capture => {
+                if (isInstanceOf(capture, CaptureAudio)) {
+                    const current = capture.captureBox.longRecording.getValue()
+                    editing.modify(() => capture.captureBox.longRecording.setValue(!current))
+                }
+            })),
+        MenuItem.default({
             label: "Copy AudioUnit",
             shortcut: GlobalShortcuts["copy-device"].shortcut.format(),
             separatorBefore: true

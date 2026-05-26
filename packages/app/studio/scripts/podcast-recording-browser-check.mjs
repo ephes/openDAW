@@ -60,6 +60,7 @@ const args = Object.fromEntries(process.argv.slice(2).map(arg => {
 const duration = Number(args.duration ?? DEFAULT_DURATION) || DEFAULT_DURATION
 const channels = Number(args.channels ?? DEFAULT_CHANNELS) || DEFAULT_CHANNELS
 const framesPerChunk = Number(args.framesPerChunk ?? DEFAULT_FRAMES_PER_CHUNK) || DEFAULT_FRAMES_PER_CHUNK
+const mode = args.mode === "product" ? "product" : "record"
 const showBrowser = "headed" in args
 const skipBuild = "skip-build" in args
 const forceRebuild = "rebuild" in args
@@ -197,6 +198,7 @@ const main = async () => {
                 permissions: ["microphone"]
             })
             const page = await context.newPage()
+            const pageErrors = []
             page.on("console", message => {
                 if (message.type() === "error") {
                     console.error(`[chrome:${message.type()}] ${message.text()}`)
@@ -204,7 +206,11 @@ const main = async () => {
                     console.error(`[chrome] ${message.text()}`)
                 }
             })
-            page.on("pageerror", error => console.error(`[chrome:pageerror] ${String(error)}`))
+            page.on("pageerror", error => {
+                const text = String(error)
+                pageErrors.push(text)
+                console.error(`[chrome:pageerror] ${text}`)
+            })
             page.on("requestfailed", request => {
                 const failure = request.failure()
                 console.error(`[chrome:requestfailed] ${request.url()} — ${failure?.errorText ?? "unknown"}`)
@@ -216,6 +222,7 @@ const main = async () => {
             })
             const url = `http://127.0.0.1:${port}/podcast-recording-test.html?autorun=1`
                 + `&duration=${duration}&channels=${channels}&framesPerChunk=${framesPerChunk}`
+                + `&mode=${mode}`
             console.error(`navigating: ${url}`)
             const navResponse = await page.goto(url, {waitUntil: "domcontentloaded", timeout: 30_000})
             if (navResponse === null || !navResponse.ok()) {
@@ -243,11 +250,17 @@ const main = async () => {
             const recordingId = await page.getAttribute("#log", "data-test-recording-id")
             const logText = await page.evaluate(() => document.getElementById("log")?.textContent ?? "")
             console.error("---")
-            console.log(JSON.stringify({status, summary, recordingId, port, duration, channels, framesPerChunk}, null, 2))
+            console.log(JSON.stringify({status, summary, recordingId, port, duration, channels, framesPerChunk, mode, pageErrors}, null, 2))
             console.error("--- recording log ---")
             console.error(logText)
             console.error("--- end log ---")
-            if (status === "pass") {exitCode = 0}
+            if (pageErrors.length > 0) {
+                console.error(`FAIL: ${pageErrors.length} uncaught page error(s) observed during the run:`)
+                for (const text of pageErrors) {
+                    console.error(`  - ${text}`)
+                }
+                exitCode = 1
+            } else if (status === "pass") {exitCode = 0}
             else if (status === "fail") {exitCode = 1}
             else {exitCode = 2}
         } finally {

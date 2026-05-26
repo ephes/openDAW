@@ -89,7 +89,9 @@ export const boot = async ({workersUrl, workletsUrl, offlineEngineUrl}: {
         fetch: async (uuid: UUID.Bytes, progress: Progress.Handler): Promise<[ArrayBuffer, SoundfontMetaData]> =>
             OpenSoundfontAPI.get().load(uuid, progress)
     })
-    const sampleManager = new GlobalSampleLoaderManager(chainedSampleProvider)
+    const sampleManager = new GlobalSampleLoaderManager(chainedSampleProvider, {
+        opfsProvider: () => Workers.Opfs
+    })
     const soundfontManager = new GlobalSoundfontLoaderManager(chainedSoundfontProvider)
     const cloudAuthManager = CloudAuthManager.create({
         Dropbox: "jtehjzxaxf3bf1l",

@@ -111,14 +111,18 @@ export namespace ProjectBundle {
                         .write(`${SoundfontStorage.Folder}/${path}`, new Uint8Array(arrayBuffer))))
             })
         }
+        const restoredRecordings: Array<UUID.String> = []
         const recordingsFolder = zip.folder("recordings")
         if (isDefined(recordingsFolder)) {
             promises.push(LongRecordingBundleAdapter.restoreFromFolder(Workers.Opfs, recordingsFolder)
-                .then(() => {}))
+                .then(ids => {restoredRecordings.push(...ids)}))
         }
         await Promise.all(promises)
         const projectData = await asDefined(zip.file(ProjectPaths.ProjectFile)).async("arraybuffer")
         const project = await Project.loadAnyVersion(env, projectData)
+        for (const recordingId of restoredRecordings) {
+            env.sampleManager.invalidate(UUID.parse(recordingId))
+        }
         const meta = JSON.parse(await asDefined(zip.file(ProjectPaths.ProjectMetaFile)).async("text"))
         const coverFile = zip.file(ProjectPaths.ProjectCoverFile)
         const cover: Option<ArrayBuffer> = Option.wrap(await coverFile?.async("arraybuffer"))

@@ -1,11 +1,13 @@
 import workersUrl from "@opendaw/studio-core/workers-main.js?worker&url"
 import workletsUrl from "@opendaw/studio-core/processors.js?url"
+import offlineEngineUrl from "@opendaw/studio-core/offline-engine.js?url"
 import {
     cleanAllRecordings,
     describeResult,
     PodcastRecordingTestResult,
     runPodcastRecordingTest
 } from "./runner"
+import {ProductPathTestResult, runProductPathTest} from "./productPathRunner"
 import {isDefined} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 
@@ -82,6 +84,37 @@ const applyResultStatus = (result: PodcastRecordingTestResult): void => {
     }
 }
 
+const describeProductResult = (result: ProductPathTestResult): {kind: "pass" | "fail" | "error", summary: string} => {
+    if (result.status === "pass") {
+        return {kind: "pass", summary: JSON.stringify(result.summary)}
+    }
+    if (result.status === "fail") {return {kind: "fail", summary: result.reason}}
+    return {kind: "error", summary: String(result.error)}
+}
+
+const runProductTest = async (): Promise<void> => {
+    runButton.disabled = true
+    cleanButton.disabled = true
+    setStatus("running (product path)", "warn")
+    statusEl.setAttribute("data-test-status", "running")
+    logEl.removeAttribute("data-test-summary")
+    logEl.removeAttribute("data-test-recording-id")
+    const handle = runProductPathTest({workersUrl, workletsUrl, offlineEngineUrl})
+    handle.subscribeEvents(event => log(`[${event.kind}] ${event.message}`))
+    const result = await handle.resultPromise
+    log("---")
+    const summary = describeProductResult(result)
+    log(summary.summary)
+    statusEl.setAttribute("data-test-status", summary.kind)
+    logEl.setAttribute("data-test-summary", summary.summary)
+    if (result.status === "pass") {logEl.setAttribute("data-test-recording-id", result.recordingId)}
+    if (summary.kind === "pass") {setStatus("PASS (product path)", "ok")}
+    else if (summary.kind === "fail") {setStatus("FAIL (product path)", "fail")}
+    else {setStatus("ERROR (product path)", "fail")}
+    runButton.disabled = false
+    cleanButton.disabled = false
+}
+
 const runTest = async (): Promise<void> => {
     runButton.disabled = true
     cleanButton.disabled = true
@@ -140,6 +173,7 @@ log("ready — click 'Start test' to begin, or pass ?autorun=1&duration=N to aut
 
 const params = new URLSearchParams(window.location.search)
 if (params.get("autorun") === "1") {
+    const mode = params.get("mode") ?? "record"
     const autoDuration = params.get("duration")
     if (isDefined(autoDuration)) {durationInput.value = autoDuration}
     const autoChannels = params.get("channels")
@@ -148,6 +182,10 @@ if (params.get("autorun") === "1") {
     if (isDefined(autoFramesPerChunk)) {framesPerChunkInput.value = autoFramesPerChunk}
     const autoSource = params.get("source")
     if (autoSource === "getUserMedia" || autoSource === "synthetic") {captureKindSelect.value = autoSource}
-    log("autorun=1 detected — starting test")
-    runTest().catch(reason => log(`unexpected: ${String(reason)}`))
+    log(`autorun=1 detected (mode=${mode}) — starting test`)
+    if (mode === "product") {
+        runProductTest().catch(reason => log(`unexpected: ${String(reason)}`))
+    } else {
+        runTest().catch(reason => log(`unexpected: ${String(reason)}`))
+    }
 }

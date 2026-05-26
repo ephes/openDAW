@@ -171,9 +171,15 @@ describe("ProjectBundle.decode restores recordings/ into OPFS via LongRecordingB
         // (no AudioFileBox), ProjectMigration never reaches env.sampleManager, and the Project
         // constructor only touches env.createEditing?.(...), which short-circuits to BoxEditing
         // when undefined. The integration path we care about — restoring recordings/ to OPFS
-        // — runs before Project.loadAnyVersion, so this stub is sufficient to demonstrate it.
-        const stubEnv = {} as unknown as ProjectEnv
+        // — runs before Project.loadAnyVersion. The sampleManager stub captures the invalidate
+        // call that decode now issues for every restored recording id so we can also assert it.
+        const invalidatedRecordings: Array<string> = []
+        const stubSampleManager = {
+            invalidate: (uuid: UUID.Bytes) => {invalidatedRecordings.push(UUID.toString(uuid))}
+        } as unknown as ProjectEnv["sampleManager"]
+        const stubEnv = {sampleManager: stubSampleManager} as unknown as ProjectEnv
         const restoredProfile = await ProjectBundle.decode(stubEnv, arrayBuffer)
+        expect(invalidatedRecordings).toContain(recordingId)
         expect(isDefined(restoredProfile)).toBe(true)
         const restoredManifestPath = `recordings/v1/${recordingId}/manifest.json`
         expect(await currentOpfs.exists(restoredManifestPath)).toBe(true)

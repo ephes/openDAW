@@ -11,6 +11,10 @@ product-integration target. These notes explain what has already been implemente
 - `phase-2-media.md` — tempo-independent media reference, waveform overviews, and project bundle round trip.
 - `phase-3-capture-source.md` — capture-source abstraction, getUserMedia/synthetic sources, and channel mapping.
 - `phase-4-evaluation.md` — conditional native/multichannel host-path evaluation and deferral criteria.
+- `product-integration-spec.md` — active spec: how the long-recording foundation plugs into the normal
+  openDAW workflow (per-track toggle, lazy Peaks/AudioData adapter, Dashboard recovery panel).
+- `product-integration-plan.md` — step-by-step implementation plan derived from the spec.
+- `product-integration.md` — closure note for the implemented MVP, including exact verification commands.
 
 Keep new product-integration planning in `plans/podcast-recording.md` unless a completed slice needs its own
 evidence note.

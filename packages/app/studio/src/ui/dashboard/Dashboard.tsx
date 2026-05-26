@@ -5,6 +5,7 @@ import {StudioService} from "@/service/StudioService.ts"
 import {Html} from "@opendaw/lib-dom"
 import {Resources} from "@/ui/dashboard/Resources"
 import {DemoProjects} from "@/ui/dashboard/DemoProjects"
+import {RecoverableRecordingsPanel} from "@/ui/dashboard/RecoverableRecordingsPanel"
 
 const className = Html.adoptStyleSheet(css, "Dashboard")
 
@@ -31,6 +32,7 @@ export const Dashboard = ({lifecycle, service}: Construct) => {
                     <DemoProjects lifecycle={lifecycle} service={service}/>
                     <Resources lifecycle={lifecycle} service={service}/>
                 </div>
+                <RecoverableRecordingsPanel lifecycle={lifecycle}/>
                 <p style={{marginTop: "3em", fontSize: "11px", textAlign: "center"}}>
                     Visit <a
                     href="https://discord.opendaw.studio/" target="discord">Discord</a> and <a

@@ -75,4 +75,26 @@ export namespace LongRecordingArtifact {
     export const isOverviewArtifactFile = (relativePath: string): boolean =>
         relativePath.startsWith(`${LongRecordingStorage.CHUNKS_DIR}/`)
             && LongRecordingOverview.isOverviewFileName(relativePath)
+
+    export interface ProbeEntry {
+        readonly recordingId: UUID.String
+        readonly report: RoundTripReport
+    }
+
+    /**
+     * Enumerate every long-recording artifact under `recordings/v1/*` and return a verify report for each.
+     * Recordings without a manifest (already deleted, never written, or directory present but empty) are
+     * silently skipped. Caller is responsible for filtering by recovery state.
+     */
+    export const probeAll = async (opfs: OpfsProtocol): Promise<ReadonlyArray<ProbeEntry>> => {
+        const listResult = await Promises.tryCatch(LongRecordingStorage.listAll(opfs))
+        if (listResult.status === "rejected") {return Arrays.empty()}
+        const entries: Array<ProbeEntry> = []
+        for (const recordingId of listResult.value) {
+            const reportOption = await verifyRoundTrip(opfs, recordingId)
+            if (reportOption.isEmpty()) {continue}
+            entries.push({recordingId, report: reportOption.unwrap()})
+        }
+        return entries
+    }
 }

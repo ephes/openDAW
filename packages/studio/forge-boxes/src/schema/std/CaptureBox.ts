@@ -19,7 +19,8 @@ export const CaptureAudioBox: BoxSchema<Pointers> = {
             11: {
                 type: "float32", name: "gain-db",
                 value: 0.0, constraints: "decibel", unit: "dB"
-            }
+            },
+            12: {type: "boolean", name: "long-recording", value: false}
         })
     }, pointerRules: {accepts: [Pointers.Capture], mandatory: true}
 }

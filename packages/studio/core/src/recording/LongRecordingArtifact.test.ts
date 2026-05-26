@@ -116,4 +116,25 @@ describe("LongRecordingArtifact", () => {
         const report = await LongRecordingArtifact.verifyRoundTrip(sourceOpfs, SOURCE_UUID)
         expect(report.isEmpty()).toBe(true)
     })
+
+    it("probeAll returns an empty list when the recordings root is missing", async () => {
+        const entries = await LongRecordingArtifact.probeAll(sourceOpfs)
+        expect(entries).toEqual([])
+    })
+
+    it("probeAll reports every recording with manifest, including clean and non-clean", async () => {
+        await recordTwoChunksOnSource()
+        const truncatedId = UUID.asString("00000000-0000-4000-8000-000000000051")
+        const truncatedFiles = await LongRecordingArtifact.collect(sourceOpfs, SOURCE_UUID)
+        await LongRecordingArtifact.restore(
+            sourceOpfs, truncatedId, truncatedFiles.filter(file => !file.path.endsWith("000001.pcm"))
+        )
+        const entries = await LongRecordingArtifact.probeAll(sourceOpfs)
+        const ids = entries.map(entry => entry.recordingId).sort()
+        expect(ids).toEqual([SOURCE_UUID, truncatedId].sort())
+        const cleanEntry = entries.find(entry => entry.recordingId === SOURCE_UUID)
+        expect(cleanEntry?.report.recovery.overall).toBe("clean")
+        const truncatedEntry = entries.find(entry => entry.recordingId === truncatedId)
+        expect(truncatedEntry?.report.recovery.overall).not.toBe("clean")
+    })
 })
