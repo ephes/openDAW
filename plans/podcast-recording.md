@@ -253,7 +253,9 @@ These should not be first-slice requirements, but they are useful once long reco
 - Native CoreAudio/cpal integration inside openDAW.
 - DAW import automation.
 - Production codec decision for all podcast media.
-- Browser automation or hardware-dependent tests.
+- Hardware-dependent tests (real microphones, ZOOM L-12, Loopback, multichannel interfaces). A synthetic
+  browser automation harness for the OPFS recording path is in scope (see Phase 1's
+  `scripts/podcast-recording-browser-check.mjs`) and is intentionally hardware-free.
 
 ## Open Questions
 

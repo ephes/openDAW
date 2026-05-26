@@ -47,7 +47,12 @@ export class GetUserMediaCaptureSource implements CaptureSource {
         const track = stream.getAudioTracks().at(0)
         const trackSettings = track?.getSettings() ?? {}
         const actualChannels = (trackSettings.channelCount ?? requestedChannels)
-        const actualSampleRate = trackSettings.sampleRate ?? context.sampleRate
+        // The PCM that flows from createMediaStreamSource into the worklet is clocked by the
+        // AudioContext, not by the input device. If the browser resamples between the device
+        // and the graph (e.g. 44.1 kHz mic into a 48 kHz context), the recorder must use the
+        // context rate; the device-reported rate stays in metadata as diagnostic info only.
+        const actualSampleRate = context.sampleRate
+        const deviceSampleRate = trackSettings.sampleRate ?? context.sampleRate
         const sourceNode = context.createMediaStreamSource(stream)
         const channelMap = options.channelMap ?? CaptureChannelMap.identity(actualChannels)
         CaptureChannelMap.validate(channelMap, actualChannels)
@@ -62,6 +67,7 @@ export class GetUserMediaCaptureSource implements CaptureSource {
             requestedSampleRate: context.sampleRate,
             requestedChannels,
             actualSampleRate,
+            deviceSampleRate,
             deviceChannels: actualChannels,
             actualChannels: channelMap.length,
             autoGainControl: trackSettings.autoGainControl,
