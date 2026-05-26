@@ -68,6 +68,18 @@ export namespace OpfsWorker {
                 })
             }
 
+            async size(path: string): Promise<number> {
+                return await this.#acquireLock(path, async () => {
+                    if (DEBUG) {console.debug(`size ${path}`)}
+                    const handle = await this.#resolveFile(path)
+                    try {
+                        return handle.getSize()
+                    } finally {
+                        handle.close()
+                    }
+                })
+            }
+
             async list(path: string): Promise<ReadonlyArray<OpfsProtocol.Entry>> {
                 const segments = pathToSegments(path)
                 const {status, value: folder} = await Promises.tryCatch(this.#resolveFolder(segments))

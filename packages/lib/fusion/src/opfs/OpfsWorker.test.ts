@@ -254,6 +254,20 @@ describe("OpfsWorker", () => {
         })
     })
 
+    describe("size", () => {
+        it("should return the byte length of a file", async () => {
+            await protocol.write("measured.bin", new Uint8Array([1, 2, 3, 4, 5]))
+            expect(await protocol.size("measured.bin")).toBe(5)
+        })
+        it("should return 0 for an empty file", async () => {
+            await protocol.write("empty-sized.bin", new Uint8Array(0))
+            expect(await protocol.size("empty-sized.bin")).toBe(0)
+        })
+        it("should reject for non-existent files", async () => {
+            await expect(protocol.size("absent.bin")).rejects.toThrow()
+        })
+    })
+
     describe("clear", () => {
         it("should remove all files and directories from root", async () => {
             await protocol.write("file1.bin", new Uint8Array([1]))

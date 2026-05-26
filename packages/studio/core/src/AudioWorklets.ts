@@ -4,6 +4,7 @@ import {Project} from "./project"
 import {EngineWorklet} from "./EngineWorklet"
 import {MeterWorklet} from "./MeterWorklet"
 import {RecordingWorklet} from "./RecordingWorklet"
+import {LongRecordingSession, LongRecordingWorklet} from "./recording"
 import {RenderQuantum} from "./RenderQuantum"
 
 export class AudioWorklets {
@@ -54,5 +55,11 @@ export class AudioWorklets {
         const sab = new SharedArrayBuffer(audioBytes + pointerBytes)
         const buffer: RingBuffer.Config = {sab, numChunks, numberOfChannels, bufferSize: RenderQuantum}
         return new RecordingWorklet(this.#context, buffer)
+    }
+
+    createLongRecording(session: LongRecordingSession,
+                        numberOfChannels: int,
+                        numChunks: int = RenderQuantum): LongRecordingWorklet {
+        return new LongRecordingWorklet(this.#context, session, LongRecordingWorklet.buildConfig(numberOfChannels, numChunks))
     }
 }

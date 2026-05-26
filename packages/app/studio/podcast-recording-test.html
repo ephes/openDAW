@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>openDAW · Podcast Recording Test Harness</title>
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+    <style>
+        :root { color-scheme: dark }
+
+        body {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            background: #111;
+            color: #ddd;
+            padding: 2em;
+            margin: 0;
+        }
+
+        h1 {
+            font-weight: 500;
+            margin-top: 0;
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.5em;
+            margin-bottom: 1em;
+            flex-wrap: wrap;
+        }
+
+        button, label.inline {
+            background: #222;
+            color: #ddd;
+            border: 1px solid #444;
+            padding: 0.5em 1em;
+            font: inherit;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        input[type="number"] {
+            background: #1a1a1a;
+            color: #ddd;
+            border: 1px solid #444;
+            padding: 0.25em 0.5em;
+            font: inherit;
+            border-radius: 4px;
+            width: 6em;
+        }
+
+        pre#log {
+            background: #050505;
+            border: 1px solid #222;
+            padding: 1em;
+            white-space: pre-wrap;
+            font-size: 0.85em;
+            min-height: 40vh;
+            border-radius: 4px;
+        }
+
+        .status {
+            padding: 0.25em 0.5em;
+            border-radius: 4px;
+            background: #1a1a1a;
+            margin-left: auto;
+        }
+
+        .status.ok { background: #14361a; color: #9be6a8; }
+        .status.warn { background: #3a3214; color: #f4d674; }
+        .status.fail { background: #401414; color: #f29292; }
+    </style>
+</head>
+<body>
+<h1>Podcast Recording — Browser Harness</h1>
+<p>Records a synthetic oscillator into the OPFS-backed long-recording session and validates the on-disk manifest.</p>
+<div class="controls">
+    <label class="inline">duration (s)
+        <input type="number" id="duration" value="5" min="1" max="600"/>
+    </label>
+    <label class="inline">channels
+        <input type="number" id="channels" value="2" min="1" max="2"/>
+    </label>
+    <label class="inline">frames/chunk
+        <input type="number" id="framesPerChunk" value="24000" min="128" step="128"/>
+    </label>
+    <button id="run" data-test="start">Start test</button>
+    <button id="clean">Clear OPFS state</button>
+    <span id="status" class="status">idle</span>
+</div>
+<pre id="log" data-test="log"></pre>
+<script type="module" src="/src/podcast-recording-test/main.ts"></script>
+</body>
+</html>

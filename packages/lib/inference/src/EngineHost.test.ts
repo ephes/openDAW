@@ -20,6 +20,11 @@ class FakeOpfs implements OpfsProtocol {
         }
     }
     async list(): Promise<ReadonlyArray<OpfsProtocol.Entry>> {return []}
+    async size(path: string): Promise<number> {
+        const data = this.files.get(path)
+        if (data === undefined) {throw new Error(`No such file: ${path}`)}
+        return data.byteLength
+    }
 }
 
 class FakeWorker {
