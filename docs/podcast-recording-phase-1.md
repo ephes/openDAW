@@ -101,20 +101,21 @@ Interactive page:
 
 Automated headless check (no user interaction):
 
-- `packages/app/studio/scripts/podcast-recording-browser-check.mjs` builds the studio app (`npx vite build`),
-  serves `dist/` over plain HTTP with `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy`, and
-  `Cross-Origin-Resource-Policy` headers (localhost is treated as a secure context, so `SharedArrayBuffer` and
-  OPFS work without TLS), launches the system Chrome via Playwright Core with
-  `--autoplay-policy=no-user-gesture-required`, navigates to `?autorun=1&duration=N`, waits for
-  `#status[data-test-status]` to settle, and exits 0 on `pass` / 1 on `fail` / 2 on environment errors.
+- `packages/app/studio/scripts/podcast-recording-browser-check.mjs` runs `npx vite build` when `dist/` is
+  missing (pass `--rebuild` to force; pass `--skip-build` to require a pre-built `dist/`), serves `dist/` over
+  plain HTTP with `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy`, and `Cross-Origin-Resource-Policy`
+  headers (localhost is treated as a secure context, so `SharedArrayBuffer` and OPFS work without TLS), launches
+  the system Chrome via Playwright Core with `--autoplay-policy=no-user-gesture-required`, navigates to
+  `?autorun=1&duration=N`, waits for `#status[data-test-status]` to settle, and exits 0 on `pass` / 1 on `fail` /
+  2 on environment errors.
 
 How to run (CI-style):
 
 ```
 cd packages/app/studio
-npx vite build
-npm run test:podcast-recording-browser          # default duration=2s, channels=2, framesPerChunk=12000
+npm run test:podcast-recording-browser          # builds dist/ if missing; default duration=2s, channels=2, framesPerChunk=12000
 # or: node scripts/podcast-recording-browser-check.mjs --duration=2 --headed
+# or: node scripts/podcast-recording-browser-check.mjs --rebuild   # force a fresh vite build
 ```
 
 A passing run prints structured JSON on stdout, e.g.:

@@ -8,8 +8,17 @@
 //   1 — recording test reported status="fail" or "error".
 //   2 — environment setup failed (server, browser launch, navigation, timeout).
 //
-// Usage: node scripts/podcast-recording-browser-check.mjs [--duration=N]
+// Usage: node scripts/podcast-recording-browser-check.mjs
+//   [--duration=N] [--channels=C] [--framesPerChunk=F]
+//   [--rebuild]     # force `npx vite build` even when dist/ already exists
+//   [--skip-build]  # never build; require dist/ to be pre-built
+//   [--headed]      # show the Chrome window
+//   [--chrome=PATH] # explicit Chrome executable (also CHROME_EXECUTABLE env)
+//
+// By default the script runs `npx vite build` only when dist/ is missing.
+// Existing dist/ output is reused unless --rebuild is passed.
 
+import {spawn} from "node:child_process"
 import {createReadStream, statSync} from "node:fs"
 import {createServer as createHttpServer} from "node:http"
 import {createServer as createTcpServer} from "node:net"
@@ -18,6 +27,7 @@ import {fileURLToPath} from "node:url"
 import {chromium} from "playwright-core"
 
 const HERE = fileURLToPath(new URL("./", import.meta.url))
+const STUDIO_ROOT = resolvePath(HERE, "..")
 const DIST_DIR = resolvePath(HERE, "../dist")
 
 const MIME_TYPES = new Map([
@@ -51,6 +61,8 @@ const duration = Number(args.duration ?? DEFAULT_DURATION) || DEFAULT_DURATION
 const channels = Number(args.channels ?? DEFAULT_CHANNELS) || DEFAULT_CHANNELS
 const framesPerChunk = Number(args.framesPerChunk ?? DEFAULT_FRAMES_PER_CHUNK) || DEFAULT_FRAMES_PER_CHUNK
 const showBrowser = "headed" in args
+const skipBuild = "skip-build" in args
+const forceRebuild = "rebuild" in args
 const chromeExecutable = args.chrome ?? process.env.CHROME_EXECUTABLE
     ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
@@ -81,6 +93,42 @@ const safeFileFor = (urlPath) => {
 
 const statSafe = (path) => {
     try {return statSync(path)} catch {return null}
+}
+
+const runBuild = () => new Promise((resolve, reject) => {
+    // Important: do NOT set CI=true here. CI=true makes vite.config.ts emit assets under a
+    // /main/releases/<uuid>/ base path, which our flat static server (serving dist/ at /)
+    // cannot resolve.
+    const childEnv = {...process.env}
+    delete childEnv.CI
+    const child = spawn("npx", ["vite", "build"], {
+        cwd: STUDIO_ROOT,
+        stdio: "inherit",
+        env: childEnv
+    })
+    child.on("error", reject)
+    child.on("exit", code => {
+        if (code === 0) {resolve()}
+        else {reject(new Error(`'npx vite build' exited with code ${code}`))}
+    })
+})
+
+const ensureDist = async () => {
+    const present = statSafe(DIST_DIR) !== null
+    if (skipBuild) {
+        if (!present) {
+            console.error(`dist directory missing at ${DIST_DIR} and --skip-build was passed. Run 'npx vite build' first.`)
+            process.exit(2)
+        }
+        console.error(`dist present and --skip-build set; reusing existing build`)
+        return
+    }
+    if (present && !forceRebuild) {
+        console.error(`dist present at ${DIST_DIR}; pass --rebuild to force a fresh 'npx vite build'`)
+        return
+    }
+    console.error(present ? `--rebuild set; running 'npx vite build'...` : `dist missing; running 'npx vite build'...`)
+    await runBuild()
 }
 
 const startStaticServer = (port) => new Promise((resolve, reject) => {
@@ -121,8 +169,9 @@ const startStaticServer = (port) => new Promise((resolve, reject) => {
 })
 
 const main = async () => {
+    await ensureDist()
     if (statSafe(DIST_DIR) === null) {
-        console.error(`dist directory missing at ${DIST_DIR}. Run 'npx vite build' first.`)
+        console.error(`dist directory missing at ${DIST_DIR} after build attempt.`)
         process.exit(2)
     }
     const port = await probeFreePort()
@@ -156,6 +205,15 @@ const main = async () => {
                 }
             })
             page.on("pageerror", error => console.error(`[chrome:pageerror] ${String(error)}`))
+            page.on("requestfailed", request => {
+                const failure = request.failure()
+                console.error(`[chrome:requestfailed] ${request.url()} — ${failure?.errorText ?? "unknown"}`)
+            })
+            page.on("response", response => {
+                if (response.status() >= 400) {
+                    console.error(`[chrome:http ${response.status()}] ${response.url()}`)
+                }
+            })
             const url = `http://127.0.0.1:${port}/podcast-recording-test.html?autorun=1`
                 + `&duration=${duration}&channels=${channels}&framesPerChunk=${framesPerChunk}`
             console.error(`navigating: ${url}`)

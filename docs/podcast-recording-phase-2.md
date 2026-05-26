@@ -137,9 +137,16 @@ gives consumers chunk-indexed random access without loading raw audio.
 The save/load behaviour is covered by:
 
 - `LongRecordingArtifact.test.ts` — collect/restore + recovery classification of partial artifacts.
+- `LongRecordingBundleAdapter.test.ts` — classify / writeIntoFolder / restoreFromFolder on the adapter level.
 - `LongRecordingProjectRoundTrip.test.ts` — full box-graph + OPFS round trip with an `AudioFileBox` plus an
   edge-satisfying `MetaDataBox`, restoring into a fresh `BoxGraph` + fresh `InMemoryOpfs`, then verifying
   duration, sample rate, channel count, channel order, overview spec, and state survive.
+- `ProjectBundleLongRecording.test.ts` — end-to-end exercise of `ProjectBundle.encode` and
+  `ProjectBundle.decode`: `encode` writes a real ZIP whose `recordings/<uuid>/manifest.json`,
+  `chunks/*.pcm`, and `chunks/*.overview` were sourced from the OPFS-backed recording, and `decode`
+  restores those bytes back into a fresh OPFS at `recordings/v1/<uuid>/...` before the box graph
+  rehydrates. This is the test that actually exercises the `ProjectBundle.encode/decode` integration code
+  (the box-graph round-trip test alone does not).
 
 ## Browser Verification
 
@@ -158,8 +165,8 @@ includes the `overviewBins` count and the requested-vs-actual capture metadata.
 
 | Acceptance criterion (from plan §"Phase 2") | Where it is satisfied |
 | --- | --- |
-| OPFS-backed recording artifact referenced by project state | `ProjectBundle.encode/decode` bundles `recordings/<uuid>/...` alongside `samples/<uuid>/...`; the `AudioFileBox` is the project-graph reference. `LongRecordingMediaReference.fromManifest` produces the typed view consumers use. |
-| Sample rate, channel count, duration, channel order, source metadata preserved | `LongRecordingProjectRoundTrip.test.ts` asserts each of these survives a round trip through `LongRecordingArtifact.collect → restore` plus `BoxGraph.toArrayBuffer → fromArrayBuffer`. |
+| OPFS-backed recording artifact referenced by project state | `ProjectBundle.encode/decode` bundles `recordings/<uuid>/...` alongside `samples/<uuid>/...`; the `AudioFileBox` is the project-graph reference. `LongRecordingMediaReference.fromManifest` produces the typed view consumers use. The integration is exercised end-to-end by `ProjectBundleLongRecording.test.ts`. |
+| Sample rate, channel count, duration, channel order, source metadata preserved | `LongRecordingProjectRoundTrip.test.ts` asserts each of these survives the artifact + box-graph layer (`LongRecordingArtifact.collect → restore` plus `BoxGraph.toArrayBuffer → fromArrayBuffer`). `ProjectBundleLongRecording.test.ts` additionally asserts the bytes survive a real `ProjectBundle.encode → decode` cycle. |
 | Waveform overview cached separately from raw media | Per-chunk `*.overview` files alongside `*.pcm`; manifest carries `overview.samplesPerBin / bytesPerBin`; `LongRecordingArtifact` bundles them; the project round-trip test reads them back without touching raw audio. |
 | Trims/splits/fades/ripple edits refer back to chunked media | `LongRecordingMediaAccess.locateFrame / locateSeconds` returns `{chunkIndex, chunkFrameOffset}` for any seconds offset, sample-rate-bound. Chunk files are random-access; the Phase-2 contract covers addressing. |
 | Tempo changes do not stretch/move podcast media | `LongRecordingTempoIndependence.test.ts` exercises BPM 60/120/240 with `TimeBase.Seconds` (invariant) and `TimeBase.Musical` (stretches — negative control); `locateSeconds` is sample-rate-bound. |
