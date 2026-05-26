@@ -20,7 +20,7 @@ Tests:
 | File | Coverage |
 | --- | --- |
 | `CaptureChannelMap.test.ts` | Identity / swap / mono-from-channel / `apply` / `applyInPlace` / validation. 9 cases. |
-| `CaptureSourceTypes.test.ts` | `mismatches()` reports sample-rate / channel-count / auto-processing drift; `device-sample-rate` warning when the device-reported rate differs from the graph rate; `toLongRecordingSource()` projects metadata correctly. 9 cases. |
+| `CaptureSourceTypes.test.ts` | `mismatches()` reports sample-rate / channel-count / auto-processing drift; `device-sample-rate` warning when the device-reported rate differs from the graph rate; `captureMetadataToLongRecordingSource()` projects metadata correctly. 9 cases. |
 
 18 capture-source tests, all hardware-independent.
 
@@ -47,8 +47,9 @@ A capture source is "the thing that produces audio." It exposes:
   `GetUserMediaCaptureSource` today, because browser sources don't surface drop counters; Phase 4 (or a later
   optional native path) would populate them.
 
-`CaptureSourceMetadata.toLongRecordingSource(metadata)` returns the exact shape `LongRecordingSession` needs for
-its `source` field, so wiring the two is one line.
+`captureMetadataToLongRecordingSource(metadata)` (exported from
+`packages/studio/core/src/recording/LongRecordingService.ts`) returns the exact shape `LongRecordingSession`
+needs for its `source` field, so wiring the two is one line.
 
 ## Channel Mapping
 
@@ -110,7 +111,7 @@ ones you actually want into your recording layout.
 
 1. Constructs a `SyntheticCaptureSource` instead of building oscillators inline.
 2. Logs `CaptureSourceMetadata` and runs `CaptureSourceMetadata.mismatches(metadata)` to surface drift.
-3. Feeds `LongRecordingSession.source` directly from `CaptureSourceMetadata.toLongRecordingSource(metadata)`,
+3. Feeds `LongRecordingSession.source` directly from `captureMetadataToLongRecordingSource(metadata)`,
    so the manifest's `source.requestedSampleRate / actualSampleRate / requestedChannels / actualChannels` are
    derived from the same place the audio graph sees them.
 
@@ -156,7 +157,7 @@ and re-throwing on failure so callers see a real rejection. Live-stream errors a
   `LongRecordingSession` whose `sampleRate` and `numberOfChannels` are read from the capture source's actual
   metadata, wires `captureSource.outputNode` into a `LongRecordingWorklet`, and returns a typed `handle.stop()`
   that drains the write queue, terminates the source, and terminates the worklet.
-- The manifest's `source` block is populated via `CaptureSourceMetadata.toLongRecordingSource(metadata)`, so the
+- The manifest's `source` block is populated via `captureMetadataToLongRecordingSource(metadata)`, so the
   requested-vs-actual numbers the capture source observed end up in the persisted manifest. This is locked by
   `LongRecordingService.test.ts`, which feeds a stub source whose actual values differ from the requested ones
   and asserts the manifest preserves both sides.
@@ -175,7 +176,7 @@ instances that own their own audio graph (`SyntheticCaptureSource`, `GetUserMedi
 | --- | --- |
 | Capture-source interface around stream metadata, audio blocks, channel mapping, errors, continuity | `CaptureSource`, `CaptureSourceMetadata`, `CaptureChannelMap`, `subscribeContinuity`, `subscribeErrors`. |
 | `getUserMedia` kept as the first implementation | `GetUserMediaCaptureSource.open` is the default; selectable via the harness `source=getUserMedia` URL parameter and the source dropdown. The synthetic source is opt-in for tests. |
-| Reports requested vs actual sample rate / channel count | `CaptureSourceMetadata` carries both; `mismatches()` reports drift; `CaptureSourceMetadata.toLongRecordingSource` flows the pair into the persisted manifest. `LongRecordingService.test.ts` asserts the manifest round trip. The browser harness renders a `data-test=metadata` table so the same numbers are visible on the app surface. |
+| Reports requested vs actual sample rate / channel count | `CaptureSourceMetadata` carries both; `mismatches()` reports drift; `captureMetadataToLongRecordingSource` flows the pair into the persisted manifest. `LongRecordingService.test.ts` asserts the manifest round trip. The browser harness renders a `data-test=metadata` table so the same numbers are visible on the app surface. |
 | Channel-to-track mapping for >2-channel devices | `CaptureChannelMap` + splitter/merger routing in `SyntheticCaptureSource` and `GetUserMediaCaptureSource`. `CaptureChannelMap.test.ts` covers identity / swap / mono / multi-channel reorder / in-place / out-of-range validation. |
 | Evaluation of multichannel browser capture | §"Multichannel Browser Capability — Evaluation" above. Default stays mono/stereo; multichannel is opt-in via `requestedChannels` + `channelMap`. The `CaptureAudio` legacy clamp is **not** applied at the capture-source layer, so a future caller can request the channel count the device exposes. |
 | Capture-source integrated into the recording flow | `LongRecordingService.startFromSource` is the production-style entry point; the browser harness and the headless check both drive recording through it; `LongRecordingService.test.ts` pins requested vs actual metadata flowing through the manifest. |
