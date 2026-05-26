@@ -47,8 +47,8 @@ openDAW Studio today.
 
 ### From Phase 0 baseline
 
-`docs/podcast-recording-baseline.md` Section 3 (Browser Capture Capability — Known State) lists the platform
-matrix. The Phase 3 evaluation (`docs/podcast-recording-phase-3.md` §"Multichannel Browser Capability —
+`docs/podcast-recording/baseline.md` Section 3 (Browser Capture Capability — Known State) lists the platform
+matrix. The Phase 3 evaluation (`docs/podcast-recording/phase-3-capture-source.md` §"Multichannel Browser Capability —
 Evaluation") confirmed that mono/stereo is fully supported, and that >2 channels are browser-dependent but not
 zero on Chromium today. No criterion above is **clearly** met by the browser path; the worst case is "multichannel
 is browser-dependent," which §"Promotion Conditions" below addresses without resorting to a native backend.

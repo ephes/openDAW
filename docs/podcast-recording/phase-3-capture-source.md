@@ -1,6 +1,6 @@
 # Podcast Recording — Phase 3: Capture-Source Abstraction
 
-Builds on Phase 2 (`docs/podcast-recording-phase-2.md`). Phase 3 separates "where audio comes from" from "how
+Builds on Phase 2 (`docs/podcast-recording/phase-2-media.md`). Phase 3 separates "where audio comes from" from "how
 it is stored" so a single recording pipeline can sit behind multiple capture backends without changing storage,
 manifest, or recovery code.
 

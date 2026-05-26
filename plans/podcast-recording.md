@@ -17,6 +17,23 @@ product. It is a storage-safe long-recording path:
 This keeps the first slice small enough for upstream review and still addresses the core issue: current openDAW recording
 is designed for ordinary musical takes, not multi-hour spoken-word sessions.
 
+## Current Status
+
+Phases 0–3 of the foundation are implemented and verified on this branch. Phase 4 was evaluated and deferred because
+native or multichannel host capture is not required for the accepted browser-native foundation scope.
+
+Completed evidence lives under `docs/podcast-recording/`:
+
+- `docs/podcast-recording/baseline.md` — Phase 0 recording-path baseline.
+- `docs/podcast-recording/phase-1-opfs.md` — OPFS-backed long-recording prototype and browser harness.
+- `docs/podcast-recording/phase-2-media.md` — tempo-independent media reference, overviews, and bundle round trip.
+- `docs/podcast-recording/phase-3-capture-source.md` — capture-source abstraction and channel mapping.
+- `docs/podcast-recording/phase-4-evaluation.md` — native/multichannel host-path evaluation and deferral criteria.
+
+The active next planning target is product integration: make the long-recording foundation usable from the normal
+openDAW recording workflow. This means normal UI recording, timeline playback/waveform integration, save/reopen
+recovery, and export. It does **not** mean promoting Phase 4 unless browser capture proves insufficient for the MVP.
+
 ## Current openDAW Recording Shape
 
 The current browser recording path is a good baseline for short captures:
@@ -118,7 +135,11 @@ Acceptance criteria:
 - Multichannel browser support is classified as usable, partial, or not usable for this phase.
 - Any virtual-device route is documented as local evidence only, not a dependency.
 
-## Proposed Phases
+## Foundation Phase Records
+
+The detailed closure notes for these phases live in `docs/podcast-recording/`. The summaries below remain here to
+preserve the accepted scope and acceptance criteria for future product-integration work. Phases 0–3 are completed
+foundation work; Phase 4 is included as an evaluated and deferred conditional path, not completed implementation.
 
 ### Phase 0: Recording Path Baseline
 
@@ -209,6 +230,8 @@ Acceptance criteria:
 
 ### Phase 4: Optional Native/Multichannel Host Path
 
+Status: evaluated and deferred. See `docs/podcast-recording/phase-4-evaluation.md`.
+
 Goal: support professional host hardware only if browser capture is insufficient.
 
 Reference contract from the PoC:
@@ -257,21 +280,27 @@ These should not be first-slice requirements, but they are useful once long reco
   browser automation harness for the OPFS recording path is in scope (see Phase 1's
   `scripts/podcast-recording-browser-check.mjs`) and is intentionally hardware-free.
 
-## Open Questions
+## Product Integration Open Questions
 
-- Can the existing sample/project model represent large media by reference, or is a new long-recording artifact required?
-- Should the first chunks be raw Float32, Int16 PCM, WAV chunks, WebCodecs output, FLAC via wasm, Opus, or raw-then-transcode?
-- Where should finalized podcast recordings live in project state?
-- What exact recovery states are needed after reload, tab close, browser crash, storage failure, or failed finalization?
-- Should strict podcast recording require 48 kHz, or allow other rates with explicit post-processing?
-- How far can `getUserMedia` expose multichannel devices in Chromium, Safari, and Firefox?
-- How should waveform overview generation work for chunked media?
-- How should long recordings interact with existing sample storage, asset sync, and project export?
+- What is the smallest normal openDAW workflow that counts as podcast recording: create/open project, select mic,
+  arm, record, stop, see region, save/reopen, play, recover, and export?
+- Should long recording be a dedicated podcast mode, a per-track recording mode, or an automatic path for recordings
+  above a duration threshold?
+- How should `CaptureAudio` and `RecordAudio` integrate with `CaptureSource` and `LongRecordingService` without
+  breaking ordinary musical takes?
+- Can existing arranger waveform rendering and engine playback consume `LongRecordingMediaReference` directly, or is
+  a read-side adapter needed at the sample-manager boundary?
+- How should interrupted recordings be surfaced in the product UI after reload: recovery dialog, project asset panel,
+  track placeholder, or dev-only recovery screen?
+- What export path is acceptable for the MVP: stream chunks directly into render/export, assemble a temporary WAV,
+  or require a later dedicated podcast export assistant?
+- Should strict podcast mode require 48 kHz, or allow other graph rates with an explicit warning?
+- How far can `getUserMedia` expose multichannel devices in Chromium, Safari, and Firefox once the product workflow
+  exists? This remains optional/manual evidence unless Phase 4 is promoted.
 - How should openDAW Live Rooms relate to podcast media, if at all?
 
 ## Immediate Next Step
 
-Post a concise issue comment or open a small planning PR with this document. If the direction is accepted, start with
-Phase 0 and then implement the smallest Phase 1 prototype:
-
-Podcast-safe mono/stereo browser recording to OPFS chunks with manifest-based recovery.
+Write a product-integration spec that turns this foundation into a usable mono/stereo local podcast-recording MVP in
+the normal openDAW workflow. Keep Phase 4/native bridge conditional until browser capture fails a concrete MVP
+requirement.

@@ -1,6 +1,6 @@
 # Podcast Recording — Phase 1: OPFS-Backed Long Recording
 
-Builds on `docs/podcast-recording-baseline.md` (Phase 0). Phase 1 introduces a long-recording artifact that lives
+Builds on `docs/podcast-recording/baseline.md` (Phase 0). Phase 1 introduces a long-recording artifact that lives
 under `recordings/v1/<recordingId>/` in OPFS and is decoupled from the existing `SampleStorage` musical-take path.
 
 ## Module Layout

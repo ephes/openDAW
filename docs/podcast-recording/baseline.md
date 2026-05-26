@@ -137,7 +137,7 @@ Strategy for Phase 1:
     (autoplay-policy disabled, fake media stream) to drive `?autorun=1`. Exits 0 on pass, 1 on fail, 2 on env
     error. CI-runnable: `npm run test:podcast-recording-browser`.
 - Hardware-dependent checks (ZOOM L-12, virtual multichannel routes) stay manual per the plan and live alongside
-  the Phase 3 capture-source documentation (`docs/podcast-recording-phase-3.md`).
+  the Phase 3 capture-source documentation (`docs/podcast-recording/phase-3-capture-source.md`).
 
 ## 5. Storage Primitive Decision
 
