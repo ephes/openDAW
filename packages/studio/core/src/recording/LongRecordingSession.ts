@@ -155,9 +155,12 @@ export class LongRecordingSession {
         this.#lastStorageError = error
         this.#storageErrorNotifier.notify(error)
         this.#manifest = LongRecordingManifest.withState(this.#manifest, "failed", this.#now())
-        const {status} = await Promises.tryCatch(this.#persistManifest())
-        if (status === "rejected") {/* nothing else we can do */}
+        // Flip the state SYNCHRONOUSLY (before awaiting the persist) so a concurrent stop() observes
+        // "failed" immediately and cannot finalize the recording as "stopped". The manifest persist is
+        // best-effort durability after the in-memory state is already authoritative.
         this.#setSessionState("failed")
+        const {status} = await Promises.tryCatch(this.#persistManifest())
+        if (status === "rejected") {/* already failed; persistence is best-effort */}
     }
 
     async abandon(): Promise<void> {
