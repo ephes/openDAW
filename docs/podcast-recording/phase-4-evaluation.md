@@ -67,8 +67,10 @@ headers, `native-input-stats`, `stream-error`) maps cleanly onto the existing `C
 required adapter is essentially:
 
 - A new `NativeBridgeCaptureSource` implementation that owns a `WebSocket` (or postMessage transport) to the
-  local bridge, pumps Float32 blocks into a buffer, and exposes the same `outputNode` + metadata + continuity
-  / error notifiers.
+  local bridge, pumps Float32 blocks into a buffer, and exposes the same `outputNode` + metadata. (If a native
+  path actually has drop/underrun counters to report, it would reintroduce a reporting channel on
+  `CaptureSource`; the original speculative continuity/error notifier API was removed in the
+  product-integration review because no browser source ever emitted on it.)
 - No change to `LongRecordingSession`, `LongRecordingStorage`, `LongRecordingManifest`, or
   `LongRecordingWorklet`. The whole point of Phase 3 was to make the source pluggable.
 
@@ -99,5 +101,5 @@ do not block this slice.
 | Phase 4 explicitly evaluated and either deferred with evidence or promoted only if required by accepted scope | This document. Decision: defer. |
 | If promoted: concrete reason such as browser capture exposing only mono/stereo or unstable channel mapping | Not promoted. Reasons documented under §"Conditions To Revisit". |
 | If promoted: preserves channel order and uses explicit channel-to-track mapping | Not implemented. Existing `CaptureChannelMap` already provides the shape a future implementation would use. |
-| If promoted: reports native drop counters and stream continuity warnings | Not implemented. `CaptureSource.subscribeContinuity` / `subscribeErrors` are the integration points. |
+| If promoted: reports native drop counters and stream continuity warnings | Not implemented. A future native path would add a reporting channel to `CaptureSource` (the original speculative `subscribeContinuity` / `subscribeErrors` API was removed in the product-integration review as it never emitted). |
 | If promoted: does not replace the OPFS-backed podcast media model | Not implemented. The model is intentionally storage-source independent (Phase 1–2). |
