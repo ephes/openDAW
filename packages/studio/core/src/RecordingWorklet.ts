@@ -81,6 +81,8 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
 
     invalidate(): void {}
 
+    requestData(): void {}
+
     subscribe(observer: Observer<SampleLoaderState>): Subscription {
         if (this.#state.type === "loaded") {
             observer(this.#state)

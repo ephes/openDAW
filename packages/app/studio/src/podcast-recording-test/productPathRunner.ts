@@ -456,7 +456,10 @@ Promise<ProductPathTestResult> => {
 }
 
 const waitForLoaderTerminal = (
-    loader: {subscribe: (observer: (state: SampleLoaderState) => void) => Terminable}
+    loader: {
+        subscribe: (observer: (state: SampleLoaderState) => void) => Terminable
+        requestData: () => void
+    }
 ): Promise<SampleLoaderState> =>
     new Promise(resolve => {
         const subscription = loader.subscribe(state => {
@@ -465,6 +468,8 @@ const waitForLoaderTerminal = (
                 resolve(state)
             }
         })
+        // Demand the PCM the way the engine/export path does; subscribing alone no longer materializes.
+        loader.requestData()
     })
 
 export const runProductPathTest = (config: ProductPathTestConfig): ProductPathTestRunHandle => {

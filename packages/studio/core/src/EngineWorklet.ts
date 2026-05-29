@@ -192,6 +192,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
                                 subscription.terminate()
                             }
                         })
+                        handler.requestData()
                     })
                 },
                 fetchSoundfont: (uuid: UUID.Bytes): Promise<SoundFont2> => {

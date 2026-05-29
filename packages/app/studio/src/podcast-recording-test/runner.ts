@@ -324,6 +324,8 @@ const waitForLoaderTerminal = (
                 resolve(state)
             }
         })
+        // Demand the PCM the way the engine/export path does; subscribing alone no longer materializes.
+        loader.requestData()
     })
 
 export const runPodcastRecordingTest = (config: PodcastRecordingTestConfig): PodcastRecordingTestRunHandle => {

@@ -13,6 +13,7 @@ export class DefaultSampleLoader implements SampleLoader {
     #state: SampleLoaderState = {type: "progress", progress: 0.0}
     #deferredAudio: Option<() => Promise<AudioData>> = Option.None
     #materializing: boolean = false
+    #dataRequested: boolean = false
 
     constructor(uuid: UUID.Bytes) {
         this.#uuid = uuid
@@ -24,9 +25,12 @@ export class DefaultSampleLoader implements SampleLoader {
             observer(this.#state)
             return Terminable.Empty
         }
-        const subscription = this.#notifier.subscribe(observer)
-        this.#materializeDeferred()
-        return subscription
+        return this.#notifier.subscribe(observer)
+    }
+
+    requestData(): void {
+        this.#dataRequested = true
+        this.#maybeMaterialize()
     }
 
     get uuid(): UUID.Bytes {return this.#uuid}
@@ -46,10 +50,10 @@ export class DefaultSampleLoader implements SampleLoader {
 
     /**
      * Make peaks available immediately while deferring the (potentially large) `AudioData`
-     * materialization until something actually needs the PCM. Materialization runs on the first
-     * subscriber that waits for `"loaded"`; a consumer that only reads `peaks` never triggers it.
-     * Used by the long-recording fallback so browsing a project with a multi-hour recording does
-     * not pull the whole take into memory just to paint its waveform.
+     * materialization until a consumer explicitly calls `requestData()` (playback / export). A consumer
+     * that only reads `peaks` or subscribes for repaint never triggers it. Used by the long-recording
+     * fallback so browsing a project with a multi-hour recording does not pull the whole take into
+     * memory just to paint its waveform.
      */
     setPeaksReady(peaks: Peaks, meta: SampleMetaData, provideAudio: () => Promise<AudioData>): void {
         this.#peaks = Option.wrap(peaks)
@@ -57,11 +61,12 @@ export class DefaultSampleLoader implements SampleLoader {
         this.#deferredAudio = Option.wrap(provideAudio)
         this.#state = {type: "progress", progress: 1.0}
         this.#notifier.notify(this.#state)
-        if (!this.#notifier.isEmpty()) {this.#materializeDeferred()}
+        this.#maybeMaterialize()
     }
 
-    #materializeDeferred(): void {
-        if (this.#deferredAudio.isEmpty() || this.#materializing || this.#data.nonEmpty()) {return}
+    #maybeMaterialize(): void {
+        if (!this.#dataRequested || this.#deferredAudio.isEmpty()
+            || this.#materializing || this.#data.nonEmpty()) {return}
         this.#materializing = true
         this.#deferredAudio.unwrap()().then(audio => {
             this.#data = Option.wrap(audio)
@@ -90,6 +95,7 @@ export class DefaultSampleLoader implements SampleLoader {
         this.#peaks = Option.None
         this.#deferredAudio = Option.None
         this.#materializing = false
+        this.#dataRequested = false
         this.#notifier.notify(this.#state)
     }
 

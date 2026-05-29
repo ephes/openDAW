@@ -67,6 +67,7 @@ export class ProjectMigration {
                     reject(new Error(state.reason))
                 }
             })
+            loader.requestData()
             return promise
         }
         const orphans = boxGraph.findOrphans(rootBox)

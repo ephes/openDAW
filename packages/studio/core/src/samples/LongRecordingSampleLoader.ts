@@ -27,10 +27,10 @@ export interface LongRecordingSampleLoaderConfig {
  * Contract:
  *   - `peaks` resolves immediately at construction time from the persisted overview bins (no chunk
  *     PCM read).
- *   - `data` is `None` and `state` is `"progress"` until the first `subscribe()` *that observes a
- *     transition* or an explicit `materializeAudioData()` call. Once materialization completes,
- *     `state` becomes `"loaded"` and `data` is `Some`, matching every other openDAW `SampleLoader`
- *     ("loaded implies data").
+ *   - `data` is `None` and `state` is `"progress"` until a consumer explicitly calls `requestData()`
+ *     (playback / export) or `materializeAudioData()`. Subscribing alone does NOT materialize. Once
+ *     materialization completes, `state` becomes `"loaded"` and `data` is `Some`, matching every other
+ *     openDAW `SampleLoader` ("loaded implies data").
  *   - If the recording is not classified as `recovery.overall === "clean"` and
  *     `manifest.state === "stopped"`, `state` transitions to `"error"` with the classification as
  *     the reason. No partial PCM is produced.
@@ -92,18 +92,17 @@ export class LongRecordingSampleLoader implements SampleLoader {
             observer(this.#state)
             return Terminable.Empty
         }
-        // First real subscriber kicks off materialization so the consumer can wait for "loaded".
-        // Subsequent subscribers latch onto the same promise.
-        if (this.#materializePromise.isEmpty()) {
-            const promise = this.#materialize()
-            // The promise rejection (non-clean recording) is observable via the notifier as
-            // state="error". Swallow the bare-promise rejection so background subscribers don't
-            // trigger an unhandled-rejection warning. Callers that explicitly await
-            // materializeAudioData() still see the rejection via that promise.
-            promise.catch(() => undefined)
-            this.#materializePromise = Option.wrap(promise)
-        }
         return this.#notifier.subscribe(observer)
+    }
+
+    requestData(): void {
+        if (this.#data.nonEmpty() || this.#materializePromise.nonEmpty()) {return}
+        const promise = this.#materialize()
+        // The rejection (non-clean recording) is observable via the notifier as state="error". Swallow
+        // the bare-promise rejection here so a data request doesn't raise an unhandled-rejection warning;
+        // callers that explicitly await materializeAudioData() still see the rejection via that promise.
+        promise.catch(() => undefined)
+        this.#materializePromise = Option.wrap(promise)
     }
 
     invalidate(): void {

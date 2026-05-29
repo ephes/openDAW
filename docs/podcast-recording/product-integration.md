@@ -26,10 +26,10 @@ the musical-take path:
 5. **`LongRecordingSampleLoader`** (under `packages/studio/core/src/samples/`) implements `SampleLoader`
    from `@opendaw/studio-adapters`. `peaks` resolves immediately from per-chunk overview bins via
    `LongRecordingPeaksAdapter` — **no chunk PCM read at construction**, no PCM allocation. PCM
-   materialization is lazy: triggered only when a real `subscribe(...)` observer that wants the
-   `progress → loaded` transition is attached, or when `materializeAudioData()` is called explicitly.
-   Inspection-only callers (dashboard probe, the harness peak-only diagnostic) that just read
-   `loader.peaks` never trigger materialization. Once materialization completes, state transitions to
+   materialization is lazy: triggered only when a consumer calls `SampleLoader.requestData()` or the
+   explicit `materializeAudioData()`. Subscribing alone does not materialize. Inspection-only callers
+   (dashboard probe, the harness peak-only diagnostic) that just read `loader.peaks` never trigger
+   materialization. Once materialization completes, state transitions to
    `"loaded"` only if `data` is populated; the contract every other openDAW consumer relies on
    (`state === "loaded"` implies `data.nonEmpty()`) holds. For non-clean recordings the loader
    transitions to `"error"` with the recovery classification as the reason instead of producing partial
@@ -41,11 +41,13 @@ the musical-take path:
    - `recovery.overall === "clean" && manifest.state === "stopped"`: build `Peaks` from overview bins and
      call `loader.setPeaksReady(peaks, meta, () => materializeLongRecording(reference, access, recovery))`
      on the **original** `DefaultSampleLoader`. Peaks are available immediately so the timeline waveform
-     paints without reading PCM; the full `AudioData` is **materialized lazily** — only when a subscriber
-     actually waits for `"loaded"` (playback/export), never on mere `peaks`/`data` access. This matches the
-     `LongRecordingSampleLoader` contract. The result is **not** cached, so concurrent loaders re-read the
-     cheap overview rather than retaining a multi-hour take in memory. No swap, no
-     `"error: superseded by long-recording"`, no second `getOrCreate` required.
+     paints without reading PCM; the full `AudioData` is **materialized lazily** — only when a consumer
+     calls `SampleLoader.requestData()` (the playback/export path), never on mere `peaks`/`data` access or
+     a repaint `subscribe(...)`. This matches the `LongRecordingSampleLoader` contract. The materialized
+     take is **not** added to the manager's shared cross-loader `#cache` (so a fresh `getOrCreate` re-reads
+     the cheap overview rather than handing out a retained multi-hour take); the loader itself retains its
+     `AudioData` for the `SampleLoader` "loaded implies data" contract until it is invalidated/dropped via
+     ref-counting. No swap, no `"error: superseded by long-recording"`, no second `getOrCreate` required.
    - non-clean (recoverable / corrupt / failed / active / abandoned): `loader.setError(...)` with the
      recovery classification as the reason. No `AudioData` is produced; the renderer/engine cannot
      silently play zero-padded audio. The dashboard "Recoverable Recordings" panel surfaces the same
@@ -146,7 +148,7 @@ is gitignored per repo convention.
 
 | Criterion | Status / Where verified |
 | --- | --- |
-| Long-recording loaders satisfy the SampleLoader contract for existing consumers (EngineWorklet, OfflineEngineRenderer, AudioFileBoxAdapter.audioData, GlobalSampleLoaderManager.getAudioData expect `loaded => data.nonEmpty()`) | `LongRecordingSampleLoader.create()` reads only overview bins and leaves `data` empty until a subscriber or explicit `materializeAudioData()` request triggers materialization; it transitions to `"loaded"` only once `data` is `Some`. The manager fallback populates the original `DefaultSampleLoader` via `setPeaksReady(peaks, meta, provideAudio)` — peaks immediate, the full `AudioData` materialized lazily on the first subscriber that waits for `"loaded"`. Locked by `LongRecordingSampleLoader.test.ts` ("construction reads only the overview (no chunk PCM)", "uuid matches…progress -> loaded once chunks materialize"; "subscribe replays the current state…once loaded") and `GlobalSampleLoaderManager.longRecordingFallback.test.ts` ("populates the original SampleLoader with materialized audio + overview peaks"). Browser-verified: product-path test asserts `consumerLoaderState=loaded`, `consumerLoaderHasData=true`. |
+| Long-recording loaders satisfy the SampleLoader contract for existing consumers (EngineWorklet, OfflineEngineRenderer, AudioFileBoxAdapter.audioData, GlobalSampleLoaderManager.getAudioData expect `loaded => data.nonEmpty()`) | `LongRecordingSampleLoader.create()` reads only overview bins and leaves `data` empty until a subscriber or explicit `materializeAudioData()` request triggers materialization; it transitions to `"loaded"` only once `data` is `Some`. The manager fallback populates the original `DefaultSampleLoader` via `setPeaksReady(peaks, meta, provideAudio)` — peaks immediate, the full `AudioData` materialized lazily only when a consumer calls `requestData()` (subscribing for repaint does not). Locked by `LongRecordingSampleLoader.test.ts` ("construction reads only the overview (no chunk PCM)", "uuid matches…progress -> loaded once chunks materialize"; "subscribe replays the current state…once loaded") and `GlobalSampleLoaderManager.longRecordingFallback.test.ts` ("populates the original SampleLoader with materialized audio + overview peaks"). Browser-verified: product-path test asserts `consumerLoaderState=loaded`, `consumerLoaderHasData=true`. |
 | Fallback resolves without a second `getOrCreate` after error | `tryAttachLongRecording` no longer swaps loaders; the original loader receives `setPeaksReady` (lazy) and stays the same instance. `GlobalSampleLoaderManager.longRecordingFallback.test.ts` asserts `events.some(state.type === "error") === false` and `manager.getOrCreate(uuid)` returns the original loader. Browser-verified: `loaderFallbackSameInstance=true`. |
 | Normal playback of a recorded long-recording region works in the openDAW engine | Real `EngineWorklet` driven via `Recording.start(project, false)` + `project.engine.play()` in the product-path browser test; `engine.isRecording=true` and `engine.position` advancing are both observed (worklet → facade), `RecordAudioLong` creates the box graph, `project.sampleManager.getOrCreate(recordingUuid)` reaches `loaded` with non-empty `data` that the engine's `fetchAudio` consumes. Browser-verified: `playbackPositionAdvanced=true`. |
 | Export/mixdown works for the MVP via a documented one-time materialization | `materializeLongRecording(reference, access, recovery)` is shared between the manager fallback and `LongRecordingSampleLoader`; it runs only on first load (not during record or stop/finalize) and refuses non-clean recordings. The product-path browser test actually invokes `OfflineEngineRenderer.create(project.copy(), Option.None, 48000)` and asserts the rendered buffer contains non-zero samples (`exportNonZeroSamples > 0`). |
@@ -198,10 +200,15 @@ overrides any earlier description in this file or the superseded spec/plan):
 - **Lazy production loader (no eager materialization).** The manager fallback now uses
   `DefaultSampleLoader.setPeaksReady(...)` instead of eagerly calling `materializeLongRecording` +
   `setLoaded`. Overview peaks are attached immediately (waveform paints) and the full `AudioData` is
-  materialized only when a real subscriber waits for `"loaded"` (playback/export). Browsing a project
-  with a multi-hour recording no longer pulls the whole take into memory. Not cached. Locked by
+  materialized only when a consumer calls the new `SampleLoader.requestData()` (the playback/export
+  demand path: `EngineWorklet.fetchAudio`, `OfflineEngineRenderer.fetchAudio`,
+  `AudioFileBoxAdapter.audioData`, `GlobalSampleLoaderManager.getAudioData`). **Crucially, subscribing
+  does not materialize** — timeline adapters (`AudioRegionBoxAdapter`/`AudioClipBoxAdapter`) subscribe
+  to the loader purely to dispatch repaints, so opening a project with a long-recording region no longer
+  pulls the whole take into memory. The materialized take is not added to the manager's shared cache
+  (the loader retains it for the "loaded implies data" contract until invalidated). Locked by
   `GlobalSampleLoaderManager.longRecordingFallback.test.ts` ("exposes overview peaks immediately but
-  defers audio materialization until a subscriber needs it").
+  defers audio materialization until requestData()").
 - **Bounded write backlog (backpressure).** `LongRecordingSession` tracks pending (queued-but-unwritten)
   chunk bytes and exposes `pendingBytes`/`pendingChunks` on `LongRecordingProgress`. If the backlog
   exceeds `maxPendingBytes` (default `LongRecordingSession.DEFAULT_MAX_PENDING_BYTES`, 128 MiB) — i.e.
