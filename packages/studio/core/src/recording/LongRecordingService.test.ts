@@ -1,6 +1,6 @@
 import {beforeEach, describe, expect, it} from "vitest"
-import {Notifier, Observer, Subscription, Terminator, UUID} from "@opendaw/lib-std"
-import {CaptureContinuityReport, CaptureSource, CaptureSourceMetadata} from "../capture-source"
+import {Terminator, UUID} from "@opendaw/lib-std"
+import {CaptureSource, CaptureSourceMetadata} from "../capture-source"
 import {LongRecordingChunkBuffer} from "./LongRecordingChunkBuffer"
 import {
     captureMetadataToLongRecordingSource,
@@ -32,21 +32,11 @@ class StubCaptureSource implements CaptureSource {
     readonly #terminator = new Terminator()
     readonly metadata: CaptureSourceMetadata
     readonly outputNode: AudioNode
-    readonly #continuityNotifier = new Notifier<CaptureContinuityReport>()
-    readonly #errorNotifier = new Notifier<unknown>()
     terminated = false
 
     constructor(metadata: CaptureSourceMetadata) {
         this.metadata = metadata
         this.outputNode = new StubAudioNode() as unknown as AudioNode
-    }
-
-    subscribeContinuity(observer: Observer<CaptureContinuityReport>): Subscription {
-        return this.#continuityNotifier.subscribe(observer)
-    }
-
-    subscribeErrors(observer: Observer<unknown>): Subscription {
-        return this.#errorNotifier.subscribe(observer)
     }
 
     terminate(): void {

@@ -70,9 +70,9 @@ const applyResultStatus = (result: PodcastRecordingTestResult): void => {
             ["label", metadata.label],
             ["requestedSampleRate", String(metadata.requestedSampleRate)],
             ["actualSampleRate", String(metadata.actualSampleRate)],
-            ["deviceSampleRate", metadata.deviceSampleRate === undefined
-                ? "n/a"
-                : String(metadata.deviceSampleRate)],
+            ["deviceSampleRate", isDefined(metadata.deviceSampleRate)
+                ? String(metadata.deviceSampleRate)
+                : "n/a"],
             ["requestedChannels", String(metadata.requestedChannels)],
             ["actualChannels", String(metadata.actualChannels)],
             ["mismatches", result.mismatches.length === 0 ? "none" : result.mismatches.map(report => report.kind).join(", ")],

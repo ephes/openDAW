@@ -301,11 +301,12 @@ These should not be first-slice requirements, but they are useful once long reco
 
 ## Immediate Next Step
 
-The product-integration MVP described in `docs/podcast-recording/product-integration-spec.md` is **implemented**.
-Closure note: `docs/podcast-recording/product-integration.md`. The spec resolved the open-questions list above
-(per-track `CaptureAudioBox.longRecording` flag, lazy peaks + on-demand `AudioData` via
-`LongRecordingSampleLoader`, Studio Dashboard "Recoverable Recordings" panel) and the implementation plan
-`docs/podcast-recording/product-integration-plan.md` enumerates the commits.
+The product-integration MVP is **implemented**. The authoritative description of what shipped — including
+post-review hardening — is the closure note `docs/podcast-recording/product-integration.md`; read it first.
+It resolved the open-questions list above (per-track `CaptureAudioBox.longRecording` flag, lazy peaks +
+on-demand `AudioData`, Studio Dashboard "Recoverable Recordings" panel). The earlier
+`product-integration-spec.md` and `product-integration-plan.md` are retained as **superseded** historical
+design docs (they describe a swap-based loader and UI that were not built); see their header banners.
 
 Phase 4 stays deferred. Documented follow-ups (timeline non-clean region badge, "Resume into project"
 Dashboard action, chunked-streaming export, multichannel re-evaluation) are tracked in the closure note's

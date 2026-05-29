@@ -287,24 +287,15 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
         const recordingId = UUID.toString(UUID.generate())
         const storage = LongRecordingStorage.create(recordingId, Workers.Opfs)
         const track = this.#stream.unwrapOrNull()?.getAudioTracks().at(0)
-        const trackSettings = track?.getSettings() ?? {}
-        const deviceSampleRate = trackSettings.sampleRate
         const requestedChannels = this.#requestChannels.unwrapOrElse(channelCount)
-        const metadata: CaptureSourceMetadata = {
-            kind: "getUserMedia",
-            label: track?.label ?? "default",
-            deviceId: trackSettings.deviceId,
-            deviceLabel: track?.label,
+        const metadata = CaptureSourceMetadata.fromMediaStreamTrack(track, {
             requestedSampleRate: audioContext.sampleRate,
             requestedChannels,
             actualSampleRate: audioContext.sampleRate,
-            deviceSampleRate,
-            deviceChannels: trackSettings.channelCount ?? channelCount,
-            actualChannels: channelCount,
-            autoGainControl: trackSettings.autoGainControl,
-            echoCancellation: trackSettings.echoCancellation,
-            noiseSuppression: trackSettings.noiseSuppression
-        }
+            actualChannels: channelCount
+        })
+        CaptureSourceMetadata.mismatches(metadata).forEach(report =>
+            console.warn(`[CaptureAudio] capture mismatch (${report.kind}): ${report.message}`))
         const captureSource = new WrappingCaptureSource({metadata, outputNode: recordGainNode})
         const framesPerChunk = Math.max(1, Math.round(audioContext.sampleRate * LONG_RECORDING_CHUNK_SECONDS))
         const handle = await LongRecordingService.startFromSource({

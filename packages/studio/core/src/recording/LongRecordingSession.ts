@@ -15,6 +15,8 @@ export interface LongRecordingProgress {
     readonly chunks: int
     readonly bytes: int
     readonly elapsedSeconds: number
+    readonly pendingBytes: int
+    readonly pendingChunks: int
 }
 
 export type LongRecordingSessionState = "idle" | "armed" | "recording" | "stopping" | "stopped" | "failed"
@@ -27,6 +29,7 @@ export interface LongRecordingSessionConfig {
     readonly source: LongRecordingSource
     readonly now?: () => int
     readonly overviewSamplesPerBin?: int
+    readonly maxPendingBytes?: int
 }
 
 export class LongRecordingSession {
@@ -44,10 +47,14 @@ export class LongRecordingSession {
     #sessionState: LongRecordingSessionState = "idle"
     #nextChunkIndex: int = 0
     #totalBytes: int = 0
+    #pendingBytes: int = 0
+    #pendingChunks: int = 0
+    #backpressureTripped: boolean = false
     #writeQueue: Promise<void> = Promise.resolve()
     #lastStorageError: unknown = undefined
 
     readonly #overviewSamplesPerBin: int
+    readonly #maxPendingBytes: int
 
     constructor(config: LongRecordingSessionConfig) {
         this.#storage = config.storage
@@ -57,6 +64,7 @@ export class LongRecordingSession {
         this.#source = config.source
         this.#now = config.now ?? (() => Date.now())
         this.#overviewSamplesPerBin = config.overviewSamplesPerBin ?? OVERVIEW_DEFAULT_SAMPLES_PER_BIN
+        this.#maxPendingBytes = config.maxPendingBytes ?? LongRecordingSession.DEFAULT_MAX_PENDING_BYTES
         this.#buffer = new LongRecordingChunkBuffer(this.#numberOfChannels, this.#framesPerChunk)
         const overviewSpec = LongRecordingOverview.spec(this.#numberOfChannels, this.#overviewSamplesPerBin)
         this.#manifest = LongRecordingManifest.create({
@@ -98,8 +106,11 @@ export class LongRecordingSession {
         this.#setSessionState("armed")
     }
 
+    get pendingBytes(): int {return this.#pendingBytes}
+
     appendQuantum(channels: ReadonlyArray<Float32Array>): void {
         if (this.#sessionState !== "armed" && this.#sessionState !== "recording") {return}
+        if (this.#backpressureTripped) {return}
         if (this.#sessionState === "armed") {this.#setSessionState("recording")}
         const flushed = this.#buffer.append(channels)
         if (flushed.length === 0) {return}
@@ -158,9 +169,21 @@ export class LongRecordingSession {
     }
 
     #enqueueChunkWrite(entry: LongRecordingChunkEntry, data: Uint8Array, overviewBytes: Uint8Array): void {
+        this.#pendingBytes += entry.bytes
+        this.#pendingChunks++
+        if (!this.#backpressureTripped && this.#pendingBytes > this.#maxPendingBytes) {
+            this.#backpressureTripped = true
+            void this.fail(new Error(
+                `long recording write backlog of ${this.#pendingBytes} bytes exceeded the `
+                + `${this.#maxPendingBytes} byte limit; storage cannot keep up with capture`))
+        }
         this.#writeQueue = this.#writeQueue.then(async () => {
-            if (this.#sessionState === "failed") {return}
+            if (this.#sessionState === "failed") {
+                this.#decrementPending(entry)
+                return
+            }
             const chunkResult = await Promises.tryCatch(this.#storage.writeChunk(entry.index, data))
+            this.#decrementPending(entry)
             if (chunkResult.status === "rejected") {
                 await this.fail(chunkResult.error)
                 return
@@ -168,6 +191,9 @@ export class LongRecordingSession {
             const overviewResult = await Promises.tryCatch(
                 this.#storage.writeChunkOverview(entry.index, overviewBytes))
             if (overviewResult.status === "rejected") {
+                // Overview loss is intentionally non-fatal: it only degrades waveform-preview
+                // fidelity. The PCM chunk is already persisted and recovery probes the .pcm files,
+                // so the recording remains fully recoverable. Surface it for observability only.
                 this.#storageErrorNotifier.notify(overviewResult.error)
             }
             this.#manifest = LongRecordingManifest.withChunkAppended(this.#manifest, entry, this.#now())
@@ -181,9 +207,16 @@ export class LongRecordingSession {
                 frames: this.#manifest.totalFrames,
                 chunks: this.#manifest.chunks.length,
                 bytes: this.#totalBytes,
-                elapsedSeconds: this.#manifest.totalFrames / this.#sampleRate
+                elapsedSeconds: this.#manifest.totalFrames / this.#sampleRate,
+                pendingBytes: this.#pendingBytes,
+                pendingChunks: this.#pendingChunks
             })
         })
+    }
+
+    #decrementPending(entry: LongRecordingChunkEntry): void {
+        this.#pendingBytes -= entry.bytes
+        this.#pendingChunks--
     }
 
     async #persistManifest(): Promise<void> {
@@ -198,6 +231,12 @@ export class LongRecordingSession {
 }
 
 export namespace LongRecordingSession {
+    // Cap on chunk bytes retained in the OPFS write queue. The SAB capture ring is already bounded,
+    // but the post-chunk write chain retains each Uint8Array until OPFS catches up. If storage falls
+    // below realtime for a multi-hour recording this would grow without limit, so the session fails
+    // deterministically (leaving everything written so far recoverable) instead of risking an OOM.
+    export const DEFAULT_MAX_PENDING_BYTES: int = 128 * 1024 * 1024
+
     export const requestPersistence = async (): Promise<boolean> => {
         const storage = navigator.storage
         if (!isDefined(storage)) {return false}

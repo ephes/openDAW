@@ -79,6 +79,22 @@ describe("GlobalSampleLoaderManager long-recording fallback", () => {
         expect(manager.getOrCreate(uuid)).toBe(loader)
     })
 
+    it("exposes overview peaks immediately but defers audio materialization until a subscriber needs it", async () => {
+        await seedLongRecording(opfs)
+        const manager = new GlobalSampleLoaderManager(new StubSampleProvider(), {opfsProvider: () => opfs})
+        const uuid = UUID.parse(RECORDING_UUID)
+        const loader = manager.getOrCreate(uuid)
+        // Poll for peaks WITHOUT subscribing; subscribing would trigger materialization.
+        for (let attempt = 0; attempt < 50 && loader.peaks.isEmpty(); attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 0))
+        }
+        expect(loader.peaks.nonEmpty()).toBe(true)
+        expect(loader.data.isEmpty()).toBe(true)
+        const state = await waitForLoadedOrError(loader)
+        expect(state.type).toBe("loaded")
+        expect(loader.data.nonEmpty()).toBe(true)
+    })
+
     it("subscribers added before completion observe progress -> loaded with data on the same loader instance", async () => {
         await seedLongRecording(opfs)
         const manager = new GlobalSampleLoaderManager(new StubSampleProvider(), {opfsProvider: () => opfs})

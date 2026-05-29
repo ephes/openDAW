@@ -1,5 +1,13 @@
 # Podcast Recording — Phase 3: Capture-Source Abstraction
 
+> **Note (post-product-integration review).** This phase-evidence note describes the abstraction as
+> originally built. Two things changed during the product-integration review and `product-integration.md`
+> is authoritative: (1) the unused continuity/error notifier API (`subscribeContinuity`/`subscribeErrors`/
+> `CaptureContinuityReport`) was **removed** — it was never emitted; (2) the `CaptureChannelMap` routing
+> remains a **library/harness capability and is not wired into the production recorder** (production
+> records mono/stereo via `WrappingCaptureSource`; multichannel stays Phase 4). The shared `route` helper
+> now lives on `CaptureChannelMap`.
+
 Builds on Phase 2 (`docs/podcast-recording/phase-2-media.md`). Phase 3 separates "where audio comes from" from "how
 it is stored" so a single recording pipeline can sit behind multiple capture backends without changing storage,
 manifest, or recovery code.
@@ -30,10 +38,12 @@ Tests:
 interface CaptureSource extends Terminable {
   readonly metadata: CaptureSourceMetadata
   readonly outputNode: AudioNode
-  subscribeContinuity(observer): Subscription
-  subscribeErrors(observer): Subscription
 }
 ```
+
+> The original Phase 3 interface also declared `subscribeContinuity` / `subscribeErrors`. These were
+> never emitted and were removed during the product-integration review (see the banner at the top of
+> this file); the shipped `CaptureSource` is just `metadata` + `outputNode`.
 
 A capture source is "the thing that produces audio." It exposes:
 
@@ -174,7 +184,7 @@ instances that own their own audio graph (`SyntheticCaptureSource`, `GetUserMedi
 
 | Acceptance criterion (from plan §"Phase 3") | Where it is satisfied |
 | --- | --- |
-| Capture-source interface around stream metadata, audio blocks, channel mapping, errors, continuity | `CaptureSource`, `CaptureSourceMetadata`, `CaptureChannelMap`, `subscribeContinuity`, `subscribeErrors`. |
+| Capture-source interface around stream metadata, audio blocks, channel mapping | `CaptureSource` (`metadata` + `outputNode`), `CaptureSourceMetadata`, `CaptureChannelMap`. (The originally-planned `subscribeContinuity`/`subscribeErrors` were never emitted and were removed in the product-integration review.) |
 | `getUserMedia` kept as the first implementation | `GetUserMediaCaptureSource.open` is the default; selectable via the harness `source=getUserMedia` URL parameter and the source dropdown. The synthetic source is opt-in for tests. |
 | Reports requested vs actual sample rate / channel count | `CaptureSourceMetadata` carries both; `mismatches()` reports drift; `captureMetadataToLongRecordingSource` flows the pair into the persisted manifest. `LongRecordingService.test.ts` asserts the manifest round trip. The browser harness renders a `data-test=metadata` table so the same numbers are visible on the app surface. |
 | Channel-to-track mapping for >2-channel devices | `CaptureChannelMap` + splitter/merger routing in `SyntheticCaptureSource` and `GetUserMediaCaptureSource`. `CaptureChannelMap.test.ts` covers identity / swap / mono / multi-channel reorder / in-place / out-of-range validation. |

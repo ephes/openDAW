@@ -38,10 +38,13 @@ the musical-take path:
    `SampleStorage.load(uuid)` rejects and an optional `opfsProvider` is configured, the manager calls
    `classifyLongRecording(storage)` (which reads the manifest + chunk probes and runs
    `LongRecordingRecovery.classify`). Behaviour by classification:
-   - `recovery.overall === "clean" && manifest.state === "stopped"`: build `Peaks` from overview bins,
-     materialize the chunked audio into an `AudioData` via `materializeLongRecording(reference, access,
-     recovery)`, cache it, and call `loader.setLoaded(data, peaks, meta)` on the **original**
-     `DefaultSampleLoader`. Subscribers see `"progress" → "loaded"` with `data.nonEmpty()`. No swap, no
+   - `recovery.overall === "clean" && manifest.state === "stopped"`: build `Peaks` from overview bins and
+     call `loader.setPeaksReady(peaks, meta, () => materializeLongRecording(reference, access, recovery))`
+     on the **original** `DefaultSampleLoader`. Peaks are available immediately so the timeline waveform
+     paints without reading PCM; the full `AudioData` is **materialized lazily** — only when a subscriber
+     actually waits for `"loaded"` (playback/export), never on mere `peaks`/`data` access. This matches the
+     `LongRecordingSampleLoader` contract. The result is **not** cached, so concurrent loaders re-read the
+     cheap overview rather than retaining a multi-hour take in memory. No swap, no
      `"error: superseded by long-recording"`, no second `getOrCreate` required.
    - non-clean (recoverable / corrupt / failed / active / abandoned): `loader.setError(...)` with the
      recovery classification as the reason. No `AudioData` is produced; the renderer/engine cannot
@@ -143,8 +146,8 @@ is gitignored per repo convention.
 
 | Criterion | Status / Where verified |
 | --- | --- |
-| Long-recording loaders satisfy the SampleLoader contract for existing consumers (EngineWorklet, OfflineEngineRenderer, AudioFileBoxAdapter.audioData, GlobalSampleLoaderManager.getAudioData expect `loaded => data.nonEmpty()`) | `LongRecordingSampleLoader.create()` reads only overview bins and leaves `data` empty until a subscriber or explicit `materializeAudioData()` request triggers materialization; it transitions to `"loaded"` only once `data` is `Some`. The manager fallback populates the original `DefaultSampleLoader` via `setLoaded(data, peaks, meta)`. Locked by `LongRecordingSampleLoader.test.ts` ("construction reads only the overview (no chunk PCM)", "uuid matches…progress -> loaded once chunks materialize"; "subscribe replays the current state…once loaded") and `GlobalSampleLoaderManager.longRecordingFallback.test.ts` ("populates the original SampleLoader with materialized audio + overview peaks"). Browser-verified: product-path test asserts `consumerLoaderState=loaded`, `consumerLoaderHasData=true`. |
-| Fallback resolves without a second `getOrCreate` after error | `tryAttachLongRecording` no longer swaps loaders; the original loader receives `setLoaded` and stays the same instance. `GlobalSampleLoaderManager.longRecordingFallback.test.ts` asserts `events.some(state.type === "error") === false` and `manager.getOrCreate(uuid)` returns the original loader. Browser-verified: `loaderFallbackSameInstance=true`. |
+| Long-recording loaders satisfy the SampleLoader contract for existing consumers (EngineWorklet, OfflineEngineRenderer, AudioFileBoxAdapter.audioData, GlobalSampleLoaderManager.getAudioData expect `loaded => data.nonEmpty()`) | `LongRecordingSampleLoader.create()` reads only overview bins and leaves `data` empty until a subscriber or explicit `materializeAudioData()` request triggers materialization; it transitions to `"loaded"` only once `data` is `Some`. The manager fallback populates the original `DefaultSampleLoader` via `setPeaksReady(peaks, meta, provideAudio)` — peaks immediate, the full `AudioData` materialized lazily on the first subscriber that waits for `"loaded"`. Locked by `LongRecordingSampleLoader.test.ts` ("construction reads only the overview (no chunk PCM)", "uuid matches…progress -> loaded once chunks materialize"; "subscribe replays the current state…once loaded") and `GlobalSampleLoaderManager.longRecordingFallback.test.ts` ("populates the original SampleLoader with materialized audio + overview peaks"). Browser-verified: product-path test asserts `consumerLoaderState=loaded`, `consumerLoaderHasData=true`. |
+| Fallback resolves without a second `getOrCreate` after error | `tryAttachLongRecording` no longer swaps loaders; the original loader receives `setPeaksReady` (lazy) and stays the same instance. `GlobalSampleLoaderManager.longRecordingFallback.test.ts` asserts `events.some(state.type === "error") === false` and `manager.getOrCreate(uuid)` returns the original loader. Browser-verified: `loaderFallbackSameInstance=true`. |
 | Normal playback of a recorded long-recording region works in the openDAW engine | Real `EngineWorklet` driven via `Recording.start(project, false)` + `project.engine.play()` in the product-path browser test; `engine.isRecording=true` and `engine.position` advancing are both observed (worklet → facade), `RecordAudioLong` creates the box graph, `project.sampleManager.getOrCreate(recordingUuid)` reaches `loaded` with non-empty `data` that the engine's `fetchAudio` consumes. Browser-verified: `playbackPositionAdvanced=true`. |
 | Export/mixdown works for the MVP via a documented one-time materialization | `materializeLongRecording(reference, access, recovery)` is shared between the manager fallback and `LongRecordingSampleLoader`; it runs only on first load (not during record or stop/finalize) and refuses non-clean recordings. The product-path browser test actually invokes `OfflineEngineRenderer.create(project.copy(), Option.None, 48000)` and asserts the rendered buffer contains non-zero samples (`exportNonZeroSamples > 0`). |
 | `CaptureAudio`'s long branch checks OPFS availability and requests persistent storage before arming | `LongRecordingSession.assertOpfsSupported()` + `RuntimeNotifier.info` on failure; `LongRecordingSession.requestPersistence()` + `RuntimeNotifier.approve` confirmation on non-persistent storage. Browser-verified: `opfsCheckPassed=true`. |
@@ -162,7 +165,7 @@ is gitignored per repo convention.
 | `cd packages/studio/forge-boxes && npm run build` | Schema regenerated; `CaptureAudioBox.longRecording` (BooleanField) appears in `packages/studio/boxes/src/CaptureAudioBox.ts` |
 | `cd packages/studio/boxes && npm run build` | dist/ regenerated |
 | `cd packages/studio/core && npx tsc --noEmit` | Clean |
-| `cd packages/studio/core && npx vitest run` | 24 test files, 261 tests, all pass (includes `LongRecordingPeaksAdapter.test.ts`, `LongRecordingArtifact.probeAll` additions, `LongRecordingSampleLoader.test.ts`, `GlobalSampleLoaderManager.longRecordingFallback.test.ts`, `ProjectBundleLongRecording.test.ts` extension) |
+| `cd packages/studio/core && npx vitest run` | 24 test files, 263 tests, all pass (includes `LongRecordingPeaksAdapter.test.ts`, `LongRecordingArtifact.probeAll` additions, `LongRecordingSampleLoader.test.ts`, `GlobalSampleLoaderManager.longRecordingFallback.test.ts` incl. the lazy-materialization case, `LongRecordingSession.test.ts` incl. the backpressure-cap case, `ProjectBundleLongRecording.test.ts` extension) |
 | `cd packages/studio/core && npm run build` | dist/ regenerated for downstream consumers |
 | `cd packages/app/studio && npx tsc --noEmit` | Clean |
 | `cd packages/app/studio && npm run test:podcast-recording-browser -- --skip-build` | `pass` with `pageErrors=[]` — `overall=clean`, loader contract verified: `loaderFallbackTerminal=loaded`, `loaderFallbackData=true`, `loaderFallbackPeaks=true`, `loaderFallbackSameInstance=true`, `loaderFallbackFrames>0`, `reloadedLoaderData=true`, `reloadedLoaderPeaks=true` |
@@ -186,6 +189,45 @@ is gitignored per repo convention.
 - **Manual smoke checks** (per `product-integration-spec.md` §10) cover the user-visible Studio UI
   surfaces (per-track toggle, dashboard panel). Optional/manual; no physical microphones, ZOOM L-12, or
   virtual loopback devices required.
+
+## Post-Review Hardening
+
+Changes made after the multi-agent + codex design review (this is the current shipped behaviour; it
+overrides any earlier description in this file or the superseded spec/plan):
+
+- **Lazy production loader (no eager materialization).** The manager fallback now uses
+  `DefaultSampleLoader.setPeaksReady(...)` instead of eagerly calling `materializeLongRecording` +
+  `setLoaded`. Overview peaks are attached immediately (waveform paints) and the full `AudioData` is
+  materialized only when a real subscriber waits for `"loaded"` (playback/export). Browsing a project
+  with a multi-hour recording no longer pulls the whole take into memory. Not cached. Locked by
+  `GlobalSampleLoaderManager.longRecordingFallback.test.ts` ("exposes overview peaks immediately but
+  defers audio materialization until a subscriber needs it").
+- **Bounded write backlog (backpressure).** `LongRecordingSession` tracks pending (queued-but-unwritten)
+  chunk bytes and exposes `pendingBytes`/`pendingChunks` on `LongRecordingProgress`. If the backlog
+  exceeds `maxPendingBytes` (default `LongRecordingSession.DEFAULT_MAX_PENDING_BYTES`, 128 MiB) — i.e.
+  OPFS cannot keep up with capture — the session fails **deterministically**, leaving everything written
+  so far recoverable, instead of growing without bound and risking a tab OOM. Overview-write failure is
+  documented as intentionally non-fatal (waveform-fidelity only; the PCM chunk is persisted and recovery
+  probes the `.pcm` files). Locked by `LongRecordingSession.test.ts` ("fails deterministically when the
+  write backlog exceeds maxPendingBytes").
+- **Region/file duration alignment.** `RecordAudioLong` now derives the region `duration` from the
+  captured `waveformOffset` (`duration = fullDuration − waveformOffset`), maintaining the same
+  `waveformOffset + duration === file.endInSeconds` invariant as the classic `RecordAudio` path. The
+  previous code subtracted only the head frames and not `outputLatency`, so on browsers with non-zero
+  `outputLatency` the region could extend past the file end.
+- **Capture-source channel mapping descoped + dead code removed.** Production recording captures
+  mono/stereo through `WrappingCaptureSource` over the existing `recordGainNode`; the `CaptureChannelMap`
+  routing in `GetUserMediaCaptureSource`/`SyntheticCaptureSource` is a **library/harness capability only**
+  and is not wired into the production recorder (multichannel stays Phase 4). The unused continuity/error
+  `Notifier` infrastructure (`subscribeContinuity`/`subscribeErrors`/`CaptureContinuityReport`) that was
+  never emitted has been removed from `CaptureSource` and all implementations; the duplicated
+  `routeThroughMap` helper was consolidated into `CaptureChannelMap.route`; the per-track metadata
+  derivation shared between `CaptureAudio` and `GetUserMediaCaptureSource` now lives in
+  `CaptureSourceMetadata.fromMediaStreamTrack`; and `CaptureAudio` surfaces `CaptureSourceMetadata.mismatches`
+  (AGC / resample / channel-count drift) via `console.warn` on the production path.
+- **lib-std type conventions.** `classifyLongRecording` returns `Option<LongRecordingClassification>` (was
+  `… | undefined`); `GlobalSampleLoaderManager.#opfsProvider` is `Optional<…>`;
+  `LongRecordingPeaksAdapter.nearest` returns `Nullable<Peaks.Stage>`.
 
 ## Deferred Follow-Ups
 

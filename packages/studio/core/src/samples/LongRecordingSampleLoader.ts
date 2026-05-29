@@ -129,13 +129,13 @@ export class LongRecordingSampleLoader implements SampleLoader {
 
     async #materialize(): Promise<AudioData> {
         const classified = await classifyLongRecording(this.#storage)
-        if (classified === undefined) {
+        if (classified.isEmpty()) {
             const reason = `long recording ${this.#reference.recordingId} has no manifest`
             this.#state = {type: "error", reason}
             this.#notifier.notify(this.#state)
             return panic(reason)
         }
-        const {manifest, recovery} = classified
+        const {manifest, recovery} = classified.unwrap()
         if (recovery.overall !== "clean" || manifest.state !== "stopped") {
             const reason = `long recording ${this.#reference.recordingId} is `
                 + `${recovery.overall}/${manifest.state}; cannot load for playback`

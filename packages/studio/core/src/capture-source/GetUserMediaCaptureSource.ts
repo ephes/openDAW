@@ -1,7 +1,7 @@
-import {int, isDefined, Notifier, Observer, Subscription, Terminator} from "@opendaw/lib-std"
+import {int, isDefined, Terminator} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {CaptureChannelMap} from "./CaptureChannelMap"
-import {CaptureContinuityReport, CaptureSource, CaptureSourceMetadata} from "./CaptureSourceTypes"
+import {CaptureSource, CaptureSourceMetadata} from "./CaptureSourceTypes"
 
 export interface GetUserMediaCaptureSourceOptions {
     readonly context: AudioContext
@@ -18,8 +18,6 @@ export class GetUserMediaCaptureSource implements CaptureSource {
     readonly #stream: MediaStream
     readonly #metadata: CaptureSourceMetadata
     readonly #outputNode: AudioNode
-    readonly #continuityNotifier = new Notifier<CaptureContinuityReport>()
-    readonly #errorNotifier = new Notifier<unknown>()
 
     private constructor(stream: MediaStream, metadata: CaptureSourceMetadata, outputNode: AudioNode) {
         this.#stream = stream
@@ -53,28 +51,18 @@ export class GetUserMediaCaptureSource implements CaptureSource {
         // context rate; the device-reported rate stays in metadata as diagnostic info only,
         // and stays undefined when the browser does not report one.
         const actualSampleRate = context.sampleRate
-        const deviceSampleRate = trackSettings.sampleRate
         const sourceNode = context.createMediaStreamSource(stream)
         const channelMap = options.channelMap ?? CaptureChannelMap.identity(actualChannels)
         CaptureChannelMap.validate(channelMap, actualChannels)
         const outputNode = CaptureChannelMap.isIdentity(channelMap) && channelMap.length === actualChannels
             ? sourceNode
-            : routeThroughMap(context, sourceNode, actualChannels, channelMap)
-        const metadata: CaptureSourceMetadata = {
-            kind: "getUserMedia",
-            label: track?.label ?? "default",
-            deviceId: trackSettings.deviceId,
-            deviceLabel: track?.label,
+            : CaptureChannelMap.route(context, sourceNode, actualChannels, channelMap)
+        const metadata = CaptureSourceMetadata.fromMediaStreamTrack(track, {
             requestedSampleRate: context.sampleRate,
             requestedChannels,
             actualSampleRate,
-            deviceSampleRate,
-            deviceChannels: actualChannels,
-            actualChannels: channelMap.length,
-            autoGainControl: trackSettings.autoGainControl,
-            echoCancellation: trackSettings.echoCancellation,
-            noiseSuppression: trackSettings.noiseSuppression
-        }
+            actualChannels: channelMap.length
+        })
         return new GetUserMediaCaptureSource(stream, metadata, outputNode)
     }
 
@@ -84,29 +72,5 @@ export class GetUserMediaCaptureSource implements CaptureSource {
 
     get mediaStream(): MediaStream {return this.#stream}
 
-    subscribeContinuity(observer: Observer<CaptureContinuityReport>): Subscription {
-        return this.#continuityNotifier.subscribe(observer)
-    }
-
-    subscribeErrors(observer: Observer<unknown>): Subscription {
-        return this.#errorNotifier.subscribe(observer)
-    }
-
     terminate(): void {this.#terminator.terminate()}
-}
-
-const routeThroughMap = (
-    context: AudioContext,
-    sourceNode: AudioNode,
-    sourceChannels: int,
-    channelMap: CaptureChannelMap
-): AudioNode => {
-    const splitter = context.createChannelSplitter(sourceChannels)
-    sourceNode.connect(splitter)
-    const outputMerger = context.createChannelMerger(channelMap.length)
-    for (let outputIndex = 0; outputIndex < channelMap.length; outputIndex++) {
-        const sourceIndex = channelMap[outputIndex]
-        splitter.connect(outputMerger, sourceIndex, outputIndex)
-    }
-    return outputMerger
 }

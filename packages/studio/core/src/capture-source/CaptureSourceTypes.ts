@@ -1,4 +1,4 @@
-import {int, isDefined, Observer, Subscription, Terminable} from "@opendaw/lib-std"
+import {int, isDefined, Optional, Terminable} from "@opendaw/lib-std"
 
 export type CaptureSourceKind = "getUserMedia" | "synthetic"
 
@@ -39,20 +39,9 @@ export interface CaptureSourceMetadata {
     readonly noiseSuppression?: boolean
 }
 
-export interface CaptureContinuityReport {
-    readonly droppedBlocks: int
-    readonly droppedFrames: int
-    readonly underruns: int
-    readonly errors: ReadonlyArray<string>
-}
-
 export interface CaptureSource extends Terminable {
     readonly metadata: CaptureSourceMetadata
     readonly outputNode: AudioNode
-
-    subscribeContinuity(observer: Observer<CaptureContinuityReport>): Subscription
-
-    subscribeErrors(observer: Observer<unknown>): Subscription
 }
 
 export interface CaptureSourceMismatch {
@@ -99,5 +88,41 @@ export namespace CaptureSourceMetadata {
             })
         }
         return reports
+    }
+
+    export interface TrackMetadataParams {
+        readonly requestedSampleRate: int
+        readonly requestedChannels: int
+        readonly actualSampleRate: int
+        readonly actualChannels: int
+    }
+
+    /**
+     * Derive `getUserMedia` capture metadata from a `MediaStreamTrack`. Shared by
+     * `GetUserMediaCaptureSource` and `CaptureAudio` so the device/label/sample-rate/auto-processing
+     * fields are read in exactly one place. The channel/sample-rate values that differ per caller
+     * are passed in explicitly. `deviceChannels` falls back to `actualChannels` when the track does
+     * not report a channel count.
+     */
+    export const fromMediaStreamTrack = (
+        track: Optional<MediaStreamTrack>,
+        params: TrackMetadataParams
+    ): CaptureSourceMetadata => {
+        const trackSettings = track?.getSettings() ?? {}
+        return {
+            kind: "getUserMedia",
+            label: track?.label ?? "default",
+            deviceId: trackSettings.deviceId,
+            deviceLabel: track?.label,
+            requestedSampleRate: params.requestedSampleRate,
+            requestedChannels: params.requestedChannels,
+            actualSampleRate: params.actualSampleRate,
+            deviceSampleRate: trackSettings.sampleRate,
+            deviceChannels: trackSettings.channelCount ?? params.actualChannels,
+            actualChannels: params.actualChannels,
+            autoGainControl: trackSettings.autoGainControl,
+            echoCancellation: trackSettings.echoCancellation,
+            noiseSuppression: trackSettings.noiseSuppression
+        }
     }
 }

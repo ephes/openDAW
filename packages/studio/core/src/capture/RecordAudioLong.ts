@@ -1,6 +1,6 @@
-import {isDefined, Nullable, Option, Terminable, Terminator, tryCatch, UUID} from "@opendaw/lib-std"
+import {isDefined, Option, Terminable, Terminator, tryCatch, UUID} from "@opendaw/lib-std"
 import {ppqn, TimeBase} from "@opendaw/lib-dsp"
-import {AudioFileBox, AudioRegionBox, TrackBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
+import {AudioFileBox, AudioRegionBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
 import {ColorCodes, SampleLoaderManager, TrackType} from "@opendaw/studio-adapters"
 import {Project} from "../project"
 import {LongRecordingHandle} from "../recording/LongRecordingService"
@@ -25,8 +25,7 @@ export namespace RecordAudioLong {
         const recordingSampleRate = handle.session.manifest.sampleRate
         let fileBox: Option<AudioFileBox> = Option.None
         let regionBox: Option<AudioRegionBox> = Option.None
-        let trackBox: Nullable<TrackBox> = null
-        let initialFrames: number = 0
+        let waveformOffset: number = 0
 
         const computeWaveformOffset = (): number => {
             const head = Math.max(0, handle.session.manifest.totalFrames / recordingSampleRate)
@@ -46,7 +45,6 @@ export namespace RecordAudioLong {
 
         const createTakeRegion = (position: ppqn, waveformOffset: number): AudioRegionBox => {
             const track = RecordTrack.findOrCreate(editing, capture.audioUnitBox, TrackType.Audio, null)
-            trackBox = track
             const collectionBox = ValueEventCollectionBox.create(boxGraph, UUID.generate())
             return AudioRegionBox.create(boxGraph, UUID.generate(), box => {
                 box.file.refer(fileBox.unwrap())
@@ -65,9 +63,8 @@ export namespace RecordAudioLong {
             const region = regionBox.unwrap()
             const file = fileBox.unwrap()
             if (!region.isAttached() || !file.isAttached()) {return}
-            const totalFrames = handle.session.manifest.totalFrames
-            const elapsed = Math.max(0, (totalFrames - initialFrames) / recordingSampleRate)
-            const fullDuration = totalFrames / recordingSampleRate
+            const fullDuration = handle.session.manifest.totalFrames / recordingSampleRate
+            const elapsed = Math.max(0, fullDuration - waveformOffset)
             editing.modify(() => {
                 region.duration.setValue(elapsed)
                 region.loopDuration.setValue(elapsed)
@@ -109,8 +106,7 @@ export namespace RecordAudioLong {
                 if (!isCountingIn && !isRecording) {return}
                 if (isCountingIn) {return}
                 if (fileBox.isEmpty()) {
-                    initialFrames = handle.session.manifest.totalFrames
-                    const waveformOffset = computeWaveformOffset()
+                    waveformOffset = computeWaveformOffset()
                     const startPosition = owner.getValue()
                     editing.modify(() => {
                         fileBox = Option.wrap(createFileBox())
@@ -127,7 +123,6 @@ export namespace RecordAudioLong {
         if (!isDefined(graphSampleRate)) {
             console.warn("[RecordAudioLong] missing graph sample rate; recording will still use the session's manifest rate")
         }
-        if (trackBox === null) {/* track is created lazily inside createTakeRegion */}
 
         return Terminable.create(() => {
             tryCatch(() => terminator.terminate())
