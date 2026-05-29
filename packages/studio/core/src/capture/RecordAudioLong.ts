@@ -1,4 +1,4 @@
-import {isDefined, Option, Terminable, Terminator, tryCatch, UUID} from "@opendaw/lib-std"
+import {isDefined, Option, RuntimeNotifier, Terminable, Terminator, tryCatch, UUID} from "@opendaw/lib-std"
 import {ppqn, TimeBase} from "@opendaw/lib-dsp"
 import {AudioFileBox, AudioRegionBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
 import {ColorCodes, SampleLoaderManager, TrackType} from "@opendaw/studio-adapters"
@@ -90,6 +90,25 @@ export namespace RecordAudioLong {
                     return
                 }
                 handle.stop().then(() => {
+                    if (handle.session.sessionState === "failed") {
+                        // A storage/backpressure failure can flip the session to "failed" mid-capture;
+                        // stop() then resolves without finalizing. Do NOT record it as a successful
+                        // user-created sample. Refresh the loader (it resolves to error for the
+                        // non-clean artifact) so the region surfaces as broken and the dashboard
+                        // "Recoverable Recordings" panel can triage it.
+                        console.warn("[RecordAudioLong] long recording failed during capture",
+                            handle.session.lastStorageError)
+                        applyProgress()
+                        sampleManager.invalidate(recordingUuid)
+                        editing.mark()
+                        RuntimeNotifier.info({
+                            headline: "Long Recording Failed",
+                            message: "Recording stopped because storage could not keep up or failed. "
+                                + "Audio captured before the failure may still be recoverable from the "
+                                + "Dashboard's Recoverable Recordings panel."
+                        })
+                        return
+                    }
                     applyProgress()
                     project.trackUserCreatedSample(recordingUuid)
                     sampleManager.invalidate(recordingUuid)
