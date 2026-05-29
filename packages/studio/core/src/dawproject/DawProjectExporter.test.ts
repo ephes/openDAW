@@ -33,6 +33,7 @@ describe("DawProjectExport", () => {
                     state: SampleLoaderState = {type: "progress", progress: 0.0}
                     meta: Option<any> = Option.None
                     invalidate(): void {throw new Error("Method not implemented.")}
+                    requestData(): void {}
                     subscribe(_observer: Observer<SampleLoaderState>): Subscription {
                         return Terminable.Empty
                     }

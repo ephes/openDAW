@@ -93,6 +93,7 @@ export class OfflineEngineRenderer {
                         subscription.terminate()
                     }
                 })
+                handler.requestData()
             }),
             fetchSoundfont: (uuid: UUID.Bytes): Promise<SoundFont2> => new Promise((resolve, reject) => {
                 const handler = source.soundfontManager.getOrCreate(uuid)

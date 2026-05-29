@@ -191,6 +191,7 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
                 resolve(loader.data.unwrap())
             }
         })
+        loader.requestData()
         return promise
     }
 

@@ -17,6 +17,7 @@ class SampleLoaderWorklet implements SampleLoader, Terminable {
     get state(): SampleLoaderState {return this.#state}
 
     subscribe(_observer: Observer<SampleLoaderState>): Subscription {return Terminable.Empty}
+    requestData(): void {}
     invalidate(): void {}
     terminate(): void {this.#data = Option.None}
 

@@ -47,6 +47,7 @@ export class AudioFileBoxAdapter implements BoxAdapter {
                     reject(new Error(state.reason))
                 }
             })
+            loader.requestData()
             return promise
         })
 

@@ -68,6 +68,7 @@ describe("GlobalSampleLoaderManager long-recording fallback", () => {
         const manager = new GlobalSampleLoaderManager(new StubSampleProvider(), {opfsProvider: () => opfs})
         const uuid = UUID.parse(RECORDING_UUID)
         const loader = manager.getOrCreate(uuid)
+        loader.requestData()
         const state = await waitForLoadedOrError(loader)
         expect(state.type).toBe("loaded")
         expect(loader.data.nonEmpty()).toBe(true)
@@ -79,18 +80,22 @@ describe("GlobalSampleLoaderManager long-recording fallback", () => {
         expect(manager.getOrCreate(uuid)).toBe(loader)
     })
 
-    it("exposes overview peaks immediately but defers audio materialization until a subscriber needs it", async () => {
+    it("exposes overview peaks immediately but defers audio materialization until requestData()", async () => {
         await seedLongRecording(opfs)
         const manager = new GlobalSampleLoaderManager(new StubSampleProvider(), {opfsProvider: () => opfs})
         const uuid = UUID.parse(RECORDING_UUID)
         const loader = manager.getOrCreate(uuid)
-        // Poll for peaks WITHOUT subscribing; subscribing would trigger materialization.
+        // Subscribing (as timeline adapters do for repaint) must NOT materialize the PCM.
+        const subscription = loader.subscribe(() => {})
         for (let attempt = 0; attempt < 50 && loader.peaks.isEmpty(); attempt++) {
             await new Promise(resolve => setTimeout(resolve, 0))
         }
         expect(loader.peaks.nonEmpty()).toBe(true)
         expect(loader.data.isEmpty()).toBe(true)
+        // Only an explicit data request (playback/export) materializes the full take.
+        loader.requestData()
         const state = await waitForLoadedOrError(loader)
+        subscription.terminate()
         expect(state.type).toBe("loaded")
         expect(loader.data.nonEmpty()).toBe(true)
     })
@@ -102,6 +107,7 @@ describe("GlobalSampleLoaderManager long-recording fallback", () => {
         const loader = manager.getOrCreate(uuid)
         const events: Array<SampleLoaderState> = []
         const subscription = loader.subscribe(state => events.push(state))
+        loader.requestData()
         const terminal = await waitForLoadedOrError(loader)
         subscription.terminate()
         expect(terminal.type).toBe("loaded")

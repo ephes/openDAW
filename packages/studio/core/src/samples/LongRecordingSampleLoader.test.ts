@@ -167,6 +167,7 @@ describe("LongRecordingSampleLoader", () => {
         const loader = await buildLoader(opfs)
         const events: Array<SampleLoaderState> = []
         const subscription = loader.subscribe(state => events.push(state))
+        loader.requestData()
         await new Promise(resolve => setTimeout(resolve, 50))
         const terminal = events.find(event => event.type === "loaded" || event.type === "error")
         expect(terminal).toBeDefined()

@@ -21,7 +21,8 @@ product-integration target. These notes explain what has already been implemente
 
 > **What shipped vs. what these docs originally described.** The production sample-loader fallback does
 > **not** swap loaders; it keeps the original `DefaultSampleLoader` and attaches overview peaks immediately
-> while deferring (lazy) the full `AudioData` materialization until playback needs it
+> while deferring (lazy) the full `AudioData` materialization until a consumer calls
+> `SampleLoader.requestData()` (the playback/export path); subscribing for repaint does not materialize
 > (`DefaultSampleLoader.setPeaksReady`). Production recording captures mono/stereo via `WrappingCaptureSource`
 > over the existing `recordGainNode`; the `CaptureChannelMap` routing is a library/harness capability and is
 > **not** wired into the production recorder (multichannel remains Phase 4, deferred).
