@@ -14,12 +14,16 @@ export namespace DawProject {
         fromUUID(uuid: UUID.Bytes): Resource
     }
 
-    const waitForLoaderTerminal = (loader: SampleLoader): Promise<void> =>
+    // Wait only while a loader is actively loading/materializing ("progress"); every other state is
+    // settled for export purposes. "loaded"/"error" are terminal; "record" (an in-progress recording
+    // backed by RecordingWorklet) and "idle" cannot be advanced by requestData(), so we must not block
+    // on them — the exporter's `.data` gating then simply skips them, preserving prior lenient behavior.
+    const waitForLoaderSettled = (loader: SampleLoader): Promise<void> =>
         new Promise(resolve => {
-            if (loader.data.nonEmpty() || loader.state.type === "error") {resolve(); return}
+            if (loader.state.type !== "progress") {resolve(); return}
             let subscription: Subscription
             subscription = loader.subscribe(state => {
-                if (state.type === "loaded" || state.type === "error") {
+                if (state.type !== "progress") {
                     queueMicrotask(() => subscription.terminate())
                     resolve()
                 }
@@ -87,7 +91,7 @@ export namespace DawProject {
             visitAudioFileBox: (audioFileBox: AudioFileBox): void => {audioFileBoxes.push(audioFileBox)}
         }))
         await Promise.all(audioFileBoxes.map(box =>
-            waitForLoaderTerminal(sampleManager.getOrCreate(box.address.uuid))))
+            waitForLoaderSettled(sampleManager.getOrCreate(box.address.uuid))))
         const projectSchema = DawProjectExporter.write(skeleton, sampleManager, {
             write: (path: string, buffer: ArrayBuffer): FileReferenceSchema => {
                 zip.file(path, buffer)
