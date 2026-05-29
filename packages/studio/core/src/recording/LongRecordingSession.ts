@@ -178,7 +178,11 @@ export class LongRecordingSession {
                 + `${this.#maxPendingBytes} byte limit; storage cannot keep up with capture`))
         }
         this.#writeQueue = this.#writeQueue.then(async () => {
-            if (this.#sessionState === "failed") {
+            // #backpressureTripped is set synchronously the moment the cap is exceeded, before
+            // fail()'s async manifest persist flips sessionState. Honoring it here stops already-queued
+            // callbacks immediately (rather than after the failed-manifest write) and avoids a queued
+            // callback persisting an "active" manifest concurrently with fail()'s "failed" persist.
+            if (this.#sessionState === "failed" || this.#backpressureTripped) {
                 this.#decrementPending(entry)
                 return
             }
