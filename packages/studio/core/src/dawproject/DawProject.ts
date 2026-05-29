@@ -1,7 +1,8 @@
-import {asDefined, isDefined, panic, RuntimeNotifier, UUID} from "@opendaw/lib-std"
+import {asDefined, isDefined, panic, RuntimeNotifier, Subscription, UUID} from "@opendaw/lib-std"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, MetaDataSchema, ProjectSchema} from "@opendaw/lib-dawproject"
-import {ProjectSkeleton, SampleLoaderManager} from "@opendaw/studio-adapters"
+import {ProjectSkeleton, SampleLoader, SampleLoaderManager} from "@opendaw/studio-adapters"
+import {AudioFileBox, BoxVisitor} from "@opendaw/studio-boxes"
 import {DawProjectExporter} from "./DawProjectExporter"
 import {ExternalLib} from "../ExternalLib"
 
@@ -12,6 +13,19 @@ export namespace DawProject {
         fromPath(path: string): Resource
         fromUUID(uuid: UUID.Bytes): Resource
     }
+
+    const waitForLoaderTerminal = (loader: SampleLoader): Promise<void> =>
+        new Promise(resolve => {
+            if (loader.data.nonEmpty() || loader.state.type === "error") {resolve(); return}
+            let subscription: Subscription
+            subscription = loader.subscribe(state => {
+                if (state.type === "loaded" || state.type === "error") {
+                    queueMicrotask(() => subscription.terminate())
+                    resolve()
+                }
+            })
+            loader.requestData()
+        })
 
     export const decode = async (buffer: ArrayBuffer | Buffer<ArrayBuffer>): Promise<{
         metaData: MetaDataSchema,
@@ -63,6 +77,17 @@ export namespace DawProject {
             return Promise.reject(error)
         }
         const zip = new JSZip()
+        // The exporter reads each AudioFileBox loader's `data` synchronously. Long-recording loaders
+        // are lazy (peaks ready, PCM materialized only on demand), so materialize every referenced
+        // AudioFileBox here before the synchronous export runs; otherwise a never-played long recording
+        // would be omitted from the .dawproject. Errored/unloadable samples are left for the exporter's
+        // existing `.data` gating to skip (preserving prior lenient behavior).
+        const audioFileBoxes: Array<AudioFileBox> = []
+        skeleton.boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
+            visitAudioFileBox: (audioFileBox: AudioFileBox): void => {audioFileBoxes.push(audioFileBox)}
+        }))
+        await Promise.all(audioFileBoxes.map(box =>
+            waitForLoaderTerminal(sampleManager.getOrCreate(box.address.uuid))))
         const projectSchema = DawProjectExporter.write(skeleton, sampleManager, {
             write: (path: string, buffer: ArrayBuffer): FileReferenceSchema => {
                 zip.file(path, buffer)
