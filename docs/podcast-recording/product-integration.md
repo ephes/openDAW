@@ -241,8 +241,9 @@ overrides any earlier description in this file or the superseded spec/plan):
 The spec called these out and they remain follow-ups for the next slice:
 
 - **Timeline region badge** for non-clean long-recording regions. The dashboard panel handles the orphan
-  case; in-project regions that reference a non-clean recording still render their waveform but no badge is
-  rendered yet.
+  case; an in-project region that references a non-clean recording currently resolves its loader to
+  `state="error"` (the fallback refuses to attach peaks for non-clean artifacts), so it renders as a
+  broken/empty region rather than a waveform, and no explanatory badge is rendered yet.
 - **"Resume into project" action in the Dashboard panel.** Inspect + Discard ship in this slice. A "Resume"
   action that inserts a fresh `AudioFileBox` + `AudioRegionBox` against the open project is a small follow-up
   and is mentioned in the panel section of `product-integration-spec.md`.

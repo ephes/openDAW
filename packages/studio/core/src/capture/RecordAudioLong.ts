@@ -109,6 +109,23 @@ export namespace RecordAudioLong {
                         })
                         return
                     }
+                    const fullDuration = handle.session.manifest.totalFrames / recordingSampleRate
+                    if (fullDuration <= waveformOffset) {
+                        // The whole take falls within the count-in / output-latency lead-in, so there is
+                        // no audible region (it would clamp to zero duration). Discard it instead of
+                        // leaving a zero-duration region, mirroring RecordAudio's short-take handling.
+                        console.debug("[RecordAudioLong] discarding sub-offset take",
+                            {fullDuration, waveformOffset})
+                        sampleManager.remove(recordingUuid)
+                        regionBox.ifSome(region => {
+                            if (region.isAttached()) {editing.modify(() => region.delete(), false)}
+                        })
+                        fileBox.ifSome(file => {
+                            if (file.isAttached()) {editing.modify(() => file.delete(), false)}
+                        })
+                        editing.mark()
+                        return
+                    }
                     applyProgress()
                     project.trackUserCreatedSample(recordingUuid)
                     sampleManager.invalidate(recordingUuid)

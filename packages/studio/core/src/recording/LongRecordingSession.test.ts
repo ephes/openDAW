@@ -139,6 +139,19 @@ describe("LongRecordingSession", () => {
         expect(session.sessionState).toBe("failed")
     })
 
+    it("a backpressure failure cannot be finalized as a stopped recording by a racing stop()", async () => {
+        const session = makeSession({framesPerChunk: 1, numberOfChannels: 1, maxPendingBytes: 8})
+        await session.arm()
+        session.appendQuantum([channelOf(16, 0.5)])
+        // The failure flips state synchronously, so a stop() racing the cap breach is a no-op.
+        expect(session.sessionState).toBe("failed")
+        await session.stop()
+        expect(session.sessionState).toBe("failed")
+        await new Promise(resolve => setTimeout(resolve, 0))
+        const manifest = (await storage.readManifest()).unwrap()
+        expect(manifest.state).toBe("failed")
+    })
+
     it("does not append more chunks after stop", async () => {
         const session = makeSession({framesPerChunk: 4})
         await session.arm()
