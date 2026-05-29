@@ -52,10 +52,10 @@ A capture source is "the thing that produces audio." It exposes:
   channel count, plus echo-cancellation / noise-suppression / AGC flags, device label, and (where applicable)
   device id. Mismatches are surfaced through `CaptureSourceMetadata.mismatches()` so callers can warn the user
   about implicit resampling, channel clamping, or browser audio processing.
-- Continuity and error notifiers (`subscribeContinuity` / `subscribeErrors`) reserved for future drop / underrun
-  / native-error reporting. They are wired but never fire for `SyntheticCaptureSource` /
-  `GetUserMediaCaptureSource` today, because browser sources don't surface drop counters; Phase 4 (or a later
-  optional native path) would populate them.
+- (Originally a pair of continuity/error notifiers was reserved here for future drop / underrun /
+  native-error reporting. They never fired — browser sources don't surface drop counters — so they were
+  **removed** in the product-integration review. A future Phase 4 native path would reintroduce a
+  reporting channel when it actually has counters to emit.)
 
 `captureMetadataToLongRecordingSource(metadata)` (exported from
 `packages/studio/core/src/recording/LongRecordingService.ts`) returns the exact shape `LongRecordingSession`
@@ -156,8 +156,9 @@ Concrete recommendation:
 ## Error Handling
 
 `GetUserMediaCaptureSource.open` follows the project rule (no inline `try/catch`) by using `Promises.tryCatch`
-and re-throwing on failure so callers see a real rejection. Live-stream errors are surfaced through the
-`subscribeErrors` channel; continuity drift through `subscribeContinuity`.
+and re-throwing on failure so callers see a real rejection. (The original design also reserved
+`subscribeErrors` / `subscribeContinuity` channels for live-stream error and drift reporting; these never
+fired and were removed in the product-integration review.)
 
 ## Integration Into The Long-Recording Flow
 
