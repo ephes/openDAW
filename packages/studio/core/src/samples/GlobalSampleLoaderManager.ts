@@ -1,4 +1,6 @@
-import {ByteArrayInput, int, panic, Progress, SortedSet, Subscription, Terminable, UUID} from "@opendaw/lib-std"
+import {
+    ByteArrayInput, int, isDefined, Option, Optional, panic, Progress, SortedSet, Subscription, Terminable, UUID
+} from "@opendaw/lib-std"
 import {DefaultSampleLoader} from "./DefaultSampleLoader"
 import {SampleProvider} from "./SampleProvider"
 import {SampleLoader, SampleLoaderManager, SampleMetaData} from "@opendaw/studio-adapters"
@@ -81,6 +83,11 @@ export const materializeLongRecording = async (
     return audio
 }
 
+export interface LongRecordingClassification {
+    readonly manifest: LongRecordingManifest
+    readonly recovery: LongRecordingRecoveryReport
+}
+
 /**
  * Probe a long recording's manifest + chunks and classify recovery. Returns `Option.None` when
  * no manifest exists. Used by the manager fallback and `LongRecordingSampleLoader` to gate
@@ -88,13 +95,13 @@ export const materializeLongRecording = async (
  */
 export const classifyLongRecording = async (
     storage: LongRecordingStorage
-): Promise<{manifest: LongRecordingManifest, recovery: LongRecordingRecoveryReport} | undefined> => {
+): Promise<Option<LongRecordingClassification>> => {
     const manifestOption = await storage.readManifest()
-    if (manifestOption.isEmpty()) {return undefined}
+    if (manifestOption.isEmpty()) {return Option.None}
     const manifest = manifestOption.unwrap()
     const probes = await storage.listChunkProbes()
     const recovery = LongRecordingRecovery.classify(manifest, probes)
-    return {manifest, recovery}
+    return Option.wrap({manifest, recovery})
 }
 
 export class GlobalSampleLoaderManager implements SampleLoaderManager, SampleProvider {
@@ -103,7 +110,7 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
     readonly #refCounts: SortedSet<UUID.Bytes, RefCount>
     readonly #cache: SortedSet<UUID.Bytes, CachedSample>
     readonly #pending: SortedSet<UUID.Bytes, PendingLoad>
-    readonly #opfsProvider: (() => OpfsProtocol) | undefined
+    readonly #opfsProvider: Optional<() => OpfsProtocol>
 
     constructor(provider: SampleProvider, options?: GlobalSampleLoaderManagerOptions) {
         this.#provider = provider
@@ -225,14 +232,14 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
 
     async #tryAttachLongRecording(loader: DefaultSampleLoader): Promise<boolean> {
         const provider = this.#opfsProvider
-        if (provider === undefined) {return false}
+        if (!isDefined(provider)) {return false}
         const {uuid} = loader
         const opfs = provider()
         const recordingId = UUID.toString(uuid)
         const storage = LongRecordingStorage.create(recordingId, opfs)
         const classified = await classifyLongRecording(storage)
-        if (classified === undefined) {return false}
-        const {manifest, recovery} = classified
+        if (classified.isEmpty()) {return false}
+        const {manifest, recovery} = classified.unwrap()
         if (recovery.overall !== "clean" || manifest.state !== "stopped") {
             // Surface the non-clean classification explicitly. The dashboard "Recoverable
             // Recordings" panel exposes the same recovery info for inspection/discard. Refusing
@@ -252,7 +259,6 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
             samplesPerBin: reference.overviewSamplesPerBin,
             totalFrames: reference.totalFrames
         })
-        const audio = await materializeLongRecording(reference, access, recovery)
         const meta: SampleMetaData = {
             name: `Long Recording ${recordingId.slice(0, 8)}`,
             bpm: 120,
@@ -260,8 +266,10 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
             sample_rate: reference.sampleRate,
             origin: "recording"
         }
-        this.#cache.add({uuid, data: audio, peaks, meta})
-        loader.setLoaded(audio, peaks, meta)
+        // Lazy: expose overview peaks immediately and defer the (potentially multi-hour) PCM
+        // materialization until a subscriber actually needs it. Not cached, so concurrent loaders
+        // re-read the cheap overview rather than retaining a full take in memory.
+        loader.setPeaksReady(peaks, meta, () => materializeLongRecording(reference, access, recovery))
         return true
     }
 

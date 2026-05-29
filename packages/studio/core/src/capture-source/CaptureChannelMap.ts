@@ -60,4 +60,20 @@ export namespace CaptureChannelMap {
             destination.set(source)
         }
     }
+
+    export const route = (
+        context: BaseAudioContext,
+        sourceNode: AudioNode,
+        sourceChannels: int,
+        map: CaptureChannelMap
+    ): AudioNode => {
+        validate(map, sourceChannels)
+        const splitter = context.createChannelSplitter(sourceChannels)
+        sourceNode.connect(splitter)
+        const outputMerger = context.createChannelMerger(map.length)
+        for (let outputIndex = 0; outputIndex < map.length; outputIndex++) {
+            splitter.connect(outputMerger, map[outputIndex], outputIndex)
+        }
+        return outputMerger
+    }
 }

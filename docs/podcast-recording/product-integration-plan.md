@@ -1,5 +1,13 @@
 # Podcast Recording — Product-Integration Implementation Plan
 
+> ⚠️ **SUPERSEDED — historical task breakdown.** Kept for context. Several items were implemented
+> differently or descoped: the loader fallback is **no-swap + lazy** (`DefaultSampleLoader.setPeaksReady`),
+> not a `#loaders.replace` swap; the per-track toggle landed in `TrackHeaderMenu`, not a capture panel;
+> channel mapping, the mismatch chip, "Resume into project", and the timeline badge were **not** shipped;
+> the peaks adapter export is `LongRecordingPeaksAdapter.fromOverview` (not `fromBins`); the work landed as
+> a single commit rather than the per-task commits listed here. **See `product-integration.md` for the
+> shipped design.**
+
 Source spec: `docs/podcast-recording/product-integration-spec.md`. Foundation: phases 0–3 under
 `docs/podcast-recording/`.
 

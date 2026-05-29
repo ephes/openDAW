@@ -1,5 +1,13 @@
 # Podcast Recording — Product-Integration Spec (MVP)
 
+> ⚠️ **SUPERSEDED — historical design doc.** This spec describes an earlier design and is kept for
+> context only. It does **not** match what shipped. Notably it specifies a *swap*-based loader that
+> `#loaders.replace(...)` and `setError`s the previous loader; the implementation instead keeps the
+> original `DefaultSampleLoader` and uses a **no-swap, lazy** `setPeaksReady` fallback (overview peaks
+> immediately, `AudioData` materialized on demand). It also describes UI (channel mapping, mismatch
+> warnings, "Resume into project", timeline badge) that was descoped. **For the shipped design and the
+> authoritative verification commands, read `product-integration.md`.**
+
 Source plan: `plans/podcast-recording.md` (issue 245). Foundation: `docs/podcast-recording/baseline.md`,
 `phase-1-opfs.md`, `phase-2-media.md`, `phase-3-capture-source.md`.
 

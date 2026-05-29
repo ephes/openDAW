@@ -1,4 +1,4 @@
-import {assert, Float16, int, panic} from "@opendaw/lib-std"
+import {assert, Float16, int, Nullable, panic} from "@opendaw/lib-std"
 import {Peaks} from "@opendaw/lib-fusion"
 import {LongRecordingOverviewBin} from "./LongRecordingOverview"
 
@@ -55,7 +55,7 @@ class OverviewPeaks implements Peaks {
                 readonly numFrames: int,
                 readonly numChannels: int) {}
 
-    nearest(unitsPerPixel: number): Peaks.Stage | null {
+    nearest(unitsPerPixel: number): Nullable<Peaks.Stage> {
         if (this.stages.length === 0) {return null}
         const shift = Math.floor(Math.log(Math.abs(unitsPerPixel)) / Math.LN2)
         let index = this.stages.length

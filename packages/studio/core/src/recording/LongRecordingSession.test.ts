@@ -47,6 +47,7 @@ const makeSession = (overrides: Partial<{
     sampleRate: number
     numberOfChannels: number
     framesPerChunk: number
+    maxPendingBytes: number
     now: () => number
 }> = {}): LongRecordingSession => {
     let tick = 1000
@@ -55,6 +56,7 @@ const makeSession = (overrides: Partial<{
         sampleRate: overrides.sampleRate ?? 48000,
         numberOfChannels: overrides.numberOfChannels ?? 1,
         framesPerChunk: overrides.framesPerChunk ?? 4,
+        maxPendingBytes: overrides.maxPendingBytes,
         source: exampleSource(),
         now: overrides.now ?? (() => tick++)
     })
@@ -123,6 +125,18 @@ describe("LongRecordingSession", () => {
             {frames: 2, chunks: 1, bytes: 8},
             {frames: 4, chunks: 2, bytes: 16}
         ])
+    })
+
+    it("fails deterministically when the write backlog exceeds maxPendingBytes", async () => {
+        const session = makeSession({framesPerChunk: 1, numberOfChannels: 1, maxPendingBytes: 8})
+        await session.arm()
+        session.appendQuantum([channelOf(16, 0.5)])
+        expect(session.pendingBytes).toBeGreaterThan(8)
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(session.sessionState).toBe("failed")
+        expect(String(session.lastStorageError)).toContain("write backlog")
+        session.appendQuantum([channelOf(4, 0.5)])
+        expect(session.sessionState).toBe("failed")
     })
 
     it("does not append more chunks after stop", async () => {

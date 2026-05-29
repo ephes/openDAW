@@ -1,6 +1,6 @@
-import {Arrays, int, Notifier, Observer, Subscription, Terminator, tryCatch} from "@opendaw/lib-std"
+import {Arrays, int, Terminator, tryCatch} from "@opendaw/lib-std"
 import {CaptureChannelMap} from "./CaptureChannelMap"
-import {CaptureContinuityReport, CaptureSource, CaptureSourceMetadata} from "./CaptureSourceTypes"
+import {CaptureSource, CaptureSourceMetadata} from "./CaptureSourceTypes"
 
 export interface SyntheticCaptureSourceConfig {
     readonly context: BaseAudioContext
@@ -15,8 +15,6 @@ export class SyntheticCaptureSource implements CaptureSource {
     readonly #terminator = new Terminator()
     readonly #metadata: CaptureSourceMetadata
     readonly #outputNode: AudioNode
-    readonly #continuityNotifier = new Notifier<CaptureContinuityReport>()
-    readonly #errorNotifier = new Notifier<unknown>()
     readonly #oscillators: ReadonlyArray<OscillatorNode>
 
     constructor(config: SyntheticCaptureSourceConfig) {
@@ -41,7 +39,7 @@ export class SyntheticCaptureSource implements CaptureSource {
         this.#oscillators = oscillators
         const output: AudioNode = CaptureChannelMap.isIdentity(channelMap)
             ? sourceMerger
-            : routeThroughMap(context, sourceMerger, numberOfChannels, channelMap)
+            : CaptureChannelMap.route(context, sourceMerger, numberOfChannels, channelMap)
         this.#outputNode = output
         this.#metadata = {
             kind: "synthetic",
@@ -70,31 +68,7 @@ export class SyntheticCaptureSource implements CaptureSource {
 
     get outputNode(): AudioNode {return this.#outputNode}
 
-    subscribeContinuity(observer: Observer<CaptureContinuityReport>): Subscription {
-        return this.#continuityNotifier.subscribe(observer)
-    }
-
-    subscribeErrors(observer: Observer<unknown>): Subscription {
-        return this.#errorNotifier.subscribe(observer)
-    }
-
     terminate(): void {this.#terminator.terminate()}
-}
-
-const routeThroughMap = (
-    context: BaseAudioContext,
-    sourceMerger: AudioNode,
-    sourceChannels: int,
-    channelMap: CaptureChannelMap
-): AudioNode => {
-    const splitter = context.createChannelSplitter(sourceChannels)
-    sourceMerger.connect(splitter)
-    const outputMerger = context.createChannelMerger(channelMap.length)
-    for (let outputIndex = 0; outputIndex < channelMap.length; outputIndex++) {
-        const sourceIndex = channelMap[outputIndex]
-        splitter.connect(outputMerger, sourceIndex, outputIndex)
-    }
-    return outputMerger
 }
 
 export namespace SyntheticCaptureSource {
