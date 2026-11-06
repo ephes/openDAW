@@ -136,6 +136,7 @@ export class CloudBackupSoundfonts {
         this.#log("Uploading soundfonts catalog...")
         const jsonString = JSON.stringify(catalog, null, 2)
         const buffer = new TextEncoder().encode(jsonString).buffer
-        return this.#cloudHandler.upload(CloudBackupSoundfonts.RemoteCatalogPath, buffer)
+        await this.#cloudHandler.upload(CloudBackupSoundfonts.RemoteCatalogPath, buffer)
+        this.#soundfontDomains.cloud = catalog
     }
 }

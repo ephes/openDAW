@@ -1,4 +1,4 @@
-import {ByteArrayInput, EmptyExec, Lazy, Progress, tryCatch, UUID} from "@opendaw/lib-std"
+import {ByteArrayInput, Lazy, Progress, tryCatch, UUID} from "@opendaw/lib-std"
 import {Peaks, SamplePeaks} from "@opendaw/lib-fusion"
 import {Sample, SampleMetaData} from "@opendaw/studio-adapters"
 import {Workers} from "../Workers"
@@ -24,18 +24,30 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
 
     async save({uuid, audio, peaks, meta}: SampleStorage.NewSample): Promise<void> {
         const path = `${this.folder}/${UUID.toString(uuid)}`
-        const data = new Uint8Array(WavFile.encodeFloats({
-            frames: audio.frames.slice(),
-            numberOfFrames: audio.numberOfFrames,
-            numberOfChannels: audio.numberOfChannels,
-            sampleRate: audio.sampleRate
-        }))
-        console.debug(`save sample '${path}'`)
-        return Promise.all([
-            Workers.Opfs.write(`${path}/audio.wav`, data),
-            Workers.Opfs.write(`${path}/peaks.bin`, new Uint8Array(peaks)),
-            Workers.Opfs.write(`${path}/meta.json`, new TextEncoder().encode(JSON.stringify(meta)))
-        ]).then(EmptyExec)
+        await navigator.locks.request(`opendaw:storage:${this.folder}`, async () => {
+            const existing = await Workers.Opfs.list(this.folder)
+            if (existing.some(entry => entry.name === UUID.toString(uuid))) {
+                // Validate and preserve a complete content-addressed asset. An existing
+                // incomplete folder belongs to an earlier operation and needs repair.
+                await this.load(uuid)
+                return
+            }
+            const data = new Uint8Array(WavFile.encodeFloats({
+                frames: audio.frames.slice(),
+                numberOfFrames: audio.numberOfFrames,
+                numberOfChannels: audio.numberOfChannels,
+                sampleRate: audio.sampleRate
+            }))
+            SamplePeaks.from(new ByteArrayInput(peaks))
+            try {
+                await Workers.Opfs.write(`${path}/audio.wav`, data)
+                await Workers.Opfs.write(`${path}/peaks.bin`, new Uint8Array(peaks))
+                await Workers.Opfs.write(`${path}/meta.json`, new TextEncoder().encode(JSON.stringify(meta)))
+            } catch (error) {
+                await Workers.Opfs.delete(path)
+                throw error
+            }
+        })
     }
 
     async exists(uuid: UUID.Bytes): Promise<boolean> {

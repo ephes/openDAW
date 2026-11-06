@@ -130,6 +130,7 @@ export class CloudBackupPresets {
         this.#log("Uploading preset catalog...")
         const jsonString = JSON.stringify(catalog, null, 2)
         const buffer = new TextEncoder().encode(jsonString).buffer
-        return this.#cloudHandler.upload(CloudBackupPresets.RemoteCatalogPath, buffer)
+        await this.#cloudHandler.upload(CloudBackupPresets.RemoteCatalogPath, buffer)
+        this.#presetDomains.cloud = catalog
     }
 }
