@@ -59,11 +59,16 @@ export class SampleSelection implements ResourceSelection {
 
     async deleteSamples(...samples: ReadonlyArray<Sample>) {
         const dialog = RuntimeNotifier.progress({headline: "Checking Sample Usages"})
-        const [usedByProjects, usedByPresets, onlineList] = await Promise.all([
+        const usages = await Promise.all([
             ProjectStorage.listUsedAssets(AudioFileBox),
             PresetStorage.listUsedAssets(AudioFileBox),
             OpenSampleAPI.get().all()
-        ])
+        ]).finally(() => dialog.terminate()).catch(async error => {
+            await Dialogs.info({headline: "Cannot Delete Sample", message: String(error)})
+            return null
+        })
+        if (usages === null) {return}
+        const [usedByProjects, usedByPresets, onlineList] = usages
         this.#service.projectProfileService.getValue().ifSome(profile => {
             const projectName = profile.meta.name
             for (const box of this.#service.project.boxGraph.boxes()) {
@@ -75,7 +80,6 @@ export class SampleSelection implements ResourceSelection {
             }
         })
         const online = new Set<string>(onlineList.map(({uuid}) => uuid))
-        dialog.terminate()
         const deletable: Array<Sample> = []
         for (const sample of samples) {
             const isOnline = online.has(sample.uuid)

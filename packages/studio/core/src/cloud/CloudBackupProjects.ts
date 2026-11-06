@@ -36,7 +36,7 @@ export class CloudBackupProjects {
                        log: Procedure<string>) {
         log("Collecting all project domains...")
         const [local, cloud] = await Promise.all([
-            ProjectStorage.listProjects()
+            ProjectStorage.listProjects({strict: true})
                 .then(list => list.reduce((record: Projects, entry: ProjectStorage.ListEntry) => {
                     record[UUID.toString(entry.uuid)] = Objects.include(entry.meta, ...catalogFields)
                     return record

@@ -295,3 +295,9 @@ describe("OpfsWorker", () => {
         })
     })
 })
+
+it("propagates root access failures from list and delete", async () => {
+    vi.stubGlobal("navigator", {storage: {getDirectory: async () => {throw new DOMException("denied", "NotAllowedError")}}})
+    await expect(protocol.list("projects/v1")).rejects.toThrow("Storage not available")
+    await expect(protocol.delete("projects/v1/project")).rejects.toThrow("Storage not available")
+})

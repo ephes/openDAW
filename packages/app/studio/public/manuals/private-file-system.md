@@ -24,3 +24,12 @@ follow these steps:
 * Click Exceptions and enter the openDAW studio URL `https://opendaw.studio`
 * Select Allow and confirm the changes
 * Restart Firefox for the settings to take effect
+
+## Recovery and deletion
+
+Project discovery skips unreadable or malformed project folders with a console warning and retains them for recovery.
+Root storage access errors still fail discovery. Backup uses a strict scan and stops on any unreadable project, preserving its local files. A listing is not proof that an asset is unused: sample and soundfont deletion
+requires a complete scan of saved projects and presets. Repair or restore the source identified in the error before retrying deletion. Missing project metadata also blocks deletion. Preset usage scans inspect every .odp file, including files absent from the listing index.
+Missing or corrupt derived sample peaks are regenerated from the audio; audio, metadata and permission failures remain errors.
+Project, sample and soundfont deletion journals are deduplicated and updated under an origin-wide Web Lock per storage folder, including the file deletion.
+A failed deletion retains its journal entry for retry. Web Locks support is required for these operations.

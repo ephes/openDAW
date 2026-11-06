@@ -62,16 +62,21 @@ export namespace OpfsWorker {
                 await this.#acquireLock(path, async () => {
                     const segments = pathToSegments(path)
                     if (segments.length === 0) {return this.clear()}
-                    const {status} = await Promises.tryCatch(this.#resolveFolder(segments.slice(0, -1))
+                    const {status, error} = await Promises.tryCatch(this.#resolveFolder(segments.slice(0, -1))
                         .then(folder => folder.removeEntry(asDefined(segments.at(-1)), {recursive: true})))
-                    if (status === "rejected") {return}
+                    if (status === "rejected" && (!(error instanceof DOMException) || error.name !== "NotFoundError")) {
+                        throw error
+                    }
                 })
             }
 
             async list(path: string): Promise<ReadonlyArray<OpfsProtocol.Entry>> {
                 const segments = pathToSegments(path)
-                const {status, value: folder} = await Promises.tryCatch(this.#resolveFolder(segments))
-                if (status === "rejected") {return Arrays.empty()}
+                const {status, value: folder, error} = await Promises.tryCatch(this.#resolveFolder(segments))
+                if (status === "rejected") {
+                    if (error instanceof DOMException && error.name === "NotFoundError") {return Arrays.empty()}
+                    throw error
+                }
                 const result: Array<OpfsProtocol.Entry> = []
                 for await (const {name, kind} of folder.values()) {
                     result.push({name, kind})
