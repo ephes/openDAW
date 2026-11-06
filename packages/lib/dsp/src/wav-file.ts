@@ -9,18 +9,26 @@ export namespace WavFile {
 
     export const decodeFloats = (buffer: ArrayBuffer): AudioData => {
         const view = new DataView(buffer)
+        if (view.byteLength < 12) {return panic("Invalid WAV header")}
         if (view.getUint32(0, true) !== MAGIC_RIFF
             || view.getUint32(8, true) !== MAGIC_WAVE) {
             return panic("Not a RIFF/WAVE file")
         }
+        const riffEnd = 8 + view.getUint32(4, true)
+        if (riffEnd < 12 || riffEnd > view.byteLength) {return panic("Invalid WAV RIFF bounds")}
         let fmtOffset = -1
         let dataOffset = -1
         let dataSize = 0
-        for (let o = 12; o + 8 <= view.byteLength;) {
+        for (let o = 12; o < riffEnd;) {
+            if (o + 8 > riffEnd) {return panic("Invalid WAV chunk header")}
             const id = view.getUint32(o, true)
             const size = view.getUint32(o + 4, true)
-            const next = o + 8 + ((size + 1) & ~1)
-            if (id === MAGIC_FMT) fmtOffset = o + 8
+            const next = o + 8 + size + size % 2
+            if (next > riffEnd) {return panic("Invalid WAV chunk bounds")}
+            if (id === MAGIC_FMT) {
+                if (size < 16) {return panic("Invalid WAV fmt chunk")}
+                fmtOffset = o + 8
+            }
             if (id === MAGIC_DATA) {
                 dataOffset = o + 8
                 dataSize = size
@@ -36,16 +44,21 @@ export namespace WavFile {
         const blockAlign = view.getUint16(fmtOffset + 12, true)
         const bitsPerSample = view.getUint16(fmtOffset + 14, true)
         const bytesPerSample = bitsPerSample / 8
-        if (blockAlign !== numberOfChannels * bytesPerSample) {
-            return panic("Invalid block alignment")
+        if (numberOfChannels === 0 || sampleRate === 0 || blockAlign === 0
+            || blockAlign !== numberOfChannels * bytesPerSample || dataSize % blockAlign !== 0) {
+            return panic("Invalid WAV frame dimensions")
         }
-        const numberOfFrames = Math.floor(dataSize / blockAlign)
+        if (!((audioFormat === 3 && bitsPerSample === 32)
+            || (audioFormat === 1 && (bitsPerSample === 16 || bitsPerSample === 24)))) {
+            return panic(`Unsupported WAV format: ${audioFormat}, ${bitsPerSample}-bit`)
+        }
+        const numberOfFrames = dataSize / blockAlign
         const audioData = AudioData.create(sampleRate, numberOfFrames, numberOfChannels)
         if (audioFormat === 3 && bitsPerSample === 32) {
-            const interleaved = new Float32Array(buffer, dataOffset, numberOfFrames * numberOfChannels)
-            for (let i = 0, w = 0; i < numberOfFrames; i++) {
+            for (let i = 0, offset = dataOffset; i < numberOfFrames; i++) {
                 for (let c = 0; c < numberOfChannels; c++) {
-                    audioData.frames[c][i] = interleaved[w++]
+                    audioData.frames[c][i] = view.getFloat32(offset, true)
+                    offset += 4
                 }
             }
         } else if (audioFormat === 1 && bitsPerSample === 16) {
@@ -77,6 +90,22 @@ export namespace WavFile {
         getChannelData(channel: number): Float32Array
     }
 
+    const encodingSize = (frames: number, channels: number, sampleRate: number, maxLength: number,
+                          bytesPerSample: number): {numberOfFrames: number, size: number} => {
+        if (!Number.isSafeInteger(frames) || frames < 0 || !Number.isSafeInteger(maxLength) || maxLength < 0
+            || !Number.isInteger(channels) || channels <= 0 || channels * bytesPerSample > 0xffff
+            || !Number.isInteger(sampleRate) || sampleRate <= 0 || sampleRate > 0xffffffff
+            || sampleRate * channels * bytesPerSample > 0xffffffff) {
+            return panic("Invalid WAV export dimensions or frame limit")
+        }
+        const numberOfFrames = Math.min(frames, maxLength)
+        const dataSize = numberOfFrames * channels * bytesPerSample
+        if (!Number.isSafeInteger(dataSize) || 36 + dataSize > 0xffffffff) {
+            return panic("WAV export too large for classic RIFF")
+        }
+        return {numberOfFrames, size: 44 + dataSize}
+    }
+
     /**
      * Encode the audio as a 16-bit PCM WAV file. Float samples are clamped
      * to [-1, 1] and scaled to int16. Same input shape as `encodeFloats`
@@ -87,21 +116,13 @@ export namespace WavFile {
     export const encodeInts16 = (audio: AudioData | AudioBufferLike, maxLength: int = Number.MAX_SAFE_INTEGER): ArrayBuffer => {
         const bytesPerSample = 2
         const sampleRate = audio.sampleRate
-        let numberOfFrames: number
-        let numberOfChannels: number
-        let frames: ReadonlyArray<Float32Array>
-        if ("getChannelData" in audio) {
-            frames = Arrays.create(index => audio.getChannelData(index), audio.numberOfChannels)
-            numberOfFrames = audio.length
-            numberOfChannels = audio.numberOfChannels
-        } else {
-            frames = audio.frames
-            numberOfFrames = audio.numberOfFrames
-            numberOfChannels = audio.frames.length
-        }
-        numberOfFrames = Math.min(maxLength, numberOfFrames)
+        const numberOfChannels = "getChannelData" in audio ? audio.numberOfChannels : audio.frames.length
+        const {numberOfFrames, size} = encodingSize(
+            "getChannelData" in audio ? audio.length : audio.numberOfFrames,
+            numberOfChannels, sampleRate, maxLength, bytesPerSample)
+        const frames = "getChannelData" in audio
+            ? Arrays.create(index => audio.getChannelData(index), numberOfChannels) : audio.frames
         const dataSize = numberOfFrames * numberOfChannels * bytesPerSample
-        const size = 44 + dataSize
         const buf = new ArrayBuffer(size)
         const view = new DataView(buf)
         view.setUint32(0, MAGIC_RIFF, true)
@@ -132,20 +153,12 @@ export namespace WavFile {
     export const encodeFloats = (audio: AudioData | AudioBufferLike, maxLength: int = Number.MAX_SAFE_INTEGER): ArrayBuffer => {
         const bytesPerChannel = Float32Array.BYTES_PER_ELEMENT
         const sampleRate = audio.sampleRate
-        let numberOfFrames: number
-        let numberOfChannels: number
-        let frames: ReadonlyArray<Float32Array>
-        if ("getChannelData" in audio) {
-            frames = Arrays.create(index => audio.getChannelData(index), audio.numberOfChannels)
-            numberOfFrames = audio.length
-            numberOfChannels = audio.numberOfChannels
-        } else {
-            frames = audio.frames
-            numberOfFrames = audio.numberOfFrames
-            numberOfChannels = audio.frames.length
-        }
-        numberOfFrames = Math.min(maxLength, numberOfFrames)
-        const size = 44 + numberOfFrames * numberOfChannels * bytesPerChannel
+        const numberOfChannels = "getChannelData" in audio ? audio.numberOfChannels : audio.frames.length
+        const {numberOfFrames, size} = encodingSize(
+            "getChannelData" in audio ? audio.length : audio.numberOfFrames,
+            numberOfChannels, sampleRate, maxLength, bytesPerChannel)
+        const frames = "getChannelData" in audio
+            ? Arrays.create(index => audio.getChannelData(index), numberOfChannels) : audio.frames
         const buf = new ArrayBuffer(size)
         const view = new DataView(buf)
         view.setUint32(0, MAGIC_RIFF, true)

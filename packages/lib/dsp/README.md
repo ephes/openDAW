@@ -46,3 +46,12 @@ Digital Signal Processing utilities and audio processing functions for TypeScrip
 
 * **utils.ts** - General DSP utility functions
 * **global-console.d.ts** - Global console type definitions
+
+## WAV files
+
+`WavFile.decodeFloats` supports PCM16, PCM24 and IEEE float32 with little-endian samples.
+It validates RIFF/chunk bounds, padding, format dimensions and complete frames before allocating audio.
+Ancillary chunks may place float data on any valid two-byte RIFF boundary.
+Both encoders require nonnegative safe-integer frame counts/limits and valid WAV dimensions;
+classic RIFF exports exceeding the 32-bit container size fail before allocating the output or reading channels.
+RF64 is not supported.

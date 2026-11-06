@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## Unreleased
+
+- Validate WAV container/chunk bounds and complete supported audio frames before allocation.
+- Decode float WAV samples at valid two-byte chunk offsets in little-endian order.
+- Reject invalid frame limits and exports exceeding classic RIFF sizes before allocation.
+
 ## [0.0.84](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-dsp@0.0.83...@opendaw/lib-dsp@0.0.84) (2026-05-22)
 
 **Note:** Version bump only for package @opendaw/lib-dsp
