@@ -37,3 +37,7 @@ DOM utilities and web browser interaction helpers for TypeScript projects.
 * Animation frame utilities **frames.ts**
 * Stream processing for DOM operations **stream.ts**
 * Resource cleanup and termination handling **terminable.ts**
+
+
+`Files.save` closes a successful file-picker write. If truncate, write or close fails, it attempts to abort
+the owned writable before reporting/rejecting the original save error, even if abort also fails.

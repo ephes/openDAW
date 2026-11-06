@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## Unreleased
+
+- Raise the runtime Zod floor to patched 4.6.6 (lock selects 4.6.7) for GHSA-mrhx-c7xc-m3w5.
+
 ## [0.0.148](https://github.com/andremichelle/openDAW/compare/@opendaw/studio-core@0.0.147...@opendaw/studio-core@0.0.148) (2026-05-22)
 
 **Note:** Version bump only for package @opendaw/studio-core

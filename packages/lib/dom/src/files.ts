@@ -16,9 +16,16 @@ export namespace Files {
             }
             const writeFile = async (): Promise<void> => {
                 const writable = await handle.createWritable()
-                await writable.truncate(0)
-                await writable.write(arrayBuffer)
-                await writable.close()
+                try {
+                    await writable.truncate(0)
+                    await writable.write(arrayBuffer)
+                    await writable.close()
+                } catch (error) {
+                    try {await writable.abort()} catch {
+                        // Preserve the save failure if cleanup also rejects.
+                    }
+                    throw error
+                }
             }
             const {status: writeStatus, error: writeError} = await Promises.tryCatch(writeFile())
             if (writeStatus === "rejected") {

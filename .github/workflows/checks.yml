@@ -1,0 +1,32 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Unit tests, SDK types and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26.13.0
+          cache: npm
+      - name: Use declared npm version
+        run: npm install --global npm@11.4.2
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint

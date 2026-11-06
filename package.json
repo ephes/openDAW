@@ -16,6 +16,7 @@
     "dev:yjs-server": "turbo run dev --filter=yjs-server",
     "test": "turbo run test --concurrency=1",
     "lint": "turbo run lint",
+    "typecheck": "turbo run build --filter='./packages/lib/*' --filter='./packages/studio/*'",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "publish-sdk": "lerna publish"
   },

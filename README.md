@@ -204,6 +204,36 @@ Before starting, ensure you have the following installed on your system:
 * `npm run dev:studio` | `npm run dev:headless` (start dev server)
 * Navigate to https://localhost:8080 (port is important > cors sample api)
 
+### Contributor checks
+
+Use Node.js **>=23** (CI pins **26.13.0**) and the declared **npm 11.4.2**:
+
+```sh
+npm install --global npm@11.4.2
+npm ci
+npm test
+npm run typecheck
+npm run lint
+```
+
+`typecheck` builds SDK library/studio packages in dependency order, including generated types.
+It excludes the app bundlers, whose lab/test configurations require local HTTPS certificates.
+The secret-free **Checks / Unit tests, SDK types and lint** workflow runs these commands on every push
+and pull request. Configure that check as required in branch protection; adding the workflow alone does
+not change repository protection settings. A failed test or command fails the job. Deployment workflows
+remain manually dispatched and are separate from checks. Use synthetic fixtures without network services.
+
+The existing lint baseline is currently red: the shared rules reject established namespaces and `any`,
+and several package globs include generated declarations/tests outside their ESLint TypeScript project.
+New regression test files are subject to the same existing project-exclusion problem and add entries
+to that output. The gate reports these failures; it does not skip lint or mark it successful.
+
+Zod declarations require **>=4.6.6 within 4.x** for
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5); the lock selects **4.6.7**.
+The refresh preserves sample/soundfont schema shapes. It addresses that advisory only: the locked audit
+still reports other findings. Repeat `npm audit --package-lock-only --ignore-scripts` when updating dependencies.
+Unreleased package notes should be folded into the next generated release entry when releasing.
+
 ### Flow Charts
 
 <img width="6551" height="7057" alt="image" src="https://github.com/user-attachments/assets/266a9fb2-4b72-4752-bcf1-85fda2ff2cf1" />
