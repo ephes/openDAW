@@ -48,3 +48,15 @@ cause it to stop working as expected.
 ---
 
 Your projects are always under your control, and you can disconnect or delete them at any time.
+
+
+## Interrupted backups and restores
+
+Each successful catalog publication becomes the basis of the next phase, so approving cloud deletion retains entries
+uploaded earlier in the same backup. A failed catalog update does not replace that successful in-memory state.
+Project restore downloads and validates the project and metadata, and acquires a listed cover before writing locally.
+Metadata is published last, after the project and selected cover. A failed new restore removes only the directory it
+created; a complete local project created since the initial scan is preserved. Existing incomplete directories are
+retained for recovery and must be repaired or restored separately before retrying.
+When you approve deletion of a corrupt cloud project, its catalog entry is removed and that item is not downloaded.
+Ignore leaves the cloud files and catalog entry intact. Storage or catalog failures stop the operation visibly.

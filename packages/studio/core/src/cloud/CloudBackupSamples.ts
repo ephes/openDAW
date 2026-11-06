@@ -148,6 +148,7 @@ export class CloudBackupSamples {
         this.#log("Uploading sample catalog...")
         const jsonString = JSON.stringify(catalog, null, 2)
         const buffer = new TextEncoder().encode(jsonString).buffer
-        return this.#cloudHandler.upload(CloudBackupSamples.RemoteCatalogPath, buffer)
+        await this.#cloudHandler.upload(CloudBackupSamples.RemoteCatalogPath, buffer)
+        this.#sampleDomains.cloud = catalog
     }
 }

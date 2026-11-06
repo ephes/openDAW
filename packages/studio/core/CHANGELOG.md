@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Carry successful cloud catalogs across backup phases; restore complete project sets with metadata last; preserve existing samples and serialize sample publication; finish approved corrupt-cloud-project deletion without falling through to restore.
+
 - Serialize project, sample and soundfont deletion journals across tabs; isolate corrupt project listings; regenerate missing sample peaks; block asset deletion when project or preset usage cannot be checked.
 
 ## [0.0.148](https://github.com/andremichelle/openDAW/compare/@opendaw/studio-core@0.0.147...@opendaw/studio-core@0.0.148) (2026-05-22)
