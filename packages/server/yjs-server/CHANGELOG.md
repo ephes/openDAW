@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## Unreleased
+
+- Debounce optional callbacks per document and cancel pending callbacks on destruction.
+- Apply one browser Origin policy before both Yjs and signaling upgrades.
+- Bound signaling payloads, topic identities and per-peer subscriptions; retire empty signaling rooms immediately.
+- Disconnect slow signaling and Yjs peers before exceeding the outbound byte ceiling.
+- Replace the placeholder test command with synthetic Node transport regressions.
+
 ## 1.0.36 (2026-05-11)
 
 **Note:** Version bump only for package yjs-server
