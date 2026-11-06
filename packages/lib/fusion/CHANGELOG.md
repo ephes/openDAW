@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## Unreleased
+
+- Store only the supplied OPFS typed-array view, complete short transfers, and reject incomplete transfers.
+- Preserve operational OPFS errors while retaining missing-entry and empty-file semantics.
+
 ## [0.0.94](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-fusion@0.0.93...@opendaw/lib-fusion@0.0.94) (2026-05-22)
 
 **Note:** Version bump only for package @opendaw/lib-fusion
