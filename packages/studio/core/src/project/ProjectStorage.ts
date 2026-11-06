@@ -1,10 +1,11 @@
-import {Class, Option, Progress, safeExecute, tryCatch, UUID} from "@opendaw/lib-std"
+import {Class, Option, Progress, safeExecute, UUID} from "@opendaw/lib-std"
 import {AudioFileBox, SoundfontFileBox} from "@opendaw/studio-boxes"
 import {ProjectSkeleton} from "@opendaw/studio-adapters"
 import {Promises} from "@opendaw/lib-runtime"
 import {ProjectMeta} from "./ProjectMeta"
 import {Workers} from "../Workers"
 import {ProjectPaths} from "./ProjectPaths"
+import {deleteWithJournal} from "../deletionJournal"
 
 export namespace ProjectStorage {
     export type ListEntry = {
@@ -16,24 +17,33 @@ export namespace ProjectStorage {
 
     export type List = ReadonlyArray<ListEntry>
 
-    export const listProjects = async ({includeCover, includeProject, progress}: {
+    export const listProjects = async ({includeCover, includeProject, progress, strict = false}: {
+        strict?: boolean
         includeCover?: boolean
         includeProject?: boolean
         progress?: Progress.Handler
     } = {}): Promise<List> => {
-        return Workers.Opfs.list(ProjectPaths.Folder)
-            .then(files => Promise.all(files.filter(file => file.kind === "directory")
-                .map(async ({name}, index, {length}) => {
-                    safeExecute(progress, (index + 1) / length)
+        const files = await Workers.Opfs.list(ProjectPaths.Folder)
+        const entries = await Promise.all(files.filter(file => file.kind === "directory")
+            .map(async ({name}, index, {length}): Promise<ListEntry | null> => {
+                safeExecute(progress, (index + 1) / length)
+                try {
                     const uuid = UUID.parse(name)
-                    const array = await Workers.Opfs.read(ProjectPaths.projectMeta(uuid))
-                    return ({
-                        uuid,
-                        meta: JSON.parse(new TextDecoder().decode(array)) as ProjectMeta,
+                    const meta = JSON.parse(new TextDecoder().decode(
+                        await Workers.Opfs.read(ProjectPaths.projectMeta(uuid)))) as ProjectMeta
+                    if (typeof meta?.name !== "string") {throw new Error("Invalid project metadata")}
+                    return {
+                        uuid, meta,
                         cover: includeCover ? (await loadCover(uuid)).unwrapOrUndefined() : undefined,
                         project: includeProject ? await loadProject(uuid) : undefined
-                    } satisfies ListEntry)
-                })))
+                    }
+                } catch (cause) {
+                    if (strict) {throw new Error(`Cannot scan project '${name.slice(0, 80)}'; repair or restore it before backup.`, {cause})}
+                    console.warn(`Skipping unreadable project directory '${name.slice(0, 80)}'; retained for recovery.`)
+                    return null
+                }
+            }))
+        return entries.filter((entry): entry is ListEntry => entry !== null)
     }
 
     export const loadProject = async (uuid: UUID.Bytes): Promise<ArrayBuffer> => {
@@ -58,18 +68,18 @@ export namespace ProjectStorage {
             bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
         const files = await Workers.Opfs.list(ProjectPaths.Folder)
         for (const {name: folder} of files.filter(file => file.kind === "directory")) {
-            const uuid = UUID.parse(folder)
-            const projectBytes = await Promises.tryCatch(Workers.Opfs.read(ProjectPaths.projectFile(uuid)))
-            if (projectBytes.status === "rejected") {continue}
-            const metaBytes = await Promises.tryCatch(Workers.Opfs.read(ProjectPaths.projectMeta(uuid)))
-            const projectName = metaBytes.status === "rejected" ? folder
-                : (JSON.parse(new TextDecoder().decode(metaBytes.value)) as ProjectMeta).name
-            const decoded = tryCatch(() => ProjectSkeleton.decode(exactBuffer(projectBytes.value)))
-            if (decoded.status === "failure") {
-                console.warn(`listUsedAssets: failed to decode project '${projectName}'`, decoded.error)
-                continue
+            let projectName = folder
+            let decoded: ProjectSkeleton
+            try {
+                const uuid = UUID.parse(folder)
+                const projectBytes = await Workers.Opfs.read(ProjectPaths.projectFile(uuid))
+                const metaBytes = await Workers.Opfs.read(ProjectPaths.projectMeta(uuid))
+                projectName = (JSON.parse(new TextDecoder().decode(metaBytes)) as ProjectMeta).name
+                decoded = ProjectSkeleton.decode(exactBuffer(projectBytes))
+            } catch (cause) {
+                throw new Error(`Cannot check asset usage: repair or restore project '${folder.slice(0, 80)}' before deleting assets.`, {cause})
             }
-            for (const box of decoded.value.boxGraph.boxes()) {
+            for (const box of decoded.boxGraph.boxes()) {
                 if (!(box instanceof type)) {continue}
                 const key = UUID.toString(box.address.uuid)
                 const list = result.get(key) ?? []
@@ -81,11 +91,7 @@ export namespace ProjectStorage {
     }
 
     export const deleteProject = async (uuid: UUID.Bytes) => {
-        const array = await loadTrashedIds()
-        array.push(UUID.toString(uuid))
-        const trash = new TextEncoder().encode(JSON.stringify(array))
-        await Workers.Opfs.write(`${ProjectPaths.Folder}/trash.json`, trash)
-        await Workers.Opfs.delete(ProjectPaths.projectFolder(uuid))
+        await deleteWithJournal(ProjectPaths.Folder, uuid, ProjectPaths.projectFolder(uuid))
     }
 
     export const loadTrashedIds = async (): Promise<Array<UUID.String>> => {

@@ -8,6 +8,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 - Store only the supplied OPFS typed-array view, complete short transfers, and reject incomplete transfers.
 - Preserve operational OPFS errors while retaining missing-entry and empty-file semantics.
+- Propagate OPFS listing and deletion access failures while retaining missing-path handling.
 
 ## [0.0.94](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-fusion@0.0.93...@opendaw/lib-fusion@0.0.94) (2026-05-22)
 

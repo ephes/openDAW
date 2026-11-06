@@ -60,7 +60,10 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
             bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
         const [audioBytes, peaksBytes, metaBytes] = await Promise.all([
             Workers.Opfs.read(`${path}/audio.wav`),
-            Workers.Opfs.read(`${path}/peaks.bin`),
+            Workers.Opfs.read(`${path}/peaks.bin`).catch(error => {
+                if (error instanceof DOMException && error.name === "NotFoundError") {return new Uint8Array(0)}
+                throw error
+            }),
             Workers.Opfs.read(`${path}/meta.json`)
         ])
         const decoded = WavFile.decodeFloats(exactBuffer(audioBytes))

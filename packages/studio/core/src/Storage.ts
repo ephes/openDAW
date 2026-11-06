@@ -1,6 +1,7 @@
 import {UUID} from "@opendaw/lib-std"
 import {Workers} from "./Workers"
 import {Promises} from "@opendaw/lib-runtime"
+import {deleteWithJournal} from "./deletionJournal"
 
 export abstract class Storage<ITEM extends { uuid: UUID.String } & META, META, NEW, PARTS> {
     protected constructor(readonly folder: string) {}
@@ -11,10 +12,7 @@ export abstract class Storage<ITEM extends { uuid: UUID.String } & META, META, N
     async deleteItem(uuid: UUID.Bytes): Promise<void> {
         const path = `${this.folder}/${UUID.toString(uuid)}`
         console.debug(`deleteItem '${path}'`)
-        const uuids = await this.loadTrashedIds()
-        uuids.push(UUID.toString(uuid))
-        await this.saveTrashedIds(uuids)
-        await Workers.Opfs.delete(path)
+        await deleteWithJournal(this.folder, uuid, path)
     }
 
     async loadTrashedIds(): Promise<Array<UUID.String>> {
