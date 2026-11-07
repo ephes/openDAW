@@ -7,6 +7,8 @@ import {requireInferenceConfig} from "./InferenceConfig"
 export interface FetchOptions {
     readonly progress?: Procedure<unitValue>
     readonly signal?: AbortSignal
+    readonly maxBytes?: number
+    readonly timeoutMs?: number
 }
 
 interface ModelMeta {
@@ -15,6 +17,10 @@ interface ModelMeta {
     readonly version: string
     readonly downloadedAt: number
 }
+
+export const MAX_MODEL_BYTES = 512 * 1024 * 1024
+export const MODEL_TIMEOUT_MS = 60 * 60 * 1000
+export const MAX_MODEL_TIMEOUT_MS = 24 * 60 * 60 * 1000
 
 const ROOT = "inference/models"
 const MODEL_FILE = "model.onnx"
@@ -29,8 +35,10 @@ export namespace ModelStore {
     export const ensure = async (taskKey: string,
                                  model: ModelDescriptor,
                                  options?: FetchOptions): Promise<Uint8Array> => {
+        options?.signal?.throwIfAborted()
         const {opfs} = requireInferenceConfig()
         const cached = await readCached(opfs, taskKey, model)
+        options?.signal?.throwIfAborted()
         if (cached.nonEmpty()) {
             options?.progress?.(1.0)
             return cached.unwrap()
@@ -71,7 +79,10 @@ export namespace ModelStore {
         const meta = await readMeta(opfs, taskKey, model.version)
         if (meta.isEmpty() || meta.unwrap().sha256 !== model.sha256) {return Option.None}
         const result = await Promises.tryCatch(opfs.read(modelPath(taskKey, model.version)))
-        return result.status === "resolved" ? Option.wrap(result.value) : Option.None
+        if (result.status !== "resolved" || result.value.byteLength > MAX_MODEL_BYTES ||
+            result.value.byteLength !== meta.unwrap().bytes || meta.unwrap().version !== model.version) {return Option.None}
+        const bytes = result.value
+        return await sha256Hex(bytes) === model.sha256 ? Option.wrap(bytes) : Option.None
     }
 
     const readMeta = async (opfs: OpfsProtocol,
@@ -81,38 +92,72 @@ export namespace ModelStore {
         if (result.status === "rejected") {return Option.None}
         const {status, value} = tryCatch(() =>
             JSON.parse(new TextDecoder().decode(result.value)) as ModelMeta)
-        return status === "success" ? Option.wrap(value) : Option.None
+        return status === "success" && value !== null && typeof value === "object" &&
+            typeof value.sha256 === "string" && /^[a-f0-9]{64}$/i.test(value.sha256) &&
+            Number.isSafeInteger(value.bytes) && value.bytes >= 0 && value.bytes <= MAX_MODEL_BYTES &&
+            typeof value.version === "string" && value.version.length > 0 &&
+            Number.isFinite(value.downloadedAt) && value.downloadedAt >= 0 ? Option.wrap(value) : Option.None
     }
 
     const download = async (model: ModelDescriptor, options?: FetchOptions): Promise<Uint8Array> => {
-        // Cross-origin fetches under COOP+COEP need explicit cors/no-credentials
-        // mode so the response is treated as a permitted resource.
-        const response = await fetch(model.url, {
-            signal: options?.signal,
-            mode: "cors",
-            credentials: "omit"
-        })
-        if (!response.ok) {
-            return panic(`Model fetch failed: ${response.status} ${response.statusText} (${model.url})`)
+        const maxBytes = Math.min(options?.maxBytes ?? MAX_MODEL_BYTES, MAX_MODEL_BYTES)
+        const timeoutMs = Math.min(options?.timeoutMs ?? requireInferenceConfig().modelDownloadTimeoutMs ?? MODEL_TIMEOUT_MS, MAX_MODEL_TIMEOUT_MS)
+        if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+            throw new Error("Invalid model transfer limits")
         }
-        const total = parseInt(response.headers.get("Content-Length") ?? `${model.bytes}`)
-        const reader = asDefined(response.body, "Empty response body").getReader()
-        const chunks: Array<Uint8Array> = []
-        let loaded = 0
-        for (;;) {
-            const {done, value} = await reader.read()
-            if (done) {break}
-            chunks.push(value)
-            loaded += value.length
-            options?.progress?.(total > 0 ? Math.min(loaded / total, 1.0) : 0.5)
+        const deadline = new AbortController()
+        const signal = options?.signal ? AbortSignal.any([deadline.signal, options.signal]) : deadline.signal
+        signal.throwIfAborted()
+        const timer = setTimeout(() => deadline.abort(new Error("Model download timed out")), timeoutMs)
+        let rejectAbort!: (reason: unknown) => void
+        const aborted = new Promise<never>((_resolve, reject) => {rejectAbort = reject})
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+        let readerCancelled = false
+        const cancelReader = () => {
+            if (reader && !readerCancelled) {
+                readerCancelled = true
+                void reader.cancel(signal.reason).catch(() => {})
+            }
         }
-        const result = new Uint8Array(loaded)
-        let offset = 0
-        for (const chunk of chunks) {
-            result.set(chunk, offset)
-            offset += chunk.length
+        const onAbort = () => {rejectAbort(signal.reason); cancelReader()}
+        signal.addEventListener("abort", onAbort, {once: true})
+        let completed = false
+        const chunks: Uint8Array[] = []
+        try {
+            const response = await Promise.race([fetch(model.url, {signal, mode: "cors", credentials: "omit"}), aborted])
+            if (!response.ok) {
+                const url = new URL(model.url, typeof location === "undefined" ? "https://local.invalid/" : location.href)
+                const source = `${url.origin}${url.pathname}`.slice(0, 300)
+                throw new Error(`Model fetch failed: ${response.status} ${response.statusText.slice(0, 80)} (${source})`)
+            }
+            const declared = Number(response.headers.get("Content-Length"))
+            reader = asDefined(response.body, "Empty response body").getReader()
+            if (Number.isFinite(declared) && declared > maxBytes) {throw new Error("Model download byte limit exceeded")}
+            const total = declared > 0 ? declared : model.bytes
+            let loaded = 0
+            for (;;) {
+                const {done, value} = await reader.read()
+                signal.throwIfAborted()
+                if (done) {break}
+                if (value.byteLength > maxBytes - loaded) {throw new Error("Model download byte limit exceeded")}
+                loaded += value.byteLength
+                chunks.push(value)
+                options?.progress?.(Number.isFinite(total) && total > 0 ? Math.min(loaded / total, 1) : 0.5)
+            }
+            const result = new Uint8Array(loaded)
+            let offset = 0
+            for (const chunk of chunks) {result.set(chunk, offset); offset += chunk.byteLength}
+            completed = true
+            return result
+        } finally {
+            clearTimeout(timer)
+            signal.removeEventListener("abort", onAbort)
+            chunks.length = 0
+            if (reader) {
+                if (!completed) {cancelReader()}
+                reader.releaseLock()
+            }
         }
-        return result
     }
 
     const sha256Hex = async (bytes: Uint8Array): Promise<string> => {

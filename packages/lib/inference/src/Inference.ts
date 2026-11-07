@@ -73,7 +73,7 @@ const NO_PROGRESS: Procedure<unitValue> = () => {}
 
 export namespace Inference {
     export const install = (config: InstallOptions): void => {
-        installInferenceConfig({opfs: config.opfs})
+        installInferenceConfig({opfs: config.opfs, modelDownloadTimeoutMs: config.modelDownloadTimeoutMs})
         host.match({
             none: () => {},
             some: existing => {existing.shutdown().catch(() => {})}
