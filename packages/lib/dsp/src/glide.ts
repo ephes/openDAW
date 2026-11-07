@@ -29,7 +29,10 @@ export class Glide {
 
     glideTo(targetFrequency: number, glideDuration: ppqn): void {
         if (glideDuration === 0.0) {
-            this.#beginFrequency = targetFrequency
+            this.#beginFrequency = this.#currentFrequency = targetFrequency
+            this.#targetFrequency = NaN
+            this.#glidePosition = 0.0
+            this.#glideDuration = 0.0
             return
         }
         this.#beginFrequency = this.#currentFrequency
@@ -48,7 +51,7 @@ export class Glide {
                 this.#glidePosition += ppqnPerSample / this.#glideDuration
                 if (this.#glidePosition >= 1.0) {
                     this.#glidePosition = 1.0
-                    this.#beginFrequency = this.#targetFrequency
+                    this.#beginFrequency = this.#currentFrequency = this.#targetFrequency
                     this.#targetFrequency = NaN
                     for (let j = i; j < toIndex; j++) {freqBuffer[j] *= this.#beginFrequency}
                     break

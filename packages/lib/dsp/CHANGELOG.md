@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fix ramp cancellation, glide endpoint state and ADSR retrigger rates; cover partial blocks, zero sustain and force-stop phase.
+
 - Reject truncated WAV fmt/data chunks and invalid channel geometry before allocating decoded audio, retaining complete frames and readable audio before truncated ancillary trailers.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
