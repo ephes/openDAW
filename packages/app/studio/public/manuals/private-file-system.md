@@ -33,3 +33,8 @@ requires a complete scan of saved projects and presets. Repair or restore the so
 Missing or corrupt derived sample peaks are regenerated from the audio; audio, metadata and permission failures remain errors.
 Project, sample and soundfont deletion journals are deduplicated and updated under an origin-wide Web Lock per storage folder, including the file deletion.
 A failed deletion retains its journal entry for retry. Web Locks support is required for these operations.
+
+
+Sample saves use the same per-folder Web Lock as deletion. Required audio and peaks are written before listing metadata.
+Concurrent saves of the same content UUID preserve the first complete sample instead of overwriting its binary files.
+A failed new save removes only its owned incomplete directory; pre-existing incomplete samples are retained for recovery.

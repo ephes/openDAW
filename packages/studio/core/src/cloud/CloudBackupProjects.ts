@@ -14,6 +14,7 @@ import {
 } from "@opendaw/lib-std"
 import {network, Promises} from "@opendaw/lib-runtime"
 import {ProjectMeta} from "../project/ProjectMeta"
+import {ProjectSkeleton} from "@opendaw/studio-adapters"
 import {ProjectStorage} from "../project/ProjectStorage"
 import {CloudHandler} from "./CloudHandler"
 import {Workers} from "../Workers"
@@ -174,9 +175,11 @@ export class CloudBackupProjects {
                     })
                     if (approvedDeletion) {
                         await this.#cloudHandler.delete(path)
-                    } else {
-                        return uuidAsString
+                        const catalog = {...this.#projectDomains.cloud}
+                        delete catalog[UUID.asString(uuidAsString)]
+                        await this.#uploadCatalog(catalog)
                     }
+                    return uuidAsString
                 }
                 const projectPath = `${path}/project.od`
                 const metaPath = `${path}/meta.json`
@@ -185,14 +188,35 @@ export class CloudBackupProjects {
                     this.#cloudHandler.download(projectPath), network.defaultRetry)
                 const metaArrayBuffer = await Promises.guardedRetry(() =>
                     this.#cloudHandler.download(metaPath), network.defaultRetry)
-                await Workers.Opfs.write(ProjectPaths.projectFile(uuid), new Uint8Array(projectArrayBuffer))
-                await Workers.Opfs.write(ProjectPaths.projectMeta(uuid), new Uint8Array(metaArrayBuffer))
-                const hasCover = files.some(file => file.endsWith("image.bin"))
-                if (hasCover) {
-                    const arrayBuffer = await Promises.guardedRetry(() =>
-                        this.#cloudHandler.download(coverPath), network.defaultRetry)
-                    await Workers.Opfs.write(ProjectPaths.projectCover(uuid), new Uint8Array(arrayBuffer))
-                }
+                // Acquire the entire selected set before publishing any local bytes.
+                ProjectSkeleton.decode(projectArrayBuffer)
+                const restoredMeta = JSON.parse(new TextDecoder().decode(metaArrayBuffer)) as ProjectMeta
+                if (typeof restoredMeta?.name !== "string") {throw new Error("Invalid restored project metadata")}
+                const hasCover = files.includes("image.bin")
+                const cover = hasCover ? await Promises.guardedRetry(() =>
+                    this.#cloudHandler.download(coverPath), network.defaultRetry) : undefined
+                await navigator.locks.request(`opendaw:storage:${ProjectPaths.Folder}`, async () => {
+                    const existing = await Workers.Opfs.list(ProjectPaths.Folder)
+                    if (existing.some(entry => entry.name === uuidAsString)) {
+                        // A project may have been created since the initial backup scan.
+                        // Never clean up or overwrite a directory this restore does not own.
+                        const meta = JSON.parse(new TextDecoder().decode(await Workers.Opfs.read(ProjectPaths.projectMeta(uuid))))
+                        if (typeof meta?.name !== "string") {throw new Error("Repair the existing local project before restoring")}
+                        ProjectSkeleton.decode(await ProjectStorage.loadProject(uuid))
+                        return
+                    }
+                    try {
+                        await Workers.Opfs.write(ProjectPaths.projectFile(uuid), new Uint8Array(projectArrayBuffer))
+                        if (cover !== undefined) {
+                            await Workers.Opfs.write(ProjectPaths.projectCover(uuid), new Uint8Array(cover))
+                        }
+                        // Metadata makes a project visible, so it is always written last.
+                        await Workers.Opfs.write(ProjectPaths.projectMeta(uuid), new Uint8Array(metaArrayBuffer))
+                    } catch (error) {
+                        await Workers.Opfs.delete(ProjectPaths.projectFolder(uuid))
+                        throw error
+                    }
+                })
                 return uuidAsString
             }))
         this.#log("Download projects complete.")
@@ -203,6 +227,7 @@ export class CloudBackupProjects {
         this.#log("Uploading project catalog...")
         const jsonString = JSON.stringify(catalog, null, 2)
         const buffer = new TextEncoder().encode(jsonString).buffer
-        return this.#cloudHandler.upload(CloudBackupProjects.RemoteCatalogPath, buffer)
+        await this.#cloudHandler.upload(CloudBackupProjects.RemoteCatalogPath, buffer)
+        this.#projectDomains.cloud = catalog
     }
 }
