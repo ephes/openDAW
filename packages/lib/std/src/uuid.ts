@@ -51,8 +51,8 @@ export namespace UUID {
 
     export const parse = (string: string): Uint8Array => {
         const cleanUuid = string.replace(/-/g, "").toLowerCase()
-        if (cleanUuid.length !== 32) {
-            return panic(`Invalid UUID format (${string})`)
+        if (!/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(string)) {
+            return panic("Invalid UUID format")
         }
         const bytes = new Uint8Array(length)
         for (let i = 0, j = 0; i < 32; i += 2, j++) {
