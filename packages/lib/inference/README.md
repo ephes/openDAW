@@ -94,3 +94,12 @@ are hashed directly without an additional full-model copy.
 
 Download limits are checked before transfer; invalid nonpositive/nonfinite limits
 fail then. Deadline settings greater than 24 hours are clamped to that ceiling.
+
+### Stem tensor contract
+
+Stem separation accepts finite float32 planar mono/stereo samples at 44.1 kHz, with
+an integral frame count. Empty audio returns four empty stems without session work.
+Chunk planner arguments must be nonnegative safe integers, with a positive window
+strictly larger than overlap. Outputs must be float32 arrays of exactly the declared
+window shape: `[1,4,channels,samples]` stacked, or four `[1,channels,samples]` tensors,
+in drums/bass/other/vocals order. Invalid tensors fail before slicing or stitching.

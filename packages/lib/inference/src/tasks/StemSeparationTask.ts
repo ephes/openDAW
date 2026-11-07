@@ -1,6 +1,6 @@
 import {asDefined, clampUnit, panic, unitValue} from "@opendaw/lib-std"
 import {defineTask, ModelDescriptor, TaskDefinition, TaskEnvironment} from "../Task"
-import {tensor, TensorMap} from "../Tensor"
+import {tensor, Tensor, TensorMap} from "../Tensor"
 
 export interface StemSeparationInput {
     /**
@@ -43,7 +43,9 @@ const overlapSamples = (sampleRate: number) => Math.round(HTDEMUCS_OVERLAP_SECON
 export const planChunks = (length: number,
                            windowSize: number,
                            overlap: number): {starts: ReadonlyArray<number>, padded: number} => {
-    if (windowSize <= overlap) {return panic("windowSize must exceed overlap")}
+    if (![length, windowSize, overlap].every(Number.isSafeInteger) || length < 0 || overlap < 0 || windowSize <= overlap) {
+        return panic("Invalid chunk planner arguments")
+    }
     const stride = windowSize - overlap
     if (length === 0) {return {starts: [], padded: 0}}
     const starts: Array<number> = []
@@ -134,15 +136,16 @@ const extractStems = (
     channels: number,
     window: number
 ): Record<StemName, Float32Array> => {
+    const describe = (value: Tensor): string =>
+        `${String(value.type).slice(0, 16)} [${value.dims.slice(0, 6).map(dim => String(dim).slice(0, 24)).join(",")}], ${value.data.length} elements`
     const expectedPerStem = channels * window
     if (outputNames.length === 1) {
         const t = asDefined(output[outputNames[0]], `Missing output: ${outputNames[0]}`)
-        const data = t.data as Float32Array
-        const stemAxis = t.dims[1]
-        if (stemAxis !== 4) {
-            return panic(`Cannot interpret single output of shape ${JSON.stringify(t.dims)}; expected stem axis of length 4 at position 1`)
-        }
-        const stride = data.length / 4
+        if (t.type !== "float32" || !(t.data instanceof Float32Array) || t.dims.length !== 4 ||
+            t.dims[0] !== 1 || t.dims[1] !== 4 || t.dims[2] !== channels || t.dims[3] !== window ||
+            t.data.length !== 4 * expectedPerStem) {return panic(`Invalid stacked stem output ${describe(t)}; expected float32 [1,4,${channels},${window}]`)}
+        const data = t.data
+        const stride = expectedPerStem
         return {
             drums:  data.slice(0 * stride, 1 * stride),
             bass:   data.slice(1 * stride, 2 * stride),
@@ -150,18 +153,15 @@ const extractStems = (
             vocals: data.slice(3 * stride, 4 * stride)
         }
     }
-    if (outputNames.length < 4) {
-        return panic(`Expected at least 4 outputs, got ${outputNames.length}: ${JSON.stringify(outputNames)}`)
-    }
+    if (outputNames.length !== 4) {return panic("Expected one stacked or four separate stem outputs")}
     const stems: Partial<Record<StemName, Float32Array>> = {}
     for (let i = 0; i < 4; i++) {
         const name = outputNames[i]
         const t = asDefined(output[name], `Missing output: ${name}`)
-        const data = t.data as Float32Array
-        if (data.length !== expectedPerStem) {
-            return panic(`Output "${name}" has ${data.length} samples, expected ${expectedPerStem}`)
-        }
-        stems[STEM_ORDER[i]] = data.slice()
+        if (t.type !== "float32" || !(t.data instanceof Float32Array) || t.dims.length !== 3 ||
+            t.dims[0] !== 1 || t.dims[1] !== channels || t.dims[2] !== window ||
+            t.data.length !== expectedPerStem) {return panic(`Invalid separate stem output ${name.slice(0, 64)}: ${describe(t)}; expected float32 [1,${channels},${window}]`)}
+        stems[STEM_ORDER[i]] = t.data.slice()
     }
     return stems as Record<StemName, Float32Array>
 }
@@ -173,6 +173,10 @@ const htdemucsRun = async (
     env.signal.ifSome(signal => signal.throwIfAborted())
     if (input.sampleRate !== HTDEMUCS_SAMPLE_RATE) {
         return panic(`htdemucs requires ${HTDEMUCS_SAMPLE_RATE} Hz; got ${input.sampleRate}`)
+    }
+    if (!(input.audio instanceof Float32Array) || (input.channels !== 1 && input.channels !== 2) ||
+        input.audio.length % input.channels !== 0 || !input.audio.every(Number.isFinite)) {
+        return panic("Invalid planar stem input")
     }
     if (env.inputNames.length === 0) {return panic("Model has no inputs")}
     if (env.outputNames.length === 0) {return panic("Model has no outputs")}
