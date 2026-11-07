@@ -81,3 +81,11 @@ continuity across partitions, analytic sine references (including varying freque
 behavior. LFO quarter-cycle tests pin all four shapes, reset and shape-switch phase.
 Tidal tests cover depth/slope/symmetry endpoints, integer-period wraps, bounded gain
 and continuity at the symmetric midpoint join with independent triangular reference values.
+
+TransientDetector tests use invented silence/bursts and require finite, strictly
+increasing markers within the source duration, invariant under sign inversion and
+duplicated channels. TimeBaseConverter tests use a piecewise-tempo map to distinguish
+position-aware duration conversion from absolute-position conversion, including
+live owners, preview immutability and sample-rate scaling. Fragmentor tests pin
+half-open grid intersections, negative/fractional windows, indexes and adjacent
+partition equivalence for positive finite step sizes.
