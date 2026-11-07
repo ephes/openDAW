@@ -96,3 +96,25 @@ describe("Schema IO implementation", () => {
         expect(counter.count).toBe(expected)
     })
 })
+
+it.each(["floats", "doubles"] as const)("enforces fixed %s shapes on read/write", kind => {
+    const build = Schema.createBuilder({samples: Schema[kind](2)})
+    for (const invalid of [new Float32Array(1), new Float32Array(3), new Float64Array(1), new Float64Array(3), [1, 2]]) {
+        const io = build()
+        Object.assign(io.object, {samples: invalid})
+        expect(() => io.write(ByteArrayOutput.create())).toThrow(/array/i)
+        expect(() => io.read(new ByteArrayInput(new ArrayBuffer(32)))).toThrow(/array/i)
+    }
+    const io = build()
+    Object.assign(io.object, {samples: kind === "floats" ? new Float64Array(2) : new Float32Array(2)})
+    expect(() => io.write(ByteArrayOutput.create())).toThrow(/array/i)
+    io.object.samples = kind === "floats" ? new Float32Array([1.25, -2]) : new Float64Array([1.25, -2])
+    const output = ByteArrayOutput.create(io.bytesTotal)
+    io.write(output)
+    expect(output.position).toBe(io.bytesTotal)
+    const target = build()
+    target.read(new ByteArrayInput(output.toArrayBuffer()))
+    expect(Array.from(target.object.samples)).toEqual([1.25, -2])
+    target.object.samples[1] = 5
+    expect(() => target.write(ByteArrayOutput.create())).not.toThrow()
+})

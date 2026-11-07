@@ -18,15 +18,19 @@ export namespace SyncStream {
         if (io.bytesTotal + 1 > buffer.byteLength) {return panic("Insufficient memory allocated.")}
         const array = new Uint8Array(buffer)
         const output = ByteArrayOutput.use(buffer, 1)
-        Atomics.store(array, 0, State.READ)
         return {
             tryWrite: () => {
-                if (Atomics.compareExchange(array, 0, State.READ, State.WRITING) === State.WRITING) {
-                    populate(io.object)
-                    output.position = 0
-                    io.write(output)
-                    Atomics.store(array, 0, State.WRITTEN)
-                    return true
+                if (Atomics.compareExchange(array, 0, State.READ, State.WRITING) === State.READ) {
+                    let written = false
+                    try {
+                        populate(io.object)
+                        output.position = 0
+                        io.write(output)
+                        written = true
+                        return true
+                    } finally {
+                        Atomics.store(array, 0, written ? State.WRITTEN : State.READ)
+                    }
                 }
                 return false
             }
@@ -37,15 +41,19 @@ export namespace SyncStream {
         const buffer = new SharedArrayBuffer(io.bytesTotal + 1)
         const array = new Uint8Array(buffer)
         const input = new ByteArrayInput(buffer, 1)
+        Atomics.store(array, 0, State.READ)
         return {
             buffer,
             tryRead: () => {
-                if (Atomics.compareExchange(array, 0, State.WRITTEN, State.READING) === State.READING) {
-                    input.position = 0
-                    io.read(input)
-                    procedure(io.object)
-                    Atomics.store(array, 0, State.READ)
-                    return true
+                if (Atomics.compareExchange(array, 0, State.WRITTEN, State.READING) === State.WRITTEN) {
+                    try {
+                        input.position = 0
+                        io.read(input)
+                        procedure(io.object)
+                        return true
+                    } finally {
+                        Atomics.store(array, 0, State.READ)
+                    }
                 }
                 return false
             }
