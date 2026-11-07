@@ -33,3 +33,25 @@ An individual message larger than this ceiling also disconnects that recipient.
 Optional callbacks debounce independently per document using `CALLBACK_DEBOUNCE_WAIT`
 (default 2000 ms) and `CALLBACK_DEBOUNCE_MAXWAIT` (default 10000 ms), retaining lib0's
 existing timing semantics. Destroying a document cancels its pending debounce callback.
+
+## Callback transport, limits and configuration
+
+`CALLBACK_URL` accepts HTTP or HTTPS only. HTTPS uses TLS; the URL path and query
+are preserved. Diagnostics never include the URL, query, response body or transport
+error detail. `CALLBACK_TIMEOUT` is a decimal integer from 1 to 300000 ms (default
+5000), limiting the entire exchange even when response bytes keep arriving.
+`CALLBACK_OBJECTS` is a JSON object mapping nonempty shared names to `Array`, `Map`,
+`Text`, `XmlFragment` or `XmlElement` (default `{}`). Invalid configuration fails
+at module startup with only the setting name. Empty timeout/object settings retain
+the defaults, including when callbacks are disabled. Standard Node URL conversion
+preserves IPv6 hosts and URL credentials.
+
+Only 2xx responses completed within 64 KiB and the deadline count as success.
+Other status codes, errors, premature close and oversized/trickling responses
+fail once and release the request slot. There are at most four concurrent requests
+and one active request per room, with at most 32 pending rooms. Pending snapshots
+coalesce to the latest update for that room; a new pending room is dropped when
+full. Outbound JSON is capped at 1 MiB. Delivery is best-effort without retries.
+These limits are process-local and apply after the existing per-document debounce.
+Run `npm test --workspace=yjs-server` for synthetic transport, clock, configuration
+and admission regressions; no callback endpoint or live document is needed.
