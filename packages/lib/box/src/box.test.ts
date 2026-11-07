@@ -437,3 +437,12 @@ describe("ArrayField", () => {
         expect(recreation.foos.getField(3).baz.getValue()).toBe(42)
     })
 })
+
+it.each(["", "abc", "ö👻"])("estimates serialized string fields exactly: %s", value => {
+    const graph = new BoxGraph()
+    graph.beginTransaction()
+    const box = FooBox.create(graph, UUID.generate())
+    box.foo.getField(1).setValue(value)
+    graph.endTransaction()
+    expect(box.estimateMemory()).toBe(box.toArrayBuffer().byteLength)
+})

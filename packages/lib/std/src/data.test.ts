@@ -72,9 +72,9 @@ describe("data helpers", () => {
             counter.writeFloat(1.0)                  // 4
             counter.writeDouble(2.0)                 // 8
             counter.writeBytes(Int8Array.from([7, 8, 9])) // 3
-            counter.writeString("abc")               // 4 + len (3) = 7
+            counter.writeString("abc")               // 4 + 2 * len (3) = 10
 
-            const expected = 1 + 1 + 2 + 4 + 8 + 4 + 8 + 3 + 7
+            const expected = 1 + 1 + 2 + 4 + 8 + 4 + 8 + 3 + 10
             expect(counter.count).toBe(expected)
         })
     })
@@ -123,4 +123,50 @@ describe("data helpers", () => {
             expect(a.equals(b)).toBe(false)
         })
     })
+})
+
+describe("binary byte fidelity", () => {
+    for (const shared of [false, true]) {
+        for (const offset of [0, 2]) {
+            for (const count of [0, 2, 9]) {
+                it(`returns view-relative bytes: shared=${shared}, offset=${offset}, count=${count}`, () => {
+                    const buffer = shared ? new SharedArrayBuffer(6) : new ArrayBuffer(6)
+                    new Uint8Array(buffer).fill(99)
+                    const output = ByteArrayOutput.use(buffer, offset)
+                    const values = Int8Array.from({length: count}, (_, index) => index + 7)
+                    output.writeBytes(values)
+                    expect(new Int8Array(output.toArrayBuffer())).toEqual(values)
+                    if (offset > 0) {expect(new Uint8Array(buffer)[0]).toBe(99)}
+                })
+            }
+        }
+    }
+    it.each(["", "abc", "ö⍺", "👻"])("counts UTF-16 strings: %s", value => {
+        const counter = new ByteCounter()
+        const output = ByteArrayOutput.create(1)
+        counter.writeString(value)
+        output.writeString(value)
+        expect(counter.count).toBe(output.position)
+        expect(counter.count).toBe(4 + value.length * 2)
+    })
+    it.each([2n ** 60n, 2n ** 60n + 1n, -(2n ** 63n), 2n ** 63n - 1n, -1n])(
+        "checksums all eight bigint bytes: %s", value => {
+            const buffer = new ArrayBuffer(8)
+            new DataView(buffer).setBigInt64(0, value, true)
+            const expected = new Checksum(8)
+            expected.writeBytes(new Int8Array(buffer))
+            const actual = new Checksum(8)
+            actual.writeLong(value)
+            expect(actual.result()).toEqual(expected.result())
+        })
+    it.each([1 + Number.EPSILON, -1.0000000000000002, Number.MIN_VALUE, Infinity, -0])(
+        "checksums Float64 bytes: %s", value => {
+            const buffer = new ArrayBuffer(8)
+            new DataView(buffer).setFloat64(0, value, true)
+            const expected = new Checksum(8)
+            expected.writeBytes(new Int8Array(buffer))
+            const actual = new Checksum(8)
+            actual.writeDouble(value)
+            expect(actual.result()).toEqual(expected.result())
+        })
 })

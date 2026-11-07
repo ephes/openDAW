@@ -71,3 +71,8 @@ Standard library providing core utilities and data structures for TypeScript pro
 UUID parsing accepts either exactly 32 hexadecimal digits or the canonical 8-4-4-4-12
 groups, case insensitively. Binary strings use nonnegative UTF-16 code-unit lengths;
 the complete byte requirement is checked before reading any characters.
+
+Binary output is relative to the supplied buffer offset, including shared buffers and
+auto-growth. ByteCounter includes the four-byte string length plus two bytes per
+UTF-16 code unit. Checksum retains every encoded bigint/Float64 byte; it remains
+a lightweight, non-cryptographic checksum. Affected historical checksums change.
