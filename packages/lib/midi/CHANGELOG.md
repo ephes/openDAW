@@ -6,6 +6,11 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 ## Unreleased
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
+- Preserve bounded header extensions and unknown chunks without counting them as tracks.
+- Bound MIDI track reads and variable-length integers; validate headers, chunk spans and fixed-size meta events.
+- Consume exact SysEx payloads and retain their event deltas; refuse unsupported system framing.
+- Terminate every exported track, including empty tracks, and use format 1 for multitrack files.
+- Run real synthetic MIDI parser and export round-trip tests.
 
 ## [0.0.66](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-midi@0.0.65...@opendaw/lib-midi@0.0.66) (2026-05-22)
 
