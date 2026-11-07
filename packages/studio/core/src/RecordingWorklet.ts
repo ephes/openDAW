@@ -3,7 +3,6 @@ import {
     Notifier,
     Observer,
     Option,
-    panic,
     Procedure,
     Subscription,
     Terminable,
@@ -30,6 +29,7 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
     #data: Option<AudioData> = Option.None
     #peaks: Option<Peaks> = Option.None
     #isRecording: boolean = true
+    #finalization: Promise<void> | undefined
     #limitSamples: int = Number.POSITIVE_INFINITY
     #state: SampleLoaderState = {type: "record"}
     #onSaved: Option<Procedure<UUID.Bytes>> = Option.None
@@ -82,7 +82,7 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
     invalidate(): void {}
 
     subscribe(observer: Observer<SampleLoaderState>): Subscription {
-        if (this.#state.type === "loaded") {
+        if (this.#state.type === "loaded" || this.#state.type === "error") {
             observer(this.#state)
             return Terminable.Empty
         }
@@ -90,29 +90,49 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
     }
 
     terminate(): void {
-        this.#reader.stop()
-        this.#isRecording = false
+        if (this.#isRecording) {
+            this.#isRecording = false
+            this.#reader.stop()
+        }
         this.#terminator.terminate()
     }
 
     toString(): string {return `{RecordingWorklet}`}
 
-    async #finalize(): Promise<void> {
+    #finalize(): Promise<void> {
+        return this.#finalization ??= this.#saveRecording()
+    }
+
+    async #saveRecording(): Promise<void> {
         this.#isRecording = false
         this.#reader.stop()
-        if (this.#output.length === 0) {return panic("No recording data available")}
-        const totalSamples: int = this.#limitSamples
-        const mergedFrames = mergeChunkPlanes(this.#output, RenderQuantum, this.#output.length * RenderQuantum)
-            .map(frame => frame.slice(-totalSamples))
-        const audioData = AudioData.create(this.context.sampleRate, totalSamples, this.channelCount)
-        mergedFrames.forEach((frame, index) => audioData.frames[index].set(frame))
-        this.#data = Option.wrap(audioData)
-        const sample = await this.#sampleService
-            .unwrap("SampleService not set")
-            .importRecording(audioData, this.#bpm.unwrapOrElse(120))
-        this.#onSaved.ifSome(callback => callback(UUID.parse(sample.uuid)))
-        this.#setState({type: "loaded"})
-        this.terminate()
+        try {
+            let sampleId: UUID.Bytes
+            try {
+                if (this.#output.length === 0) {throw new Error("No recording data available")}
+                const totalSamples = Math.min(this.#limitSamples, this.numberOfFrames)
+                const mergedFrames = mergeChunkPlanes(this.#output, RenderQuantum, this.numberOfFrames)
+                    .map(frame => frame.slice(-totalSamples))
+                const audioData = AudioData.create(this.context.sampleRate, totalSamples, this.channelCount)
+                mergedFrames.forEach((frame, index) => audioData.frames[index].set(frame))
+                this.#data = Option.wrap(audioData)
+                const sample = await this.#sampleService
+                    .unwrap("SampleService not set")
+                    .importRecording(audioData, this.#bpm.unwrapOrElse(120))
+                sampleId = UUID.parse(sample.uuid)
+            } catch {
+                console.warn("Recording persistence failed; captured audio retained")
+                this.#setState({type: "error", reason: "Could not save recording; captured audio remains available for recovery"})
+                return
+            }
+            try {
+                this.#onSaved.ifSome(callback => callback(sampleId))
+            } finally {
+                this.#setState({type: "loaded"})
+            }
+        } finally {
+            this.terminate()
+        }
     }
 
     #setState(value: SampleLoaderState): void {

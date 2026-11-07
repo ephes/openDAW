@@ -159,7 +159,6 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
                 this.#monitorStreamDest = null
                 this.#monitorOutputDeviceId = Option.None
                 RuntimeNotifier.info({headline: "Output Device Error", message: `${reason}`})
-                return
             }
         }
         if (this.#monitoringMode !== "off" && isDefined(this.#audioChain)) {

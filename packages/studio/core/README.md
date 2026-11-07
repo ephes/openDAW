@@ -11,3 +11,11 @@ lock. Coordinate with other users before ignoring a stale remote lock on retry.
 Drive folder failures release the retry latch. Retrying looks up each folder again,
 including a folder whose creation succeeded but whose response was lost. Dropbox
 listings follow all continuation pages; any page failure rejects the whole listing.
+
+### Recording completion and monitoring
+
+Recording finalization owns one import and one successful saved notification. Failed
+imports publish a terminal error, stop owned capture resources, and retain in-memory
+audio on the loader for deliberate recovery; reload does not persist that recovery
+buffer. Late subscribers receive terminal errors immediately. A monitor sink or play
+failure clears the custom destination and reconnects monitoring to the default output.
