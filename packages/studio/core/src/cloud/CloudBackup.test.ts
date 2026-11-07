@@ -168,3 +168,21 @@ it("propagates corrupt-project deletion and catalog failures", async () => {
     await expect(restore()).rejects.toThrow("catalog failed")
     expect(cloud.download).toHaveBeenCalledTimes(2)
 })
+
+it("skips an unsupported cloud preset and continues restoring later supported presets", async () => {
+    const common = {name: "Synthetic", description: "", created: 0, modified: 0}
+    remote.set(CloudBackupPresets.RemoteCatalogPath, json([
+        {...common, uuid: a, category: "instrument", device: "FutureUnsupportedDevice"},
+        {...common, uuid: b, category: "audio-effect-chain"}
+    ]))
+    remote.set(CloudBackupPresets.pathFor(a), bytes); remote.set(CloudBackupPresets.pathFor(b), bytes)
+    vi.spyOn(OpenPresetAPI, "get").mockReturnValue({list: async () => []} as unknown as ReturnType<typeof OpenPresetAPI.get>)
+    vi.spyOn(PresetStorage, "readIndex").mockResolvedValue([])
+    vi.spyOn(PresetStorage, "loadTrashedIds").mockResolvedValue([])
+    const log = vi.fn()
+    await CloudBackupPresets.start(cloud, Progress.Empty, log)
+    expect(cloud.download).not.toHaveBeenCalledWith(CloudBackupPresets.pathFor(a))
+    expect(local.has(`presets/user/${b}.odp`)).toBe(true)
+    expect(log).toHaveBeenCalledWith("Skipping unsupported or invalid cloud preset metadata.")
+    expect(JSON.parse(new TextDecoder().decode(remote.get(CloudBackupPresets.RemoteCatalogPath)))).toHaveLength(2)
+})

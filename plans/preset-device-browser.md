@@ -541,3 +541,11 @@ Open items before building this:
 - **Offline.** If index fetch fails, the browser should still render user presets (current implementation already handles this — `PresetStorage.readIndex` is independent).
 - **`LibraryBrowser` integration.** `tagSource(list, "stock")` already exists; wiring is just "fetch index → merge into `allPresets` → render". Source toggle already filters by `entry.source`.
 - **Source-gated load paths.** `LibraryActions.activatePreset` and `TimelineDragAndDrop` (`ui/timeline/tracks/audio-unit/TimelineDragAndDrop.ts:86`) both short-circuit on `data.source !== "user"` because `PresetApplication.loadBytes` → `PresetStorage.load` only reads `presets/user/` in OPFS. Once the stock channel exists, extend `loadBytes` to dispatch by source (user → OPFS, stock → cached network fetch) and drop both gates.
+
+### Preset index recovery update (2026-11-07)
+
+Reads validate each metadata variant. Recovery/rebuild retains valid metadata only
+for physically present .odp files, merges recognized physical racks not already
+listed, and drops missing-file records. Rebuild and all mutations share the standard
+browser storage lock and reread committed state; invalid cloud download records
+are skipped while their remote catalog entries remain intact.

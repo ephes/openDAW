@@ -55,3 +55,15 @@ Strict scans hold the same domain Web Lock as saves/deletes, so they wait for
 in-progress publication. A failure aborts the entire backup run, including later
 domains; earlier completed domains remain complete. The diagnostic identifies the
 folder/entry to repair before retrying backup.
+
+### Preset index consistency
+
+Preset records validate canonical UUIDs, finite timestamps, shared fields and each
+category's registered instrument/effect key. Invalid records trigger recovery that preserves other valid metadata and merges
+physical recognized rack files. Retained metadata requires a matching physical file;
+missing-file records are removed by rebuild and unrecognized files remain untouched. Unsupported
+cloud records are skipped during download without rewriting the remote catalog. Index mutations and
+explicit rebuilds hold the standard browser storage Web Lock, reread committed
+state, and update the observable only after the index write. Save validates/rebuilds
+the index before writing its new file; file, index and trash ordering remains explicit.
+Public reads refresh committed state under the lock; mutations never trust another tab's old cache.

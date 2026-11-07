@@ -1,7 +1,7 @@
 import {Arrays, Errors, panic, Procedure, Progress, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {network, Promises} from "@opendaw/lib-runtime"
 import {CloudHandler} from "./CloudHandler"
-import {OpenPresetAPI, PresetMeta, PresetStorage} from "../presets"
+import {OpenPresetAPI, PresetMeta, PresetMetaSchema, PresetStorage} from "../presets"
 
 type PresetDomains = Record<"stock" | "local" | "cloud", ReadonlyArray<PresetMeta>>
 
@@ -106,7 +106,12 @@ export class CloudBackupPresets {
 
     async #download(trashed: ReadonlyArray<UUID.String>, progress: Progress.Handler) {
         const {cloud, local} = this.#presetDomains
-        const missingLocally = Arrays.subtract(cloud, local, CloudBackupPresets.arePresetsEqual)
+        const supported = cloud.filter(preset => {
+            if (PresetMetaSchema.safeParse(preset).success) {return true}
+            this.#log("Skipping unsupported or invalid cloud preset metadata.")
+            return false
+        })
+        const missingLocally = Arrays.subtract(supported, local, CloudBackupPresets.arePresetsEqual)
         const download = Arrays.subtract(missingLocally, trashed, (preset, uuid) => preset.uuid === uuid)
         if (download.length === 0) {
             this.#log("No presets to download.")
