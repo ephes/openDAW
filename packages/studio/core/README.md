@@ -186,3 +186,12 @@ asset or clearing its tombstone; an earlier completed edit can be deleted normal
 
 A stale sample edit refreshes the library and reports a bounded failure in the studio
 instead of leaving an unhandled rejection.
+
+### Cloud authentication callbacks
+
+Each authorization uses random state tied to its provider and popup. Only matching
+callback, error and close messages can settle it; duplicates/replays are ignored.
+Provider and communication errors render as text. Authentication diagnostics omit
+codes, bearer tokens and raw provider/handler errors. Dropbox retains PKCE.
+Cancel in the studio if a provider popup closes before redirect: strict COOP isolation
+severs its cross-origin window proxy, preventing reliable opener-side close observation.

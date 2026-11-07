@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Render OAuth errors as text and forward correlated callback, error and close messages.
+
 - Keep failed soundfont imports invisible and prevent stale sample editors from recreating deleted samples.
 
 - Preset updates remain in place: partial batch/catalog failure can leave newer bytes with older metadata until a successful retry. Keep local edits and retry before restoring elsewhere.

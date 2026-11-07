@@ -56,52 +56,47 @@
 </div>
 <script>
     const container = document.getElementById('container');
+    const qs = new URLSearchParams(window.location.search);
+    const hs = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const state = qs.get('state') || hs.get('state');
+    const service = state && state.split('.')[0];
     const channel = new BroadcastChannel('auth-callback');
-    window.onbeforeunload = () => channel.postMessage({type: 'closed'})
+    const correlated = message => ({...message, state, service});
+    window.onbeforeunload = () => channel.postMessage(correlated({type: 'closed'}));
+
+    function showError(headline, message) {
+        const icon = document.createElement('div');
+        icon.className = 'error';
+        icon.textContent = '⚠️';
+        const title = document.createElement('h1');
+        title.textContent = headline;
+        const detail = document.createElement('p');
+        detail.textContent = message;
+        container.replaceChildren(icon, title, detail);
+    }
 
     function postAndClose(message) {
         try {
-            channel.postMessage(message);
+            channel.postMessage(correlated(message));
             channel.close();
-            window.onbeforeunload = null
+            window.onbeforeunload = null;
             window.close();
         } catch (error) {
-            container.innerHTML = `
-                    <div class="error">⚠️</div>
-                    <h1>Communication Error</h1>
-                    <p style="font-family: monospace; word-break: break-all; margin-top: 1rem; padding: 0.5rem; background: #f3f4f6; border-radius: 4px;">${error}</p>
-                `;
+            showError('Communication Error', String(error));
         }
     }
 
-    // Support both code flow (?code=...) and implicit flow (#access_token=...)
-    const qs = new URLSearchParams(window.location.search);
-    const code = qs.get('code');
-    const error = qs.get('error');
-
-    // Parse hash for access_token
-    const hash = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash;
-    const hs = new URLSearchParams(hash);
-    const accessToken = hs.get('access_token');
-    const tokenError = hs.get('error');
-
-    if (code !== null) {
-        postAndClose({type: 'auth-callback', code});
-    } else if (accessToken !== null) {
-        postAndClose({type: 'auth-callback', access_token: accessToken});
-    } else if (error !== null || tokenError !== null) {
-        const errorDesc = qs.get('error_description') || hs.get('error_description') || 'Authentication failed';
-        container.innerHTML = `
-                <div class="error">⚠️</div>
-                <h1>Authentication Failed</h1>
-                <p>${errorDesc}</p>
-            `;
+    if (!state || !['dropbox', 'google'].includes(service)) {
+        showError('Unexpected Response', 'Missing authentication state. Please retry from the studio.');
+    } else if (qs.has('error') || hs.has('error')) {
+        showError('Authentication Failed', qs.get('error_description') || hs.get('error_description') || 'Authentication failed');
+        channel.postMessage(correlated({type: 'auth-error'}));
+    } else if (service === 'dropbox' && qs.has('code')) {
+        postAndClose({type: 'auth-callback', code: qs.get('code')});
+    } else if (service === 'google' && hs.has('access_token')) {
+        postAndClose({type: 'auth-callback', access_token: hs.get('access_token')});
     } else {
-        container.innerHTML = `
-                <div class="error">❓</div>
-                <h1>Unexpected Response</h1>
-                <p>No authentication data received.</p>
-            `;
+        showError('Unexpected Response', 'No authentication data received.');
     }
 </script>
 </body>
