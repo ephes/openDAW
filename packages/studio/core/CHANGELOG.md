@@ -7,6 +7,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Bind asset identities to physical directories and require complete readable sample/soundfont inventories before backup; scan under the storage lock and abort the whole run on incomplete inventory.
 
+- Validate preset index records, preserve valid metadata during recovery, skip unsupported cloud downloads, and serialize fresh index mutations/rebuilds across tabs.
+
 - Load exactly the stored soundfont byte view, excluding neighboring backing-buffer data.
 
 - Replay soundfont terminal errors, report library-load failures, and fence invalidated loader generations.

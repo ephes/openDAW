@@ -5,7 +5,7 @@ import {AudioFileBox, AudioUnitBox, BoxIO, SoundfontFileBox} from "@opendaw/stud
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {DeviceBoxUtils, InstrumentFactories, PresetHeader} from "@opendaw/studio-adapters"
 import {Workers} from "../Workers"
-import {PresetMeta} from "./PresetMeta"
+import {PresetMeta, PresetMetaSchema} from "./PresetMeta"
 
 const FOLDER = "presets/user"
 const INDEX_PATH = `${FOLDER}/index.json`
@@ -15,11 +15,17 @@ const DEC = new TextDecoder()
 
 const fileFor = (uuid: UUID.Bytes): string => `${FOLDER}/${UUID.toString(uuid)}.odp`
 
-const parseIndex = (bytes: Uint8Array): Option<ReadonlyArray<PresetMeta>> => {
+type ParsedIndex = {entries: ReadonlyArray<PresetMeta>, repair: boolean}
+const parseIndex = (bytes: Uint8Array): Option<ParsedIndex> => {
     const result = tryCatch(() => JSON.parse(DEC.decode(bytes)))
-    if (result.status === "failure") {return Option.None}
-    const value = result.value
-    return Array.isArray(value) ? Option.wrap(value as ReadonlyArray<PresetMeta>) : Option.None
+    if (result.status === "failure" || !Array.isArray(result.value)) {return Option.None}
+    const entries: PresetMeta[] = []
+    let repair = false
+    for (const record of result.value) {
+        const parsed = PresetMetaSchema.safeParse(record)
+        if (parsed.success) {entries.push(parsed.data as PresetMeta)} else {repair = true}
+    }
+    return Option.wrap({entries, repair})
 }
 
 const HEADER_SIZE = 8
@@ -53,38 +59,32 @@ const inspectRackBinary = (bytes: Uint8Array): Option<RackInspection> => {
 export namespace PresetStorage {
     const cache = new DefaultObservableValue<ReadonlyArray<PresetMeta>>([])
 
-    let loaded = false
+    const lock = `opendaw:storage:${FOLDER}`
 
     const writeAndCache = async (entries: ReadonlyArray<PresetMeta>): Promise<void> => {
-        await Workers.Opfs.write(INDEX_PATH, ENC.encode(JSON.stringify(entries)))
-        cache.setValue(entries)
+        const checked = PresetMetaSchema.array().parse(entries) as ReadonlyArray<PresetMeta>
+        await Workers.Opfs.write(INDEX_PATH, ENC.encode(JSON.stringify(checked)))
+        cache.setValue(checked)
     }
 
     export const observable = (): ObservableValue<ReadonlyArray<PresetMeta>> => cache
 
-    export const readIndex = async (): Promise<ReadonlyArray<PresetMeta>> => {
-        if (loaded) {return cache.getValue()}
+    const readIndexOwned = async (): Promise<ReadonlyArray<PresetMeta>> => {
         const read = await Promises.tryCatch(Workers.Opfs.read(INDEX_PATH))
-        if (read.status === "rejected") {
-            const rebuilt = await rebuildIndex()
-            loaded = true
-            return rebuilt
-        }
-        const parsed = parseIndex(read.value)
-        if (parsed.isEmpty()) {
-            const rebuilt = await rebuildIndex()
-            loaded = true
-            return rebuilt
-        }
-        const entries = parsed.unwrap()
+        const parsed = read.status === "resolved" ? parseIndex(read.value) : Option.None
+        if (parsed.isEmpty()) {return rebuildIndexOwned()}
+        const {entries, repair} = parsed.unwrap()
+        if (repair) {return rebuildIndexOwned(entries)}
         cache.setValue(entries)
-        loaded = true
         return entries
     }
 
-    export const save = async (meta: PresetMeta, data: ArrayBufferLike): Promise<void> => {
+    export const readIndex = async (): Promise<ReadonlyArray<PresetMeta>> => navigator.locks.request(lock, readIndexOwned)
+
+    export const save = async (meta: PresetMeta, data: ArrayBufferLike): Promise<void> => navigator.locks.request(lock, async () => {
+        PresetMetaSchema.parse(meta)
+        const current = await readIndexOwned()
         await Workers.Opfs.write(fileFor(UUID.parse(meta.uuid)), new Uint8Array(data))
-        const current = await readIndex()
         const next = current.filter(entry => entry.uuid !== meta.uuid)
         next.push({...meta, modified: Date.now()})
         await writeAndCache(next)
@@ -92,7 +92,7 @@ export namespace PresetStorage {
         if (trashed.includes(meta.uuid)) {
             await saveTrashedIds(trashed.filter(id => id !== meta.uuid))
         }
-    }
+    })
 
     export const load = async (uuid: UUID.Bytes): Promise<ArrayBuffer> => {
         const bytes = await Workers.Opfs.read(fileFor(uuid))
@@ -100,18 +100,18 @@ export namespace PresetStorage {
     }
 
     export const updateMeta = async (uuid: UUID.Bytes,
-                                     update: {name: string, description: string}): Promise<void> => {
+                                     update: {name: string, description: string}): Promise<void> => navigator.locks.request(lock, async () => {
         const uuidStr = UUID.toString(uuid)
-        const current = await readIndex()
+        const current = await readIndexOwned()
         const next = current.map(entry =>
             entry.uuid === uuidStr ? {...entry, ...update, modified: Date.now()} as PresetMeta : entry)
         await writeAndCache(next)
-    }
+    })
 
-    export const remove = async (uuid: UUID.Bytes): Promise<void> => {
+    export const remove = async (uuid: UUID.Bytes): Promise<void> => navigator.locks.request(lock, async () => {
         await Promises.tryCatch(Workers.Opfs.delete(fileFor(uuid)))
         const uuidStr = UUID.toString(uuid)
-        const current = await readIndex()
+        const current = await readIndexOwned()
         const next = current.filter(entry => entry.uuid !== uuidStr)
         await writeAndCache(next)
         const trashed = await loadTrashedIds()
@@ -119,7 +119,7 @@ export namespace PresetStorage {
             trashed.push(uuidStr)
             await saveTrashedIds(trashed)
         }
-    }
+    })
 
     export const loadTrashedIds = async (): Promise<Array<UUID.String>> => {
         const read = await Promises.tryCatch(Workers.Opfs.read(TRASH_PATH))
@@ -164,13 +164,16 @@ export namespace PresetStorage {
         return result
     }
 
-    export const rebuildIndex = async (): Promise<ReadonlyArray<PresetMeta>> => {
+    const rebuildIndexOwned = async (retained: ReadonlyArray<PresetMeta> = []): Promise<ReadonlyArray<PresetMeta>> => {
         console.warn("PresetStorage.rebuildIndex: index missing or unreadable — rebuilding. This should never happen.")
         const entries = await Workers.Opfs.list(FOLDER)
-        const recovered: Array<PresetMeta> = []
+        const recovered: Array<PresetMeta> = retained.filter(meta =>
+            entries.some(entry => entry.kind === "file" && entry.name === `${meta.uuid}.odp`))
         for (const entry of entries) {
             if (entry.kind !== "file" || !entry.name.endsWith(".odp")) {continue}
             const uuidStr = entry.name.slice(0, -".odp".length) as UUID.String
+            const validId = tryCatch(() => UUID.toString(UUID.parse(uuidStr)) === uuidStr)
+            if (validId.status === "failure" || !validId.value || recovered.some(meta => meta.uuid === uuidStr)) {continue}
             const path = `${FOLDER}/${entry.name}`
             const read = await Promises.tryCatch(Workers.Opfs.read(path))
             if (read.status === "rejected") {
@@ -196,4 +199,9 @@ export namespace PresetStorage {
         await writeAndCache(recovered)
         return recovered
     }
+    export const rebuildIndex = async (): Promise<ReadonlyArray<PresetMeta>> => navigator.locks.request(lock, async () => {
+        const read = await Promises.tryCatch(Workers.Opfs.read(INDEX_PATH))
+        const parsed = read.status === "resolved" ? parseIndex(read.value) : Option.None
+        return rebuildIndexOwned(parsed.map(value => value.entries).unwrapOrElse(() => []))
+    })
 }
