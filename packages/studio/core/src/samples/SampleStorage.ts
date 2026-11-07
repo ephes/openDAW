@@ -57,7 +57,13 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
 
     async updateSampleMeta(uuid: UUID.Bytes, meta: SampleMetaData): Promise<void> {
         const path = `${this.folder}/${UUID.toString(uuid)}`
-        return Workers.Opfs.write(`${path}/meta.json`, new TextEncoder().encode(JSON.stringify(meta)))
+        return navigator.locks.request(`opendaw:storage:${this.folder}`, async () => {
+            // A stale editor must not recreate a metadata-only directory after delete.
+            if (!await Workers.Opfs.exists(`${path}/audio.wav`)) {throw new Error("Sample is no longer available; refresh the library.")}
+            const previous = JSON.parse(new TextDecoder().decode(await Workers.Opfs.read(`${path}/meta.json`)))
+            SampleMetaData.parse(previous)
+            await Workers.Opfs.write(`${path}/meta.json`, new TextEncoder().encode(JSON.stringify(meta)))
+        })
     }
 
     async loadMeta(uuid: UUID.Bytes): Promise<SampleMetaData> {

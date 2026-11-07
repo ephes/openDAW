@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Publish soundfont metadata only after validated SF2 completion, preserve complete UUIDs and own failure cleanup; serialize sample metadata edits with deletion and reject stale edits.
+
 - Preset updates remain in place: partial batch/catalog failure can leave newer bytes with older metadata until a successful retry. Keep local edits and retry before restoring elsewhere.
 
 - Capture coherent project revisions under the storage lock and derive catalog metadata from captured bytes; resynchronize newer local preset edits.

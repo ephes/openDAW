@@ -24,3 +24,11 @@ assert that catalog replacement follows successful byte upload.
 Preset batch/catalog failure tests make the in-place partial-update limitation explicit
 and verify a later successful retry repairs metadata. Coherent preset-pair capture is
 deferred beyond timestamp resynchronization; documentation avoids claiming it.
+
+Asset publication regressions use a generated valid synthetic RIFF/SF2 and test-owned
+WAV/peaks, deferred writes, same-UUID writers and controlled delete/edit interleavings.
+
+Fresh validated soundfont input repairs incomplete existing UUIDs without granting
+whole-directory cleanup ownership. Actual stock-loader retry and re-import tests cover
+recovery; operational reads still fail closed. Sample edit UI tests execute the real
+icon handler and verify refresh/feedback instead of an unhandled stale-target error.
