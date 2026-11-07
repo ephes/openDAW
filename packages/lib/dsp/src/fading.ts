@@ -39,36 +39,9 @@ export namespace FadingEnvelope {
         sampleCount: int,
         config: Config
     ): void => {
-        const {in: fadeIn, out: fadeOut, inSlope, outSlope} = config
-        gainBuffer.fill(1.0, 0, sampleCount)
-        if (fadeIn <= 0.0 && fadeOut <= 0.0) {return}
-        const fadeOutStart = durationPpqn - fadeOut
-        if (startPpqn >= fadeIn && endPpqn <= fadeOutStart) {return}
         const ppqnPerSample = (endPpqn - startPpqn) / sampleCount
-        if (fadeIn > 0.0 && startPpqn < fadeIn) {
-            const fadeInEnd = Math.min(endPpqn, fadeIn)
-            const fadeInEndSample = Math.min(sampleCount, Math.ceil((fadeInEnd - startPpqn) / ppqnPerSample))
-            if (fadeInEndSample > 0) {
-                const startProgress = startPpqn / fadeIn
-                const endProgress = fadeInEnd / fadeIn
-                const iterator = Curve.walk(inSlope, fadeInEndSample, startProgress, endProgress)
-                for (let i = 0; i < fadeInEndSample; i++) {
-                    gainBuffer[i] = iterator.next().value
-                }
-            }
-        }
-        if (fadeOut > 0.0 && endPpqn > fadeOutStart) {
-            const fadeOutStartPpqn = Math.max(startPpqn, fadeOutStart)
-            const fadeOutStartSample = Math.max(0, Math.floor((fadeOutStartPpqn - startPpqn) / ppqnPerSample))
-            const steps = sampleCount - fadeOutStartSample
-            if (steps > 0) {
-                const startProgress = (fadeOutStartPpqn - fadeOutStart) / fadeOut
-                const endProgress = (endPpqn - fadeOutStart) / fadeOut
-                const iterator = Curve.walk(outSlope, steps, 1.0 - startProgress, 1.0 - endProgress)
-                for (let i = fadeOutStartSample; i < sampleCount; i++) {
-                    gainBuffer[i] = Math.min(gainBuffer[i], iterator.next().value)
-                }
-            }
+        for (let i = 0; i < sampleCount; i++) {
+            gainBuffer[i] = gainAt(startPpqn + i * ppqnPerSample, durationPpqn, config)
         }
     }
 }

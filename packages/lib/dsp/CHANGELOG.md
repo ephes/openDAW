@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Align fade buffers with scalar half-open sample positions and reject unsupported analysis-window lengths below two or nonintegers. Add streaming RMS and spectral-state regressions.
+
 - Clear compressor delay, lookahead, detection and smoothing histories on reset while preserving configuration.
 
 - Initialize compressor crest analysis from selected squared samples, preserve empty-span state, and correct smoothing time constants to input weights.

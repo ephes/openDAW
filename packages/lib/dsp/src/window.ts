@@ -2,6 +2,7 @@ export namespace Window {
     export enum Type {Bartlett, Blackman, BlackmanHarris, Hamming, Hanning}
 
     export const create = (type: Type, n: number): Float32Array => {
+        if (!Number.isInteger(n) || n < 2) {throw new RangeError("Window length must be an integer >= 2")}
         const values = new Float32Array(n)
         const a = Math.PI / (n - 1)
         switch (type) {
