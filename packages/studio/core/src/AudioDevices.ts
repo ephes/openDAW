@@ -1,6 +1,5 @@
 import {Promises} from "@opendaw/lib-runtime"
 import {Arrays, Errors, Optional} from "@opendaw/lib-std"
-import {ConstrainDOM} from "@opendaw/lib-dom"
 
 export class AudioDevices {
     static async requestPermission() {
@@ -15,11 +14,9 @@ export class AudioDevices {
         const {status, value: stream, error} =
             await Promises.tryCatch(navigator.mediaDevices.getUserMedia({audio: constraints}))
         if (status === "rejected") {
-            return Errors.warn(Errors.isOverconstrained(error) ?
-                error.constraint === "deviceId"
-                    ? `Could not find device with id: '${ConstrainDOM.resolveString(constraints.deviceId)}'`
-                    : error.constraint
-                : String(error))
+            return Errors.warn(Errors.isOverconstrained(error)
+                ? "Audio input constraints could not be satisfied"
+                : Errors.isNotAllowed(error) ? "Audio input permission denied" : "Audio input unavailable")
         }
         await this.updateInputList()
         return stream

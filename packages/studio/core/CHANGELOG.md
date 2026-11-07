@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Remove device identifiers, labels and raw media errors from core audio-capture diagnostics.
+
 - Finalize recordings once, retain captured audio with a terminal persistence error, and reconnect default monitoring after output-device failure.
 
 - Preserve cloud backup failure/cleanup ownership and serialize browser backups; retry Drive folder failures and read complete Dropbox listings.

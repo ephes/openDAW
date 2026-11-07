@@ -153,12 +153,12 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
                 await audio.setSinkId(deviceId.unwrap())
                 await audio.play()
                 this.#monitorAudioElement = audio
-            } catch (reason) {
+            } catch {
                 audio.srcObject = null
                 this.#monitorStreamDest.disconnect()
                 this.#monitorStreamDest = null
                 this.#monitorOutputDeviceId = Option.None
-                RuntimeNotifier.info({headline: "Output Device Error", message: `${reason}`})
+                RuntimeNotifier.info({headline: "Output Device Error", message: "Could not select output device; using default output"})
             }
         }
         if (this.#monitoringMode !== "off" && isDefined(this.#audioChain)) {
@@ -211,9 +211,7 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
         console.debug("[CaptureAudio] latency report", {
             outputLatency: audioContext.outputLatency,
             baseLatency: audioContext.baseLatency,
-            inputLatencyReported: trackSettings?.latency,
-            deviceId: trackSettings?.deviceId,
-            deviceLabel: track?.label
+            inputLatencyReported: trackSettings?.latency
         })
         return RecordAudio.start({
             recordingWorklet,
@@ -254,14 +252,13 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
             deviceId: isDefined(deviceId) ? {exact: deviceId} : undefined
         }).catch(error => {
             if (!isDefined(deviceId)) {throw error}
-            console.warn(`Requested audio device '${deviceId}' unavailable (${String(error)}); using default input`)
+            console.warn("Requested audio device unavailable; using default input")
             return AudioDevices.requestStream(baseConstraints)
         })
         const tracks = stream.getAudioTracks()
         const track = tracks.at(0)
         const settings = track?.getSettings()
-        const gotDeviceId = settings?.deviceId
-        console.debug(`new stream. device requested: ${deviceId ?? "default"}, got: ${gotDeviceId ?? "unknown"}. channelCount requested: ${channelCount}, got: ${settings?.channelCount}`)
+        console.debug("[CaptureAudio] stream channels", {requested: channelCount, actual: settings?.channelCount})
         this.#rebuildAudioChain(stream)
         this.#stream.wrap(stream)
     }

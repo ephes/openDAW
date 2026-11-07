@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound serialized crash diagnostics to 100,000 UTF-16 code units, with 8,000 per entry.
+
 - Fence sample preview loads and play failures; release owned Blob URLs on replacement/eject.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
