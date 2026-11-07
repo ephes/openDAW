@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Clear compressor delay, lookahead, detection and smoothing histories on reset while preserving configuration.
+
 - Preserve current voices and all expiring tails when switching voicing strategies.
 
 - Restore comparator equality for simultaneous note lifecycle peers; cover shared MIDI packing and transport transitions.

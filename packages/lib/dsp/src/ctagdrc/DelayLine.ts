@@ -37,4 +37,9 @@ export class DelayLine {
         }
         this.#writePosition = (this.#writePosition + (toIndex - fromIndex)) % this.#delayBufferSize
     }
+
+    reset(): void {
+        this.#delayBuffer.forEach(channel => channel.fill(0.0))
+        this.#writePosition = 0
+    }
 }

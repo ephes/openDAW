@@ -159,6 +159,11 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
 
     reset(): void {
         this.#processing = false
+        this.#delay.reset()
+        this.#lookaheadProcessor.reset()
+        this.#ballistics.reset()
+        this.#smoothedAutoMakeup.reset()
+        this.#smoothInputGain.set(dbToGain(this.parameterInputgain.getValue()), false)
         this.#output.clear()
         this.#peaks.clear()
         this.eventInput.clear()

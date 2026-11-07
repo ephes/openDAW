@@ -34,4 +34,9 @@ export class SmoothingFilter {
     getState(): number {
         return this.#state
     }
+
+    reset(): void {
+        this.#state = 0.0
+        this.#first = true
+    }
 }
