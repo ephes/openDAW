@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Accent only the measure downbeat when metronome beats are subdivided; add frozen playback, chunk dispatch and solo-routing regressions.
+
 - Execute render callbacks at owned block-start boundaries without repeat dispatch; release marker subscriptions and active parameter broadcasts on teardown.
 
 - Clear published meter RMS on reset, publish true RMS levels, and bind monitoring/output-registry teardown to its owned registration.
