@@ -19,7 +19,7 @@ describe("intervalToSeconds across ppqn=0", () => {
         const tempoMap = new ConstantTempoMap({
             getValue: () => bpm,
             subscribe: () => ({terminate: () => {}})
-        } as any)
+        } as unknown as import("@opendaw/lib-std").ObservableValue<number>)
         const elapsed = tempoMap.intervalToSeconds(-6 * barPpqn, 0)
         expect(elapsed).toBeCloseTo(PPQN.pulsesToSeconds(6 * barPpqn, bpm))
     })
@@ -28,7 +28,7 @@ describe("intervalToSeconds across ppqn=0", () => {
         const tempoMap = new ConstantTempoMap({
             getValue: () => bpm,
             subscribe: () => ({terminate: () => {}})
-        } as any)
+        } as unknown as import("@opendaw/lib-std").ObservableValue<number>)
         const elapsed = tempoMap.intervalToSeconds(-1 * barPpqn, 5 * barPpqn)
         expect(elapsed).toBeCloseTo(PPQN.pulsesToSeconds(6 * barPpqn, bpm))
     })

@@ -1,7 +1,7 @@
 // Polyfill for vitest
 //
 if (typeof globalThis.AudioWorkletNode === "undefined") {
-    (globalThis as any).AudioWorkletNode = class AudioWorkletNode {}
+    Object.defineProperty(globalThis, "AudioWorkletNode", {value: class AudioWorkletNode {}, writable: true, enumerable: true, configurable: true})
 }
 if (typeof globalThis.localStorage === "undefined") {
     const store = new Map<string, string>()

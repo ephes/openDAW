@@ -36,9 +36,8 @@ describe("DevicesClipboardHandler", () => {
 
     const createAudioUnit = (skeleton: ProjectSkeleton, index: number = 1): AudioUnitBox => {
         const {boxGraph, mandatoryBoxes: {rootBox, primaryAudioBusBox}} = skeleton
-        let audioUnitBox!: AudioUnitBox
         boxGraph.beginTransaction()
-        audioUnitBox = AudioUnitBox.create(boxGraph, UUID.generate(), box => {
+        const audioUnitBox: AudioUnitBox = AudioUnitBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(AudioUnitType.Instrument)
             box.collection.refer(rootBox.audioUnits)
             box.output.refer(primaryAudioBusBox.input)
@@ -50,9 +49,8 @@ describe("DevicesClipboardHandler", () => {
 
     const addTapeInstrument = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox, label: string): TapeDeviceBox => {
         const {boxGraph} = skeleton
-        let device!: TapeDeviceBox
         boxGraph.beginTransaction()
-        device = TapeDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const device: TapeDeviceBox = TapeDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue(label)
             box.host.refer(audioUnit.input)
         })
@@ -62,9 +60,8 @@ describe("DevicesClipboardHandler", () => {
 
     const addApparatInstrument = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox, label: string): ApparatDeviceBox => {
         const {boxGraph} = skeleton
-        let device!: ApparatDeviceBox
         boxGraph.beginTransaction()
-        device = ApparatDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const device: ApparatDeviceBox = ApparatDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue(label)
             box.host.refer(audioUnit.input)
         })
@@ -74,9 +71,8 @@ describe("DevicesClipboardHandler", () => {
 
     const addVaporisateur = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox, label: string): VaporisateurDeviceBox => {
         const {boxGraph} = skeleton
-        let device!: VaporisateurDeviceBox
         boxGraph.beginTransaction()
-        device = VaporisateurDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const device: VaporisateurDeviceBox = VaporisateurDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue(label)
             box.host.refer(audioUnit.input)
         })
@@ -87,9 +83,8 @@ describe("DevicesClipboardHandler", () => {
     const addAutomationTrack = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox,
                                 automationTarget: Vertex, index: number): TrackBox => {
         const {boxGraph} = skeleton
-        let trackBox!: TrackBox
         boxGraph.beginTransaction()
-        trackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
+        const trackBox: TrackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(TrackType.Value)
             box.tracks.refer(audioUnit.tracks)
             box.target.refer(automationTarget)
@@ -101,9 +96,8 @@ describe("DevicesClipboardHandler", () => {
 
     const addPlayfieldInstrument = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox, label: string): PlayfieldDeviceBox => {
         const {boxGraph} = skeleton
-        let device!: PlayfieldDeviceBox
         boxGraph.beginTransaction()
-        device = PlayfieldDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const device: PlayfieldDeviceBox = PlayfieldDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue(label)
             box.host.refer(audioUnit.input)
         })
@@ -114,15 +108,13 @@ describe("DevicesClipboardHandler", () => {
     const addPlayfieldSample = (skeleton: ProjectSkeleton, playfield: PlayfieldDeviceBox,
                                 fileName: string, midiNote: number): {sample: PlayfieldSampleBox, audioFile: AudioFileBox} => {
         const {boxGraph} = skeleton
-        let sample!: PlayfieldSampleBox
-        let audioFile!: AudioFileBox
         boxGraph.beginTransaction()
-        audioFile = AudioFileBox.create(boxGraph, UUID.generate(), box => {
+        const audioFile: AudioFileBox = AudioFileBox.create(boxGraph, UUID.generate(), box => {
             box.fileName.setValue(fileName)
             box.startInSeconds.setValue(0)
             box.endInSeconds.setValue(1)
         })
-        sample = PlayfieldSampleBox.create(boxGraph, UUID.generate(), box => {
+        const sample: PlayfieldSampleBox = PlayfieldSampleBox.create(boxGraph, UUID.generate(), box => {
             box.device.refer(playfield.samples)
             box.file.refer(audioFile)
             box.icon.setValue("drum")
@@ -135,9 +127,8 @@ describe("DevicesClipboardHandler", () => {
     const addTrack = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox,
                       trackType: TrackType, index: number = 0): TrackBox => {
         const {boxGraph} = skeleton
-        let trackBox!: TrackBox
         boxGraph.beginTransaction()
-        trackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
+        const trackBox: TrackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(trackType)
             box.tracks.refer(audioUnit.tracks)
             box.target.refer(audioUnit)
@@ -150,10 +141,9 @@ describe("DevicesClipboardHandler", () => {
     const addNoteRegion = (skeleton: ProjectSkeleton, trackBox: TrackBox,
                            position: number, duration: number): NoteRegionBox => {
         const {boxGraph} = skeleton
-        let region!: NoteRegionBox
         boxGraph.beginTransaction()
         const events = NoteEventCollectionBox.create(boxGraph, UUID.generate())
-        region = NoteRegionBox.create(boxGraph, UUID.generate(), box => {
+        const region: NoteRegionBox = NoteRegionBox.create(boxGraph, UUID.generate(), box => {
             box.regions.refer(trackBox.regions)
             box.events.refer(events.owners)
             box.position.setValue(position)
@@ -166,10 +156,9 @@ describe("DevicesClipboardHandler", () => {
     const addValueRegion = (skeleton: ProjectSkeleton, trackBox: TrackBox,
                             position: number, duration: number): ValueRegionBox => {
         const {boxGraph} = skeleton
-        let region!: ValueRegionBox
         boxGraph.beginTransaction()
         const events = ValueEventCollectionBox.create(boxGraph, UUID.generate())
-        region = ValueRegionBox.create(boxGraph, UUID.generate(), box => {
+        const region: ValueRegionBox = ValueRegionBox.create(boxGraph, UUID.generate(), box => {
             box.regions.refer(trackBox.regions)
             box.events.refer(events.owners)
             box.position.setValue(position)
@@ -182,9 +171,8 @@ describe("DevicesClipboardHandler", () => {
     const addAudioEffect = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox,
                             label: string, index: number): CompressorDeviceBox => {
         const {boxGraph} = skeleton
-        let effect!: CompressorDeviceBox
         boxGraph.beginTransaction()
-        effect = CompressorDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const effect: CompressorDeviceBox = CompressorDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue(label)
             box.host.refer(audioUnit.audioEffects)
             box.index.setValue(index)
@@ -196,9 +184,8 @@ describe("DevicesClipboardHandler", () => {
     const addWerkstattParam = (skeleton: ProjectSkeleton, paramsField: Field<Pointers.Parameter>,
                                label: string, value: number, index: number): WerkstattParameterBox => {
         const {boxGraph} = skeleton
-        let param!: WerkstattParameterBox
         boxGraph.beginTransaction()
-        param = WerkstattParameterBox.create(boxGraph, UUID.generate(), box => {
+        const param: WerkstattParameterBox = WerkstattParameterBox.create(boxGraph, UUID.generate(), box => {
             box.owner.refer(paramsField)
             box.label.setValue(label)
             box.index.setValue(index)
@@ -214,15 +201,13 @@ describe("DevicesClipboardHandler", () => {
         sampleBox: WerkstattSampleBox, audioFile: AudioFileBox
     } => {
         const {boxGraph} = skeleton
-        let sampleBox!: WerkstattSampleBox
-        let audioFile!: AudioFileBox
         boxGraph.beginTransaction()
-        audioFile = AudioFileBox.create(boxGraph, UUID.generate(), box => {
+        const audioFile: AudioFileBox = AudioFileBox.create(boxGraph, UUID.generate(), box => {
             box.fileName.setValue(fileName)
             box.startInSeconds.setValue(0)
             box.endInSeconds.setValue(1)
         })
-        sampleBox = WerkstattSampleBox.create(boxGraph, UUID.generate(), box => {
+        const sampleBox: WerkstattSampleBox = WerkstattSampleBox.create(boxGraph, UUID.generate(), box => {
             box.owner.refer(samplesField)
             box.label.setValue(label)
             box.index.setValue(index)
@@ -365,9 +350,8 @@ describe("DevicesClipboardHandler", () => {
             const trackB = addAutomationTrack(source, audioUnit, effect.ratio, 1)
             const regionA = addValueRegion(source, trackA, 0, 960)
             const sharedEvents = regionA.events.targetVertex.unwrap().box as ValueEventCollectionBox
-            let regionB!: ValueRegionBox
             source.boxGraph.beginTransaction()
-            regionB = ValueRegionBox.create(source.boxGraph, UUID.generate(), box => {
+            const regionB: ValueRegionBox = ValueRegionBox.create(source.boxGraph, UUID.generate(), box => {
                 box.regions.refer(trackB.regions)
                 box.events.refer(sharedEvents.owners)
                 box.position.setValue(0)
@@ -1183,9 +1167,8 @@ describe("DevicesClipboardHandler", () => {
     const addMIDIOutputInstrument = (skeleton: ProjectSkeleton, audioUnit: AudioUnitBox,
                                      label: string): MIDIOutputDeviceBox => {
         const {boxGraph} = skeleton
-        let device!: MIDIOutputDeviceBox
         boxGraph.beginTransaction()
-        device = MIDIOutputDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const device: MIDIOutputDeviceBox = MIDIOutputDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue(label)
             box.host.refer(audioUnit.input)
         })
@@ -1197,9 +1180,8 @@ describe("DevicesClipboardHandler", () => {
                                deviceBox: MIDIOutputDeviceBox,
                                outputId: string, outputLabel: string): MIDIOutputBox => {
         const {boxGraph, mandatoryBoxes: {rootBox}} = skeleton
-        let midiOutputBox!: MIDIOutputBox
         boxGraph.beginTransaction()
-        midiOutputBox = MIDIOutputBox.create(boxGraph, UUID.generate(), box => {
+        const midiOutputBox: MIDIOutputBox = MIDIOutputBox.create(boxGraph, UUID.generate(), box => {
             box.id.setValue(outputId)
             box.label.setValue(outputLabel)
             box.root.refer(rootBox.outputMidiDevices)

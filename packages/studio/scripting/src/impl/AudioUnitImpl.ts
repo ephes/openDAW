@@ -86,7 +86,7 @@ export abstract class AudioUnitImpl implements AudioUnit {
         device: DEVICE,
         parameter: PARAMETER, props?: Partial<ValueTrack>): ValueTrack {
         const track = new ValueTrackImpl<DEVICE, PARAMETER>(this, device, parameter, props)
-        this.#valueTracks.push(track as any)
+        this.#valueTracks.push(track as unknown as ValueTrackImpl)
         return track
     }
 

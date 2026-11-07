@@ -106,8 +106,8 @@ class RefBox extends Box<UnreferenceableType, RefBoxFields> {
     get target(): PointerField<PointerType.A> {return this.getField(1)}
 }
 
-const createGraphWithFactory = () => new BoxGraph<any>(Option.wrap(
-    (name: keyof any, graph: BoxGraph, uuid: UUID.Bytes, constructor: Procedure<Box>) => {
+const createGraphWithFactory = () => new BoxGraph<Record<string, Box>>(Option.wrap(
+    (name: string, graph: BoxGraph, uuid: UUID.Bytes, constructor: Procedure<Box>) => {
         switch (name) {
             case "BarBox": return BarBox.create(graph, uuid, constructor)
             case "MandatoryBox": return MandatoryBox.create(graph, uuid, constructor as Procedure<MandatoryBox>)
@@ -123,7 +123,7 @@ describe("editing", () => {
     }
 
     beforeEach<TestScene>((scene: TestScene) => {
-        const graph = new BoxGraph<any>(Option.wrap((name: keyof any, graph: BoxGraph, uuid: UUID.Bytes, constructor: Procedure<Box>) => {
+        const graph = new BoxGraph<Record<string, Box>>(Option.wrap((name: string, graph: BoxGraph, uuid: UUID.Bytes, constructor: Procedure<Box>) => {
             switch (name) {
                 case "BarBox":
                     return BarBox.create(graph, uuid, constructor)

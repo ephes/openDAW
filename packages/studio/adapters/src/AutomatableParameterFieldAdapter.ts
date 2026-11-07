@@ -32,6 +32,8 @@ const ExternalControlTypes = [
     Pointers.MIDIControl,
     Pointers.ParameterController] as const
 
+// The default erases invariant value types in heterogeneous parameter collections.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class AutomatableParameterFieldAdapter<T extends PrimitiveValues = any> implements Parameter<T>, Terminable {
     readonly #context: BoxAdaptersContext
     readonly #field: PrimitiveField<T, Pointers.Automation>
@@ -52,14 +54,14 @@ export class AutomatableParameterFieldAdapter<T extends PrimitiveValues = any> i
     #midiControlled: boolean = false
 
     constructor(context: BoxAdaptersContext,
-                field: PrimitiveField<T, any>,
+                field: PrimitiveField<T, PointerTypes>,
                 valueMapping: ValueMapping<T>,
                 stringMapping: StringMapping<T>,
                 name: string,
                 anchor?: unitValue,
                 resetValue?: T) {
         this.#context = context
-        this.#field = field
+        this.#field = field as PrimitiveField<T, Pointers.Automation>
         this.#valueMapping = valueMapping
         this.#stringMapping = stringMapping
         this.#name = name

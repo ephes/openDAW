@@ -1,5 +1,5 @@
 import {ByteArrayInput, ByteArrayOutput, Maybe, Option, safeExecute, Unhandled, UUID} from "@opendaw/lib-std"
-import {NoPointers, VertexVisitor} from "./vertex"
+import {NoPointers, Vertex, VertexVisitor} from "./vertex"
 import {Field, FieldConstruct} from "./field"
 import {Box, BoxConstruct} from "./box"
 import {BooleanField, ByteArrayField, Float32Field, Int32Field, PrimitiveField, StringField} from "./primitive"
@@ -27,6 +27,7 @@ type FooBoxFields = {
 }
 
 class FooBox extends Box<PointerType.C, FooBoxFields> {
+    get tags(): Readonly<Record<string, string | number | boolean>> {return {}}
     static create(graph: BoxGraph, uuid: UUID.Bytes): FooBox {
         return graph.stageBox(new FooBox({
             uuid, graph: graph, name: "FooBox", pointerRules: {
@@ -44,24 +45,28 @@ class FooBox extends Box<PointerType.C, FooBoxFields> {
                 parent: this,
                 fieldKey: 0,
                 fieldName: "0",
+                deprecated: false,
                 pointerRules: {accepts: [PointerType.A], mandatory: false}
             }),
             1: new FooObject({
                 parent: this,
                 fieldKey: 1,
                 fieldName: "1",
+                deprecated: false,
                 pointerRules: NoPointers
             }),
             2: PointerField.create({
                 parent: this,
                 fieldKey: 2,
                 fieldName: "2",
+                deprecated: false,
                 pointerRules: NoPointers
             }, PointerType.A, false),
             3: ArrayField.create({
                 parent: this,
                 fieldKey: 3,
                 fieldName: "3",
+                deprecated: false,
                 pointerRules: NoPointers
             }, construct => BooleanField.create({
                 ...construct,
@@ -71,12 +76,14 @@ class FooBox extends Box<PointerType.C, FooBoxFields> {
                 parent: this,
                 fieldKey: 4,
                 fieldName: "4",
+                deprecated: false,
                 pointerRules: NoPointers
             }, construct => new FooObject(construct), 9),
             5: ArrayField.create({
                 parent: this,
                 fieldKey: 5,
                 fieldName: "5",
+                deprecated: false,
                 pointerRules: NoPointers
             }, construct => PointerField.create(construct, PointerType.A, false), 9)
         }
@@ -127,6 +134,7 @@ type BarBoxFields = {
 }
 
 class BarBox extends Box<UnreferenceableType, BarBoxFields> {
+    get tags(): Readonly<Record<string, string | number | boolean>> {return {}}
     static create(graph: BoxGraph, uuid: UUID.Bytes): BarBox {
         return graph.stageBox(new BarBox({
             uuid,
@@ -144,6 +152,7 @@ class BarBox extends Box<UnreferenceableType, BarBoxFields> {
                 parent: this,
                 fieldKey: 2,
                 fieldName: "2",
+                deprecated: false,
                 pointerRules: NoPointers
             }, PointerType.C, false)
         }
@@ -175,30 +184,35 @@ class FooObject extends ObjectField<FooObjectFields> {
                 parent: this,
                 fieldKey: 0,
                 fieldName: "0",
+                deprecated: false,
                 pointerRules: {accepts: [PointerType.B], mandatory: true}
             }),
             1: StringField.create({
                 parent: this,
                 fieldKey: 1,
                 fieldName: "1",
+                deprecated: false,
                 pointerRules: {accepts: [PointerType.A], mandatory: true}
             }),
             2: Float32Field.create({
                 parent: this,
                 fieldKey: 2,
                 fieldName: "2",
+                deprecated: false,
                 pointerRules: {accepts: [], mandatory: true}
-            }, Math.PI),
+            }, "any", ""),
             3: Int32Field.create({
                 parent: this,
                 fieldKey: 3,
                 fieldName: "3",
+                deprecated: false,
                 pointerRules: {accepts: [PointerType.A, PointerType.B], mandatory: true}
-            }),
+            }, "any", ""),
             4: ByteArrayField.create({
                 parent: this,
                 fieldKey: 4,
                 fieldName: "4",
+                deprecated: false,
                 pointerRules: {accepts: [], mandatory: false}
             }, new Int8Array([1, 2, 3]))
         }
@@ -233,10 +247,16 @@ describe("gen (create/navigate)", () => {
     it("find field", () => expect(fooBox.searchVertex(new Int16Array([1, 3])).contains(fooBox.foo.baz)).true)
     it("find box", () => expect(fooBox.foo.solo.box).toBe(fooBox))
     it("getField(1)", () => expect(fooBox.foo.getField(1)).toBe(fooBox.foo.solo))
+    it("keeps field methods available through unparameterized box and vertex APIs", () => {
+        const box: Box = fooBox
+        const vertex: Vertex = fooBox
+        expect(box.getField(2).isEmpty()).toBe(fooBox.ref.isEmpty())
+        expect(vertex.getField(2).isEmpty()).toBe(fooBox.ref.isEmpty())
+    })
     it("share graph", () => expect(fooBox.foo.solo.graph).toBe(graph))
-    // @ts-expect-error
+    // @ts-expect-error Deliberately exercise a rejected input.
     it("incompatible", () => expect(() => fooBox.ref.refer(fooBox.foo.mute)).toThrow())
-    // @ts-expect-error
+    // @ts-expect-error Deliberately exercise a rejected input.
     it("incompatible", () => expect(() => fooBox.ref.refer(fooBox.foo.bar)).toThrow())
     // it("compatible", () => expect(() => barBox.ref.refer(fooBox)).not.toThrow())
     // it("compatible", () => expect(() => fooBox.ref.refer(fooBox.foo.baz)).not.toThrow())

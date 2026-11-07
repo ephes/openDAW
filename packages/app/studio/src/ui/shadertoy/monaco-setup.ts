@@ -86,7 +86,7 @@ monaco.languages.setMonarchTokensProvider("glsl", {
             [/\d*\.\d+([eE][-+]?\d+)?/, "number.float"],
             [/\d+[eE][-+]?\d+/, "number.float"],
             [/\d+/, "number"],
-            [/[{}()\[\]]/, "delimiter.bracket"],
+            [/[{}()[\]]/, "delimiter.bracket"],
             [/[<>](?!@)/, "delimiter.angle"],
             [/[;,.]/, "delimiter"],
             [/[+\-*/%&|^!~=<>?:]/, "operator"]

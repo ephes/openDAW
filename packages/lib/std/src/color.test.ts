@@ -1,8 +1,6 @@
 import {describe, expect, it} from "vitest"
 import {Color} from "./color"
-import hslStringToHex = Color.hslStringToHex
-import hslToHex = Color.hslToHex
-import hexToHsl = Color.hexToHsl
+const {hslStringToHex, hslToHex, hexToHsl} = Color
 
 describe("color", () => {
     it("parse", () => {

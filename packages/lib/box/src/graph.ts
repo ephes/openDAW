@@ -21,11 +21,11 @@ import {
 } from "@opendaw/lib-std"
 import {Address} from "./address"
 import {Vertex} from "./vertex"
-import {PointerField} from "./pointer"
+import {PointerField, PointerTypes} from "./pointer"
 import {PrimitiveField, PrimitiveValues} from "./primitive"
 import {ObjectField} from "./object"
 import {Box} from "./box"
-import {Field} from "./field"
+import {Field, Fields} from "./field"
 import {ArrayField} from "./array"
 import {DeleteUpdate, FieldUpdate, NewUpdate, PointerUpdate, PrimitiveUpdate, Update} from "./updates"
 import {Dispatchers, Propagation} from "./dispatchers"
@@ -47,6 +47,8 @@ export interface UpdateListener {
 
 export type Dependencies = { boxes: Iterable<Box>, pointers: Iterable<PointerField> }
 
+// The unparameterized graph erases a heterogeneous box registry; unknown would forbid every factory key.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class BoxGraph<BoxMap = any> {
     readonly #boxFactory: Option<BoxFactory<BoxMap>>
     readonly #boxes: SortedSet<Readonly<Uint8Array>, Box>
@@ -206,7 +208,7 @@ export class BoxGraph<BoxMap = any> {
         return checksum.result()
     }
 
-    onPrimitiveValueUpdate<V extends PrimitiveValues>(field: PrimitiveField<V, any>, oldValue: V, newValue: V): void {
+    onPrimitiveValueUpdate<V extends PrimitiveValues>(field: PrimitiveField<V, PointerTypes>, oldValue: V, newValue: V): void {
         this.#assertTransaction()
         if (field.isAttached() && !this.#constructingBox) {
             const update = new PrimitiveUpdate<V>(field.address, field.serialization(), oldValue, newValue)
@@ -343,7 +345,7 @@ export class BoxGraph<BoxMap = any> {
             for (const field of fields) {
                 field.accept({
                     visitPointerField: (p: PointerField) => pointers.push(p),
-                    visitObjectField: (o: ObjectField<any>) => collectFromFields(o.fields()),
+                    visitObjectField: (o: ObjectField<Fields>) => collectFromFields(o.fields()),
                     visitArrayField: (a: ArrayField) => collectFromFields(a.fields())
                 })
             }
@@ -424,7 +426,7 @@ export class BoxGraph<BoxMap = any> {
                             count++
                         }
                     },
-                    visitObjectField: (object: ObjectField<any>) => verify(object)
+                    visitObjectField: (object: ObjectField<Fields>) => verify(object)
                 })
             }
         }
@@ -434,7 +436,7 @@ export class BoxGraph<BoxMap = any> {
     }
 
     debugBoxes(): void {
-        console.table(this.#boxes.values().reduce((dict: any, box) => {
+        console.table(this.#boxes.values().reduce((dict: Record<string, unknown>, box) => {
             dict[UUID.toString(box.address.uuid)] = {
                 class: box.name,
                 "incoming links": box.incomingEdges().length,

@@ -52,7 +52,7 @@ export class MidiDevices {
             close(): Promise<MIDIPort> {return Promise.resolve(this)}
             open(): Promise<MIDIPort> {return Promise.resolve(this)}
             dispatchEvent(_event: unknown): boolean {return false}
-            onstatechange: ((this: MIDIPort, ev: MIDIConnectionEvent) => any) | null = null
+            onstatechange: ((this: MIDIPort, ev: MIDIConnectionEvent) => unknown) | null = null
         }
         MidiDevices.#softwareMIDIOutputs.set(output.id, output)
         return output
@@ -129,10 +129,10 @@ export class MidiDevices {
                 for (let channel = 0; channel < 16; channel++) {
                     const data = MidiData.noteOff(channel, note)
                     const event = new MessageEvent("midimessage", {data})
-                    for (let input of midiAccess.inputs.values()) {
+                    for (const input of midiAccess.inputs.values()) {
                         input.dispatchEvent(event)
                     }
-                    for (let output of midiAccess.outputs.values()) {
+                    for (const output of midiAccess.outputs.values()) {
                         output.send(data)
                     }
                 }
@@ -142,11 +142,10 @@ export class MidiDevices {
 
     @Lazy
     static available(): MutableObservableValue<boolean> {
-        const scope = this
         return new class implements MutableObservableValue<boolean> {
             readonly #notifier: Notifier<ObservableValue<boolean>> = new Notifier<ObservableValue<boolean>>()
 
-            constructor() {
+            constructor(readonly scope: typeof MidiDevices) {
                 const subscription = scope.get().subscribe(option => {
                     if (option.nonEmpty()) {
                         subscription.terminate()
@@ -156,13 +155,13 @@ export class MidiDevices {
             }
 
             setValue(value: boolean): void {
-                if (!value || scope.#midiAccess.nonEmpty() || scope.#isRequesting) {return}
+                if (!value || this.scope.#midiAccess.nonEmpty() || this.scope.#isRequesting) {return}
                 console.debug("Request MIDI access")
-                scope.#isRequesting = true
-                scope.requestPermission().finally(() => scope.#isRequesting = false)
+                this.scope.#isRequesting = true
+                this.scope.requestPermission().finally(() => this.scope.#isRequesting = false)
             }
 
-            getValue(): boolean {return scope.#midiAccess.nonEmpty()}
+            getValue(): boolean {return this.scope.#midiAccess.nonEmpty()}
 
             catchupAndSubscribe(observer: Observer<ObservableValue<boolean>>): Subscription {
                 observer(this)
@@ -172,7 +171,7 @@ export class MidiDevices {
             subscribe(observer: Observer<ObservableValue<boolean>>): Subscription {
                 return this.#notifier.subscribe(observer)
             }
-        }
+        }(this)
     }
 
     static #isRequesting: boolean = false

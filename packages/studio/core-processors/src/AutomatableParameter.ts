@@ -14,6 +14,8 @@ import {
 import {ppqn} from "@opendaw/lib-dsp"
 import {EngineContext} from "./EngineContext"
 
+// The default erases invariant parameter values in heterogeneous processor collections.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class AutomatableParameter<T extends PrimitiveValues = any> implements TerminableOwner, Terminable {
     readonly #terminator = new Terminator()
 

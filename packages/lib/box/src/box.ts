@@ -50,6 +50,8 @@ export type BoxConstruct<T extends PointerTypes> = {
     ephemeral?: boolean
 }
 
+// Unparameterized boxes preserve dynamic field access for heterogeneous SDK callers.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export abstract class Box<P extends PointerTypes = PointerTypes, F extends Fields = any> implements Vertex<P, F> {
     static readonly DEBUG_DELETION = false
 
@@ -81,6 +83,8 @@ export abstract class Box<P extends PointerTypes = PointerTypes, F extends Field
     protected abstract initializeFields(): F
 
     abstract get tags(): Readonly<Record<string, string | number | boolean>>
+    // The visitor result is inferred separately for each concrete visitor.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     abstract accept<VISITOR extends VertexVisitor<any>>(visitor: VISITOR): VISITOR extends VertexVisitor<infer R> ? Maybe<R> : void
 
     fields(): ReadonlyArray<Field> {return Object.values(this.#fields)}
@@ -205,7 +209,7 @@ export abstract class Box<P extends PointerTypes = PointerTypes, F extends Field
             fields.every(field => field.accept<boolean>({
                 visitPointerField: (field: PointerField) => !field.mandatory || field.nonEmpty(),
                 visitArrayField: (field: ArrayField) => walkRecursive(field.fields()),
-                visitObjectField: (field: ObjectField<any>) => walkRecursive(field.fields()),
+                visitObjectField: (field: ObjectField<Fields>) => walkRecursive(field.fields()),
                 visitPrimitiveField: (_field: PrimitiveField) => true,
                 visitField: (_field: Field): boolean => true
             }) ?? true)

@@ -42,10 +42,10 @@ export namespace LogBuffer {
                 if (
                     typeof value === "object" &&
                     value &&
-                    typeof (value as any).toString === "function" &&
-                    (value as any).toString !== protoToString
+                    typeof value.toString === "function" &&
+                    value.toString !== protoToString
                 ) {
-                    const result = (value as any).toString()
+                    const result = value.toString()
                     if (typeof result === "string") return result
                 }
 

@@ -28,7 +28,7 @@ import {
 import {YMapper} from "./YMapper"
 import * as Y from "yjs"
 
-type EventHandler = (events: Array<Y.YEvent<any>>, transaction: Y.Transaction) => void
+type EventHandler = (events: Array<Y.YEvent<Y.AbstractType<unknown>>>, transaction: Y.Transaction) => void
 
 export type Construct<T> = {
     boxGraph: BoxGraph<T>,
@@ -197,7 +197,7 @@ export class YSync<T> implements Terminable {
         vertex.accept({
             visitField: (_: Field) => panic("Vertex must be either Primitive or Pointer"),
             visitArrayField: (_: ArrayField) => panic("Vertex must be either Primitive or Pointer"),
-            visitObjectField: (_: ObjectField<any>) => panic("Vertex must be either Primitive or Pointer"),
+            visitObjectField: (_: ObjectField<import("@opendaw/lib-box").Fields>) => panic("Vertex must be either Primitive or Pointer"),
             visitPointerField: (field: PointerField) => field.fromJSON(targetMap.get(key) as JSONValue),
             visitPrimitiveField: (field: PrimitiveField) => field.fromJSON(targetMap.get(key) as JSONValue)
         })
@@ -211,7 +211,7 @@ export class YSync<T> implements Terminable {
         this.#boxGraph.unstageBox(box)
     }
 
-    #rollbackTransaction(events: ReadonlyArray<Y.YEvent<any>>): void {
+    #rollbackTransaction(events: ReadonlyArray<Y.YEvent<Y.AbstractType<unknown>>>): void {
         console.debug(`rollback ${events.length} events...`)
         this.#getDoc()
             .transact(() => {

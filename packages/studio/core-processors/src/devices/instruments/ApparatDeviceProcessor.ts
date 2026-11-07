@@ -215,13 +215,13 @@ export class ApparatDeviceProcessor extends AudioProcessor
     processEvents(_block: Block): void {}
 
     #tryLoad(expectedUpdate: int): void {
-        const registry = (globalThis as any).openDAW?.apparatProcessors?.[this.#uuid]
+        const registry = (globalThis as typeof globalThis & {openDAW?: {apparatProcessors?: Record<string, {update: number, create: new () => UserProcessor}>}}).openDAW?.apparatProcessors?.[this.#uuid]
         if (isDefined(registry) && registry.update === expectedUpdate) {
             this.#swapProcessor(registry.create, expectedUpdate)
         }
     }
 
-    #swapProcessor(ProcessorClass: any, update: int): void {
+    #swapProcessor(ProcessorClass: new () => UserProcessor, update: int): void {
         try {
             const proc = new ProcessorClass() as UserProcessor
             proc.samples = {}

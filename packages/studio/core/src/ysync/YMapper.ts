@@ -75,7 +75,7 @@ export namespace YMapper {
                 visitPrimitiveField: (field: PrimitiveField): unknown => map.set(key, field.toJSON() ?? null),
                 visitPointerField: (field: PointerField): unknown => map.set(key, field.toJSON() ?? null),
                 visitArrayField: (field: ArrayField): unknown => map.set(key, createDeepMap(field.record())),
-                visitObjectField: (field: ObjectField<any>): unknown => map.set(key, createDeepMap(field.record()))
+                visitObjectField: (field: ObjectField<import("@opendaw/lib-box").Fields>): unknown => map.set(key, createDeepMap(field.record()))
             })
             return map
         }, new Y.Map())

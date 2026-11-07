@@ -106,7 +106,7 @@ export namespace Promises {
     export const delay = <T>(promise: Promise<T>, timeSpan: TimeSpan): Promise<T> =>
         Promise.all([promise, Wait.timeSpan(timeSpan)]).then(([value]) => value)
 
-    export const fail = <T>(_promise: Promise<T>, reason: any = "fail"): Promise<T> => Promise.reject<T>(reason)
+    export const fail = <T>(_promise: Promise<T>, reason: unknown = "fail"): Promise<T> => Promise.reject<T>(reason)
 
     export const timeout = <T>(promise: Promise<T>, timeSpan: TimeSpan, fail?: string): Promise<T> => {
         return new Promise<T>((resolve, reject) => {

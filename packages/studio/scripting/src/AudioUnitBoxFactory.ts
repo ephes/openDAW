@@ -146,7 +146,7 @@ export namespace AudioUnitBoxFactory {
         const oscFields = box.oscillators.fields()
         return {
             // Instrument base (readonly, not used in constructor)
-            get audioUnit() {return undefined as any},
+            get audioUnit() {return undefined as unknown as import("./Api").InstrumentAudioUnit},
             // Filter
             get cutoff() {return box.cutoff.getValue()},
             set cutoff(v) {box.cutoff.setValue(v)},

@@ -46,7 +46,7 @@ export class BoxForge<E extends PointerTypes> {
         this.#path = path
     }
 
-    writeClass(schema: ClassSchema<E>, option: ClassOptions, pointerRules: PointerRules<E>, resource?: ResourceType, ephemeral?: boolean, tags?: Record<string, string>): void {
+    writeClass(schema: ClassSchema<E>, option: ClassOptions, pointerRules: PointerRules<E>, resource?: ResourceType, ephemeral?: boolean, tags?: Record<string, string | number | boolean>): void {
         const written: Maybe<ClassSchema<E>> = this.#written.get(schema.name)
         if (isDefined(written)) {
             if (written === schema) {
@@ -211,7 +211,7 @@ class ClassWriter<E extends PointerTypes> {
         edges: PointerRules<E>,
         resource?: ResourceType,
         ephemeral?: boolean,
-        tags?: Record<string, string>): void {
+        tags?: Record<string, string | number | boolean>): void {
         const writer = new ClassWriter<E>(generator, file, schema, option, edges, resource, ephemeral, tags)
         writer.#writeFieldsType()
         writer.#writeClass()
@@ -225,7 +225,7 @@ class ClassWriter<E extends PointerTypes> {
     readonly #pointerRules: PointerRules<E>
     readonly #resource?: ResourceType
     readonly #ephemeral?: boolean
-    readonly #tags?: Record<string, string>
+    readonly #tags?: Record<string, string | number | boolean>
 
     readonly #imports: SetMultimap<string, string>
     readonly #fieldPrinter: ReadonlyArray<FieldPrinter>
@@ -240,7 +240,7 @@ class ClassWriter<E extends PointerTypes> {
         pointerRules: PointerRules<E>,
         resource?: ResourceType,
         ephemeral?: boolean,
-        tags?: Record<string, string>) {
+        tags?: Record<string, string | number | boolean>) {
         this.#generator = generator
         this.#file = file
         this.#schema = schema
@@ -466,7 +466,7 @@ class ClassWriter<E extends PointerTypes> {
                             : undefined]
                 }
             case "boolean":
-            case "string":
+            case "string": {
                 const className = asDefined(PrimitiveFields[type], `Unknown type: ${type}`)
                 return {
                     fieldKey,
@@ -480,6 +480,7 @@ class ClassWriter<E extends PointerTypes> {
                     ctorParams: [this.#writeFieldConstruct(fieldKey, fieldName, pointerRules, deprecated),
                         type === "string" ? field.value === undefined ? "" : `"${field.value}"` : field.value]
                 }
+            }
             case "pointer":
                 this.#usesPointerType = true
                 return {
@@ -496,7 +497,7 @@ class ClassWriter<E extends PointerTypes> {
                         String(field.mandatory)
                     ]
                 }
-            case "array":
+            case "array": {
                 const element = this.#printField(fieldKey, field.element)
                 if (!isDefined(element)) {return null}
                 this.#imports.add(element.importPath, element.className)
@@ -521,6 +522,7 @@ class ClassWriter<E extends PointerTypes> {
                         field.length
                     ]
                 }
+            }
             case "object": {
                 this.#generator.writeClass(field.class, FieldClassOption, NoPointers)
                 const className = field.class.name

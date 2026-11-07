@@ -27,7 +27,7 @@ export class ModuleConnectorAdapter<CONNECTION_TYPE extends Pointers, Direction>
         this.#name = name
     }
 
-    matches(other: ModuleConnectorAdapter<any, any>): boolean {
+    matches(other: ModuleConnectorAdapter<Pointers, unknown>): boolean {
         return this.direction !== other.direction && this.field.pointerRules.accepts
             .some(accepts => other.field.pointerRules.accepts
                 .some(type => type === accepts))

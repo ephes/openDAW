@@ -82,7 +82,7 @@ export namespace Html {
 
     // handles cases like 'display: contents', where the bounding box is always empty, although the children have dimensions
     export const secureBoundingBox = (element: Element): DOMRect => {
-        let elemRect = element.getBoundingClientRect()
+        const elemRect = element.getBoundingClientRect()
         if (!Rect.isEmpty(elemRect)) {
             return elemRect
         }

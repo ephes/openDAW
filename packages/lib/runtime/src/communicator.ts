@@ -27,7 +27,7 @@ export namespace Communicator {
         dispatchAndReturn: <F extends (..._: Parameters<F>) => Promise<R>, R>(func: F, ...args: Parameters<F>) => Promise<R>
     }
 
-    const extractTransferables = (args: any[]): Transferable[] => {
+    const extractTransferables = (args: unknown[]): Transferable[] => {
         const transferables: Transferable[] = []
         for (const arg of args) {
             if (arg instanceof Transfer) {
@@ -43,7 +43,7 @@ export namespace Communicator {
         return transferables
     }
 
-    const unwrapArg = (arg: any): any => arg instanceof Transfer ? arg.value : arg
+    const unwrapArg = (arg: unknown): unknown => arg instanceof Transfer ? arg.value : arg
 
     class Sender<PROTOCOL> implements Dispatcher, Terminable {
         readonly #messenger: Messenger
@@ -67,18 +67,18 @@ export namespace Communicator {
                 returnId: false,
                 func: func.name as keyof PROTOCOL,
                 args: Array.from(Iterables.map(args, arg => ({value: unwrapArg(arg)})))
-            } satisfies Send<any>, transferables)
+            } satisfies Send<PROTOCOL>, transferables)
         }
 
         readonly dispatchAndReturn = <F extends (..._: Parameters<F>) => Promise<R>, R>
         (func: F, ...args: Parameters<F>): Promise<R> => new Promise<R>((resolve, reject) => {
-            const entries = Iterables.reduce(args, (callbacks: [int, Function][], arg: any, index: int) => {
-                if (typeof arg === "function") {callbacks.push([index, arg])}
+            const entries = Iterables.reduce(args, (callbacks: [int, ((...args: unknown[]) => unknown)][], arg: unknown, index: int) => {
+                if (typeof arg === "function") {callbacks.push([index, arg as (...args: unknown[]) => unknown])}
                 return callbacks
             }, [])
             this.#expected.set(this.#returnId, {
                 executorTuple: {resolve, reject},
-                callbacks: new Map<int, Function>(entries)
+                callbacks: new Map<int, ((...args: unknown[]) => unknown)>(entries)
             })
             const transferables = extractTransferables(args)
             this.#messenger.send({
@@ -87,7 +87,7 @@ export namespace Communicator {
                 func: func.name as keyof PROTOCOL,
                 args: Array.from(Iterables.map(args, (arg, index) =>
                     typeof arg === "function" ? ({callback: index}) : ({value: unwrapArg(arg)})))
-            } satisfies Send<any>, transferables)
+            } satisfies Send<PROTOCOL>, transferables)
             this.#returnId++
         })
 
@@ -95,7 +95,7 @@ export namespace Communicator {
             const returns: Maybe<Return> = this.#expected.get(message.returnId)
             if (isDefined(returns)) {
                 if (message.type === "resolve") {
-                    returns.executorTuple.resolve(message.resolve)
+                    returns.executorTuple.resolve(message.resolve as never)
                     this.#expected.delete(message.returnId)
                 } else if (message.type === "reject") {
                     returns.executorTuple.reject(message.reject)
@@ -127,7 +127,7 @@ export namespace Communicator {
             const object = Object.getPrototypeOf(this.#protocol) === Object.getPrototypeOf({})
                 ? this.#protocol : Object.getPrototypeOf(this.#protocol)
             const func = asDefined(
-                object[message.func] as Function,
+                object[message.func] as (...args: unknown[]) => Promise<unknown>,
                 `${message.func.toString()} does not exists on ${this.#protocol}`)
             const returnId: number | false = message.returnId
             if (returnId === false) {
@@ -135,8 +135,8 @@ export namespace Communicator {
                     ? arg.value : panic(`${message.func.toString()} has no promise.`)))
             } else {
                 try {
-                    const promise: Promise<any> = func.apply(this.#protocol, message.args
-                        .map(arg => "callback" in arg ? (...args: any[]) =>
+                    const promise: Promise<unknown> = func.apply(this.#protocol, message.args
+                        .map(arg => "callback" in arg ? (...args: unknown[]) =>
                             this.#sendCallback(returnId, arg.callback, args) : arg.value))
                     promise.then(value => {
                             try {
@@ -150,13 +150,13 @@ export namespace Communicator {
             }
         }
 
-        readonly #sendResolve = (returnId: number, value: any): void =>
+        readonly #sendResolve = (returnId: number, value: unknown): void =>
             this.#messenger.send({type: "resolve", returnId, resolve: value} satisfies Resolve)
 
-        readonly #sendReject = (returnId: number, reason: any): void =>
+        readonly #sendReject = (returnId: number, reason: unknown): void =>
             this.#messenger.send({type: "reject", returnId, reject: reason} satisfies Reject)
 
-        readonly #sendCallback = (returnId: number, func: int, args: any[]): void =>
+        readonly #sendCallback = (returnId: number, func: int, args: unknown[]): void =>
             this.#messenger.send({type: "callback", returnId, funcAt: func, args})
     }
 
@@ -176,20 +176,20 @@ export namespace Communicator {
 
     type Resolve = {
         type: "resolve"
-        resolve: any
+        resolve: unknown
         returnId: int
     }
 
     type Reject = {
         type: "reject"
-        reject: any
+        reject: unknown
         returnId: int
     }
 
     type Return = {
-        executorTuple: ExecutorTuple<any>
-        callbacks?: Map<int, Function>
+        executorTuple: ExecutorTuple<never>
+        callbacks?: Map<int, ((...args: unknown[]) => unknown)>
     }
 
-    type Arg = { value: any } | { callback: int }
+    type Arg = { value: unknown } | { callback: int }
 }

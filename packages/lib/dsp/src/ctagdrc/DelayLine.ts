@@ -22,7 +22,7 @@ export class DelayLine {
 
     process(buffer: AudioBuffer, fromIndex: int, toIndex: int): void {
         if (this.#delayInSamples === 0) {return}
-        let readPosition = (this.#writePosition - this.#delayInSamples + this.#delayBufferSize) % this.#delayBufferSize
+        const readPosition = (this.#writePosition - this.#delayInSamples + this.#delayBufferSize) % this.#delayBufferSize
         for (let ch = 0; ch < this.#numChannels; ch++) {
             const channelData = buffer.getChannel(ch)
             let writePos = this.#writePosition

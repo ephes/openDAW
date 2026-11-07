@@ -19,7 +19,7 @@ export class DeviceInterfaceKnobAdapter implements DeviceInterfaceElementAdapter
         this.#box = box
     }
 
-    get box(): Box<PointerTypes, any> {return this.#box}
+    get box(): Box<PointerTypes> {return this.#box}
     get uuid(): Readonly<Uint8Array> {return this.#box.address.uuid}
     get address(): Address {return this.#box.address}
 

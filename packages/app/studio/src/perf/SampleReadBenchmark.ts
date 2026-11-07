@@ -175,7 +175,7 @@ const measureKernel = (
         for (let q = 0; q < quantaPerRun; q++) {
             for (let v = 0; v < sources.length; v++) {
                 const src = sources[v]
-                let position = positions[v]
+                const position = positions[v]
                 if (kernel === "direct") {
                     acc += directKernel(src.L, src.R, outL, outR, position, rateRatio, QUANTUM, env)
                 } else {

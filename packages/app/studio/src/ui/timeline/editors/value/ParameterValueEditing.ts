@@ -56,15 +56,15 @@ export class ParameterValueEditing implements ValueContext, Terminable {
     }
 
     get anchorModel(): ObservableValue<unitValue> {
-        const scope = this
         return new class implements ObservableValue<unitValue> {
-            getValue(): unitValue {return scope.#assignment.mapOr(assignment => assignment.adapter.anchor, 0.0)}
-            subscribe(observer: Observer<ObservableValue<unitValue>>): Subscription {return scope.#anchorValue.subscribe(observer)}
+            constructor(readonly scope: ParameterValueEditing) {}
+            getValue(): unitValue {return this.scope.#assignment.mapOr(assignment => assignment.adapter.anchor, 0.0)}
+            subscribe(observer: Observer<ObservableValue<unitValue>>): Subscription {return this.scope.#anchorValue.subscribe(observer)}
             catchupAndSubscribe(observer: Observer<ObservableValue<unitValue>>): Subscription {
                 observer(this)
                 return this.subscribe(observer)
             }
-        }
+        }(this)
     }
 
     get valueMapping(): ValueMapping<PrimitiveValues> {

@@ -60,7 +60,7 @@ describe("TempoMap.intervalToSeconds with negative fromPPQN", () => {
         const tempoMap = new ConstantTempoMap({
             getValue: () => bpm,
             subscribe: () => ({terminate: () => {}})
-        } as any)
+        } as unknown as import("@opendaw/lib-std").ObservableValue<number>)
         const elapsed = tempoMap.intervalToSeconds(-1 * barPpqn, 5 * barPpqn)
         const expected = PPQN.pulsesToSeconds(6 * barPpqn, bpm)
         expect(elapsed).toBeCloseTo(expected)
@@ -70,7 +70,7 @@ describe("TempoMap.intervalToSeconds with negative fromPPQN", () => {
         const tempoMap = new ConstantTempoMap({
             getValue: () => bpm,
             subscribe: () => ({terminate: () => {}})
-        } as any)
+        } as unknown as import("@opendaw/lib-std").ObservableValue<number>)
         expect(tempoMap.intervalToSeconds(-6 * barPpqn, 0))
             .toBeCloseTo(PPQN.pulsesToSeconds(6 * barPpqn, bpm))
     })
@@ -83,7 +83,7 @@ describe("no-stretch sample offset for moved split region", () => {
     const tempoMap = new ConstantTempoMap({
         getValue: () => bpm,
         subscribe: () => ({terminate: () => {}})
-    } as any)
+    } as unknown as import("@opendaw/lib-std").ObservableValue<number>)
 
     const computeSampleOffset = (region: {position: number, complete: number, loopOffset: number, loopDuration: number},
                                  waveformOffset: number) => {

@@ -21,7 +21,7 @@ export class VirtualObject<T extends object> implements Terminable {
 
     subscribe<P extends PathTuple<T>>(observer: Observer<ValueAtPath<T, P>>, ...path: P): Subscription {
         const getValue = (): ValueAtPath<T, P> =>
-            path.reduce((object: any, key) => object[key], this.#proxy)
+            path.reduce<unknown>((object, key) => (object as Record<PropertyKey, unknown>)[key as PropertyKey], this.#proxy) as ValueAtPath<T, P>
         return this.#notifier.subscribe(notifiedPath => {
             if (this.#pathsOverlap(notifiedPath, path as ReadonlyArray<PropertyKey>)) {observer(getValue())}
         })
@@ -29,7 +29,7 @@ export class VirtualObject<T extends object> implements Terminable {
 
     catchupAndSubscribe<P extends PathTuple<T>>(observer: Observer<ValueAtPath<T, P>>, ...path: P): Subscription {
         const getValue = (): ValueAtPath<T, P> =>
-            path.reduce((object: any, key) => object[key], this.#proxy)
+            path.reduce<unknown>((object, key) => (object as Record<PropertyKey, unknown>)[key as PropertyKey], this.#proxy) as ValueAtPath<T, P>
         observer(getValue())
         return this.subscribe(observer, ...path)
     }
@@ -41,11 +41,11 @@ export class VirtualObject<T extends object> implements Terminable {
     createMutableObservableValue<P extends PathTuple<T>>(...path: P): MutableObservableValue<ValueAtPath<T, P>> & Terminable {
         const terminator = this.#terminator.own(new Terminator())
         const notifier = terminator.own(new Notifier<ObservableValue<ValueAtPath<T, P>>>())
-        const getTarget = (): any => path.slice(0, -1).reduce((object: any, key) => object[key], this.#proxy)
+        const getTarget = (): Record<PropertyKey, unknown> => path.slice(0, -1).reduce<unknown>((object, key) => (object as Record<PropertyKey, unknown>)[key as PropertyKey], this.#proxy) as Record<PropertyKey, unknown>
         const lastKey = path[path.length - 1]
         const observable: MutableObservableValue<ValueAtPath<T, P>> & Terminable = {
-            getValue: () => path.reduce((object: any, key) => object[key], this.#proxy),
-            setValue: (value: ValueAtPath<T, P>) => getTarget()[lastKey] = value,
+            getValue: () => path.reduce<unknown>((object, key) => (object as Record<PropertyKey, unknown>)[key as PropertyKey], this.#proxy) as ValueAtPath<T, P>,
+            setValue: (value: ValueAtPath<T, P>) => getTarget()[lastKey as PropertyKey] = value,
             subscribe: (observer: Observer<ObservableValue<ValueAtPath<T, P>>>) =>
                 notifier.subscribe(observer),
             catchupAndSubscribe: (observer: Observer<ObservableValue<ValueAtPath<T, P>>>) => {
@@ -79,15 +79,17 @@ export class VirtualObject<T extends object> implements Terminable {
         return true
     }
 
-    readonly #updateRecursive = (target: any, source: any, changedRootKeys: Set<keyof T>, rootKey?: keyof T): void => {
+    readonly #updateRecursive = (target: object, source: object, changedRootKeys: Set<keyof T>, rootKey?: keyof T): void => {
+        const targetRecord = target as Record<string, unknown>
+        const sourceRecord = source as Record<string, unknown>
         for (const key of Object.keys(source)) {
             const currentRootKey = rootKey ?? key as keyof T
-            const newValue = source[key]
-            const oldValue = target[key]
+            const newValue = sourceRecord[key]
+            const oldValue = targetRecord[key]
             if (newValue !== null && typeof newValue === "object" && !Array.isArray(newValue)) {
-                this.#updateRecursive(target[key], newValue, changedRootKeys, currentRootKey)
+                this.#updateRecursive(targetRecord[key] as object, newValue, changedRootKeys, currentRootKey)
             } else if (oldValue !== newValue) {
-                target[key] = newValue
+                targetRecord[key] = newValue
                 changedRootKeys.add(currentRootKey)
             }
         }
@@ -103,7 +105,7 @@ export class VirtualObject<T extends object> implements Terminable {
                 return value
             },
             set: (target, property, value) => {
-                ;(target as any)[property] = value
+                ;(target as Record<PropertyKey, unknown>)[property] = value
                 this.#notifier.notify([...path, property])
                 return true
             },

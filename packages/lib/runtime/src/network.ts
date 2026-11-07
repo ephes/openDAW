@@ -61,7 +61,7 @@ export namespace network {
         const reader = body.getReader()
         const stream = new ReadableStream({
             async start(controller) {
-                while (true) {
+                for (;;) {
                     const {done, value} = await reader.read()
                     if (done) {
                         controller.close()

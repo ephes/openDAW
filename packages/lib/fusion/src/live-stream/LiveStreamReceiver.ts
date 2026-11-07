@@ -251,7 +251,7 @@ export class LiveStreamReceiver implements Terminable {
     }
 
     #dispatchData(input: ByteArrayInput): boolean {
-        let version = input.readInt()
+        const version = input.readInt()
         if (version !== this.#structureVersion) {
             // we simply skip and await the latest version soon enough
             return false

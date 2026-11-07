@@ -8,11 +8,12 @@ export class Listeners<T> implements Terminable {
     constructor() {
         this.#proxy = new Proxy({}, {
             get: (_: never, func: string): () => void => (...args: unknown[]): void =>
-                this.#set.forEach((listener: any) => {
+                this.#set.forEach((entry: T) => {
+                    const listener = entry as Record<string, (...args: unknown[]) => unknown>
                     if (Object.getPrototypeOf(listener) === Object.getPrototypeOf({})) {
                         return safeExecute(listener[func], ...args)
                     }
-                    return listener[func]?.apply(listener, args)
+                    return listener[func]?.(...args)
                 })
         } as const) as Required<T>
     }

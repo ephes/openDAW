@@ -31,7 +31,7 @@ export class ScriptRunner {
         const url = URL.createObjectURL(blob)
         try {
             const AsyncFunction = (async () => {}).constructor as new (arg: string, body: string) =>
-                (...args: any[]) => Promise<any>
+                (...args: unknown[]) => Promise<unknown>
             await new AsyncFunction("url", "return import(url)")(url)
         } finally {
             URL.revokeObjectURL(url)

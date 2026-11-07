@@ -13,7 +13,7 @@ export namespace Fetch {
             progress(0.0)
             const output = ByteArrayOutput.create(length)
             const reader = asDefined(response.body, "response.body is empty").getReader()
-            while (true) {
+            for (;;) {
                 const {done, value} = await reader.read()
                 if (done) {break}
                 value.forEach((value: byte) => output.writeByte(value))

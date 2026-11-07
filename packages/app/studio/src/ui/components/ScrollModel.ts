@@ -77,7 +77,7 @@ export class ScrollModel implements Terminable {
     ensureVisibility(top: number, bottom: number): void {
         if (!this.scrollable()) {return}
         let min = this.position
-        let max = this.visibleSize + min
+        const max = this.visibleSize + min
         if (bottom > max) {
             this.moveBy(bottom - max)
             min = this.position

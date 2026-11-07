@@ -26,9 +26,13 @@ export interface VertexVisitor<RETURN = void> {
 }
 
 export interface Visitable {
+    // The visitor result is inferred separately for each concrete visitor.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     accept<VISITOR extends VertexVisitor<any>>(visitor: VISITOR): VISITOR extends VertexVisitor<infer R> ? Maybe<R> : void
 }
 
+// Unparameterized vertices preserve dynamic field access for heterogeneous SDK callers.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface Vertex<P extends PointerTypes = PointerTypes, F extends Fields = any> extends Addressable, Visitable {
     get box(): Box
     get graph(): BoxGraph

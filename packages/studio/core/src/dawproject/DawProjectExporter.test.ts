@@ -31,7 +31,7 @@ describe("DawProjectExport", () => {
                     peaks: Option<Peaks> = Option.None
                     uuid: UUID.Bytes = format
                     state: SampleLoaderState = {type: "progress", progress: 0.0}
-                    meta: Option<any> = Option.None
+                    meta: Option<unknown> = Option.None
                     invalidate(): void {throw new Error("Method not implemented.")}
                     subscribe(_observer: Observer<SampleLoaderState>): Subscription {
                         return Terminable.Empty

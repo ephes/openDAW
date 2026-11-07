@@ -34,6 +34,8 @@ export interface ClipBoxAdapter<CONTENT> extends BoxAdapter, Selectable {
     clone(consolidate: boolean): void
     catchupAndSubscribeSelected(observer: Observer<ObservableValue<boolean>>): Subscription
     subscribeChange(observer: Observer<void>): Subscription
+    // Preserve result inference for concrete visitor implementations.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     accept<VISITOR extends ClipBoxAdapterVisitor<any>>(visitor: VISITOR)
         : VISITOR extends ClipBoxAdapterVisitor<infer R> ? Maybe<R> : void
 }

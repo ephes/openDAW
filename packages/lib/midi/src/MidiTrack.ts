@@ -12,7 +12,7 @@ export class MidiTrack {
         let ticks: int = 0
         let eventType: int = 0
         let channel: Channel = 0
-        while (true) {
+        for (;;) {
             const varLen = decoder.readVarLen()
             const b = decoder.readByte() & 0xff
             if (b < 0xf0) {
@@ -62,7 +62,7 @@ export class MidiTrack {
                 bytes.push(i & 0x7F)
                 i >>= 7
                 while (i) {
-                    let b = i & 0x7F | 0x80
+                    const b = i & 0x7F | 0x80
                     bytes.push(b)
                     i >>= 7
                 }
@@ -71,7 +71,7 @@ export class MidiTrack {
         }
         this.controlEvents.forEach((channel, events) => {
             let ticks = 0
-            let lastEventTypeByte = -1
+            const lastEventTypeByte = -1
             events.forEach((event: ControlEvent) => {
                 const deltaTime = event.ticks - ticks
                 writeVarInt(deltaTime)

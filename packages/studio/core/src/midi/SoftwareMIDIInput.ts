@@ -12,9 +12,9 @@ import {
 } from "@opendaw/lib-std"
 import {MidiData} from "@opendaw/lib-midi"
 
-type OnMidiMessage = Nullable<(this: MIDIInput, ev: MIDIMessageEvent) => any>
+type OnMidiMessage = Nullable<(this: MIDIInput, ev: MIDIMessageEvent) => unknown>
 
-type OnStateChange = Nullable<(this: MIDIPort, ev: MIDIConnectionEvent) => any>
+type OnStateChange = Nullable<(this: MIDIPort, ev: MIDIConnectionEvent) => unknown>
 
 export class SoftwareMIDIInput implements MIDIInput {
     readonly manufacturer: string | null = "openDAW"
@@ -83,8 +83,8 @@ export class SoftwareMIDIInput implements MIDIInput {
 
     open(): Promise<MIDIPort> {return Promise.resolve(this)}
     close(): Promise<MIDIPort> {return Promise.resolve(this)}
-    addEventListener<K extends keyof MIDIInputEventMap>(type: K, listener: (this: MIDIInput, ev: MIDIInputEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
-    addEventListener<K extends keyof MIDIPortEventMap>(type: K, listener: (this: MIDIPort, ev: MIDIPortEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+    addEventListener<K extends keyof MIDIInputEventMap>(type: K, listener: (this: MIDIInput, ev: MIDIInputEventMap[K]) => unknown, options?: boolean | AddEventListenerOptions): void
+    addEventListener<K extends keyof MIDIPortEventMap>(type: K, listener: (this: MIDIPort, ev: MIDIPortEventMap[K]) => unknown, options?: boolean | AddEventListenerOptions): void
     addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void {
         this.#dispatcher.addEventListener(type, listener, options)
         this.#changeListenerCount(1)
@@ -93,8 +93,8 @@ export class SoftwareMIDIInput implements MIDIInput {
         safeExecute(this.#onmidimessage, event)
         return this.#dispatcher.dispatchEvent(event)
     }
-    removeEventListener<K extends keyof MIDIInputEventMap>(type: K, listener: (this: MIDIInput, ev: MIDIInputEventMap[K]) => any, options?: boolean | EventListenerOptions): void
-    removeEventListener<K extends keyof MIDIPortEventMap>(type: K, listener: (this: MIDIPort, ev: MIDIPortEventMap[K]) => any, options?: boolean | EventListenerOptions): void
+    removeEventListener<K extends keyof MIDIInputEventMap>(type: K, listener: (this: MIDIInput, ev: MIDIInputEventMap[K]) => unknown, options?: boolean | EventListenerOptions): void
+    removeEventListener<K extends keyof MIDIPortEventMap>(type: K, listener: (this: MIDIPort, ev: MIDIPortEventMap[K]) => unknown, options?: boolean | EventListenerOptions): void
     removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void {
         this.#dispatcher.removeEventListener(type, listener, options)
         this.#changeListenerCount(-1)

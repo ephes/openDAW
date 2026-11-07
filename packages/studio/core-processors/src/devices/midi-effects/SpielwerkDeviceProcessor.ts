@@ -69,7 +69,7 @@ interface UserProcessor {
     reset?(): void
 }
 
-const validateNote = (note: any, from: ppqn): Nullable<string> => {
+const validateNote = (note: UserOutput, from: ppqn): Nullable<string> => {
     if (!isDefined(note)) {return "process yielded undefined"}
     if (typeof note.pitch !== "number" || note.pitch !== note.pitch) {return `Invalid pitch: ${note.pitch}`}
     if (note.pitch < 0 || note.pitch > 127) {return `Pitch out of range: ${note.pitch} (must be 0–127)`}
@@ -299,13 +299,13 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     adapter(): SpielwerkDeviceBoxAdapter {return this.#adapter}
 
     #tryLoad(expectedUpdate: int): void {
-        const registry = (globalThis as any).openDAW?.spielwerkProcessors?.[this.#uuid]
+        const registry = (globalThis as typeof globalThis & {openDAW?: {spielwerkProcessors?: Record<string, {update: number, create: new () => UserProcessor}>}}).openDAW?.spielwerkProcessors?.[this.#uuid]
         if (isDefined(registry) && registry.update === expectedUpdate) {
             this.#swapProcessor(registry.create, expectedUpdate)
         }
     }
 
-    #swapProcessor(ProcessorClass: any, update: int): void {
+    #swapProcessor(ProcessorClass: new () => UserProcessor, update: int): void {
         try {
             this.#userProcessor = Option.wrap(new ProcessorClass() as UserProcessor)
             this.#currentUpdate = update

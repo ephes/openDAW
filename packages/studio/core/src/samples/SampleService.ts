@@ -15,7 +15,7 @@ import {OpenSampleAPI} from "./OpenSampleAPI"
 export class SampleService extends AssetService<Sample, AudioData> {
     protected readonly namePlural: string = "Samples"
     protected readonly nameSingular: string = "Sample"
-    protected readonly boxType: Class<Box> = AudioFileBox
+    protected readonly boxType: Class<AudioFileBox> = AudioFileBox
     protected readonly filePickerOptions: FilePickerOptions = FilePickerAcceptTypes.WavFiles
 
     constructor(readonly audioContext: AudioContext) {super()}

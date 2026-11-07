@@ -99,7 +99,7 @@ export namespace ModelStore {
         const reader = asDefined(response.body, "Empty response body").getReader()
         const chunks: Array<Uint8Array> = []
         let loaded = 0
-        while (true) {
+        for (;;) {
             const {done, value} = await reader.read()
             if (done) {break}
             chunks.push(value)

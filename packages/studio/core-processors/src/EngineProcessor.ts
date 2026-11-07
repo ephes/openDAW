@@ -352,7 +352,7 @@ export class EngineProcessor extends AudioWorkletProcessor implements EngineCont
         if (Atomics.load(this.#controlFlags, 0) === 1) {return true} // sleeps. can be awake
         try {
             return this.render(inputs, outputs)
-        } catch (reason: any) {
+        } catch (reason: unknown) {
             console.debug(reason)
             this.#valid = false
             this.#engineToClient.error(reason)

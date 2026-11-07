@@ -24,7 +24,7 @@ export const ErrorsPage: PageFactory<StudioService> = ({lifecycle}: PageContext<
                 issues.</p>
             <h5>Report any issues <a href="https://github.com/andremichelle/opendaw/issues/"
                                      target="github"
-                                     style={{color: Colors.blue}}
+                                     style={{color: Colors.blue.toString()}}
             >here</a>.</h5>
             <code onInit={async element => {
                 element.textContent = "loading status..."

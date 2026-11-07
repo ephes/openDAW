@@ -59,7 +59,7 @@ export class DefaultSoundfontLoader implements SoundfontLoader {
                 this.#meta = Option.wrap(meta)
                 this.#setState({type: "loaded"})
             },
-            (error: any) => {
+            (error: unknown) => {
                 if (error instanceof Error && error.message.startsWith("timeoout")) {
                     this.#setState({type: "error", reason: error.message})
                     return console.warn(`Soundfont ${UUID.toString(this.#uuid)} timed out.`)

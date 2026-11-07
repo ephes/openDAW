@@ -42,7 +42,7 @@ export namespace Errors {
             return error
         }
         if (error && typeof error === "object") {
-            const err = error as any
+            const err = error as {stack?: string, message?: string}
             if (err.stack) {
                 return truncateStack(err.stack)
             }
@@ -52,6 +52,7 @@ export namespace Errors {
             try {
                 return JSON.stringify(error, null, 2)
             } catch {
+                // Fall back to String for objects that cannot be serialized.
             }
         }
         return String(error)

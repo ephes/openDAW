@@ -7,7 +7,7 @@ export namespace Wait {
         const callback = () => {if (--count <= 0) {resolve()} else {requestAnimationFrame(callback)}}
         requestAnimationFrame(callback)
     })
-    export const timeSpan = <T>(time: TimeSpan, ...args: any[]): Promise<T> =>
+    export const timeSpan = <T>(time: TimeSpan, ...args: unknown[]): Promise<T> =>
         new Promise(resolve => setTimeout(resolve, time.millis(), ...args))
     export const event = (target: EventTarget, type: string): Promise<void> =>
         new Promise<void>(resolve => target.addEventListener(type, resolve as Exec, {once: true}))

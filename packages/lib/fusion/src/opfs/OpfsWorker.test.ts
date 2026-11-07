@@ -85,14 +85,14 @@ const createMockFileSystem = () => {
                 for (const [name, entry] of children) {
                     yield (entry.kind === "file"
                         ? createFileHandle(name, entry)
-                        : createDirectoryHandle(entry.children, name)) as any
+                        : createDirectoryHandle(entry.children, name)) as unknown
                 }
             },
             async *entries() {
                 for (const [name, entry] of children) {
                     yield [name, entry.kind === "file"
                         ? createFileHandle(name, entry)
-                        : createDirectoryHandle(entry.children)] as any
+                        : createDirectoryHandle(entry.children)] as unknown
                 }
             },
             async *keys() {
@@ -114,7 +114,7 @@ vi.mock("@opendaw/lib-runtime", async () => {
         ...actual,
         Communicator: {
             ...actual.Communicator,
-            executor: (_messenger: any, proto: any) => {
+            executor: (_messenger: unknown, proto: OpfsProtocol) => {
                 protocol = proto
                 return proto
             }
@@ -128,7 +128,7 @@ beforeEach(async () => {
         storage: {getDirectory: async () => mockFs.createDirectoryHandle()}
     })
     const {OpfsWorker} = await import("./OpfsWorker")
-    OpfsWorker.init({channel: () => ({})} as any)
+    OpfsWorker.init({channel: () => ({})} as unknown as import("@opendaw/lib-runtime").Messenger)
 })
 
 describe("OpfsWorker", () => {

@@ -132,7 +132,7 @@ export namespace RegionRenderer {
                         }
                         AudioFadingRenderer.render(context, range, region.fading, bound, position, complete, labelBackground)
                         const isRecording = file.getOrCreateLoader().state.type === "record"
-                        if (isRecording) {}
+                        if (isRecording) {/* No work is needed in this branch. */}
                     },
                     visitValueRegionBoxAdapter: (region: ValueRegionBoxAdapter) => {
                         const padding = dpr

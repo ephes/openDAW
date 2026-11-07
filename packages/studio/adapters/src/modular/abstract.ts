@@ -43,7 +43,7 @@ export abstract class AbstractModuleAdapter<BOX extends Box & {
     onDeselected(): void {this.#selected = false}
     isSelected(): boolean {return this.#selected}
 
-    get box(): Box<PointerTypes, any> {return this.#box}
+    get box(): Box<PointerTypes> {return this.#box}
     get attributes(): ModuleAttributes {return this.#attributes}
     get uuid(): Readonly<Uint8Array> {return this.#box.address.uuid}
     get address(): Address {return this.#box.address}

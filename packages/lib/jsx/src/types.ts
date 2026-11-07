@@ -16,7 +16,7 @@ type ExtractProperties<T extends Element> = Partial<{
     [K in keyof T]:
     K extends keyof AttributeMap ? AttributeMap[K] :
         K extends keyof GlobalEventHandlers ? GlobalEventHandlers[K] :
-            T[K] extends Function ? never :
+            T[K] extends (...args: never[]) => unknown ? never :
                 (T[K] extends SVGAnimatedBoolean ? boolean | string :
                     T[K] extends SVGAnimatedAngle ? number | string :
                         T[K] extends SVGAnimatedLength ? number | string :
@@ -31,12 +31,11 @@ type ExtractProperties<T extends Element> = Partial<{
 
 declare global {
     namespace JSX {
-        // @ts-ignore
         // noinspection JSUnusedGlobalSymbols
         type IntrinsicElements =
             & { [K in keyof Omit<SVGElementTagNameMap, "a">]: ExtractProperties<Omit<SVGElementTagNameMap, "a">[K]> }
             & { [K in keyof Omit<HTMLElementTagNameMap, "a">]: ExtractProperties<Omit<HTMLElementTagNameMap, "a">[K]> }
-            // TODO This guy is really fuzzy. For some reason I cannot type it properly
-            & { a: any } // ExtractProperties<HTMLAnchorElement & HTMLElement & HTMLHyperlinkElementUtils>
+            // HTML and SVG anchors share a tag; accept either element's properties.
+            & { a: ExtractProperties<HTMLAnchorElement | SVGAElement> }
     }
 }

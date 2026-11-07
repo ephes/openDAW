@@ -28,9 +28,8 @@ describe("AudioUnitsClipboardHandler", () => {
 
     const createAudioUnit = (skeleton: ProjectSkeleton, index: number = 1): AudioUnitBox => {
         const {boxGraph, mandatoryBoxes: {rootBox, primaryAudioBusBox}} = skeleton
-        let audioUnitBox!: AudioUnitBox
         boxGraph.beginTransaction()
-        audioUnitBox = AudioUnitBox.create(boxGraph, UUID.generate(), box => {
+        const audioUnitBox: AudioUnitBox = AudioUnitBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(AudioUnitType.Instrument)
             box.collection.refer(rootBox.audioUnits)
             box.output.refer(primaryAudioBusBox.input)
@@ -46,27 +45,23 @@ describe("AudioUnitsClipboardHandler", () => {
         device: MIDIOutputDeviceBox, parameter: MIDIOutputParameterBox, instrumentTrack: TrackBox, ccTrack: TrackBox
     } => {
         const {boxGraph} = skeleton
-        let device!: MIDIOutputDeviceBox
-        let parameter!: MIDIOutputParameterBox
-        let instrumentTrack!: TrackBox
-        let ccTrack!: TrackBox
         boxGraph.beginTransaction()
-        device = MIDIOutputDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const device: MIDIOutputDeviceBox = MIDIOutputDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue("MIDI Output")
             box.host.refer(audioUnit.input)
         })
-        instrumentTrack = TrackBox.create(boxGraph, UUID.generate(), box => {
+        const instrumentTrack: TrackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(TrackType.Notes)
             box.tracks.refer(audioUnit.tracks)
             box.target.refer(audioUnit)
             box.index.setValue(0)
         })
-        parameter = MIDIOutputParameterBox.create(boxGraph, UUID.generate(), box => {
+        const parameter: MIDIOutputParameterBox = MIDIOutputParameterBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue("CC")
             box.owner.refer(device.parameters)
             box.controller.setValue(64)
         })
-        ccTrack = TrackBox.create(boxGraph, UUID.generate(), box => {
+        const ccTrack: TrackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(TrackType.Value)
             box.tracks.refer(audioUnit.tracks)
             box.target.refer(parameter.value)

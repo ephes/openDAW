@@ -115,8 +115,8 @@ export class RegionPushExistingResolver {
 
     static #hasSpace(trackBox: TrackBox, position: ppqn, complete: ppqn): boolean {
         for (const vertex of trackBox.regions.pointerHub.incoming()) {
-            const regionPosition = (vertex.box as any).position.getValue() as ppqn
-            const regionDuration = (vertex.box as any).duration.getValue() as ppqn
+            const regionPosition = (vertex.box as unknown as {position: {getValue(): ppqn}, duration: {getValue(): ppqn}}).position.getValue() as ppqn
+            const regionDuration = (vertex.box as unknown as {position: {getValue(): ppqn}, duration: {getValue(): ppqn}}).duration.getValue() as ppqn
             const regionComplete = regionPosition + regionDuration
             if (regionComplete <= position) {continue}
             if (regionPosition >= complete) {continue}

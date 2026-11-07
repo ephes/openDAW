@@ -1,4 +1,4 @@
-type AnyConstructor<T, Args extends any[]> = new (...args: Args) => T;
+type AnyConstructor<T, Args extends unknown[]> = new (...args: Args) => T;
 type TypedArrayConstructor =
     | Float32ArrayConstructor
     | Float64ArrayConstructor
@@ -31,14 +31,16 @@ type TypedArrayConstructor =
  * Instances are created lazily on access, not cached.
  */
 interface MintFunction {
-    <T extends TypedArrayConstructor>(Constructor: T, ...args: any[]): InstanceType<T>[];
-    <T, Args extends any[]>(Constructor: AnyConstructor<T, Args>, ...args: Args): T[];
+    <T extends TypedArrayConstructor>(Constructor: T, length: number): InstanceType<T>[];
+    <T extends TypedArrayConstructor>(Constructor: T, values: T extends BigInt64ArrayConstructor | BigUint64ArrayConstructor ? ArrayLike<bigint> : ArrayLike<number>): InstanceType<T>[];
+    <T extends TypedArrayConstructor>(Constructor: T, ...args: ConstructorParameters<T>): InstanceType<T>[];
+    <T, Args extends unknown[]>(Constructor: AnyConstructor<T, Args>, ...args: Args): T[];
 }
 
-export const mint: MintFunction = <T, Args extends any[]>(
+export const mint: MintFunction = <T, Args extends unknown[]>(
     Constructor: AnyConstructor<T, Args>,
     ...args: Args
-): T[] => new Proxy([] as any, {
+): T[] => new Proxy([] as T[], {
     get(target, prop) {
         if (typeof prop === "string") {
             const index = Number(prop)
@@ -48,12 +50,12 @@ export const mint: MintFunction = <T, Args extends any[]>(
         }
         if (prop === Symbol.iterator) {
             return function* () {
-                while (true) {
+                for (;;) {
                     yield new Constructor(...args)
                 }
             }
         }
-        return target[prop as any]
+        return Reflect.get(target, prop)
     },
     has(target, prop) {
         if (typeof prop === "string") {

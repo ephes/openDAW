@@ -83,7 +83,7 @@ export class Iterables {
         const {done, value} = iterator.next()
         let prev: T = value
         if (done === true) {return}
-        while (true) {
+        for (;;) {
             const {done, value} = iterator.next()
             if (done === true) {
                 yield [prev, null]

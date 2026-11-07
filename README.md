@@ -204,6 +204,25 @@ Before starting, ensure you have the following installed on your system:
 * `npm run dev:studio` | `npm run dev:headless` (start dev server)
 * Navigate to https://localhost:8080 (port is important > cors sample api)
 
+### Validation
+
+Use Node >=23 and the declared npm toolchain. From a fresh checkout run:
+
+```sh
+npm ci --ignore-scripts
+npm run build
+npm run lint
+npm test
+```
+
+The Checks workflow runs these commands on pushes and pull requests. It has no
+deployment steps. The build typechecks production code and generates the box and adapter sources
+used by dependent packages. Run it before lint/tests. Lint also checks authored
+TypeScript declarations, tests and tool configs, but ignores dist output. The
+shared rules allow the project's public namespace-merging convention; other
+recommended source rules remain enabled. See [the baseline lint plan](plans/baseline-lint-green.md)
+for configuration rationale and the narrowly documented generic type boundaries.
+
 ### Flow Charts
 
 <img width="6551" height="7057" alt="image" src="https://github.com/user-attachments/assets/266a9fb2-4b72-4752-bcf1-85fda2ff2cf1" />

@@ -42,7 +42,7 @@ export namespace Option {
         try {return Option.wrap(provider())} catch (_error) {return Option.None}
     }
     export const execute = <F extends AnyFunc>(func: Maybe<F>, ...args: Parameters<F>)
-        : Option<ReturnType<F>> => Option.wrap(func?.apply(null, args))
+        : Option<ReturnType<F>> => Option.wrap(func == null ? undefined : Reflect.apply(func, null, args) as ReturnType<F>)
     export const async = <RESULT>(promise: Promise<RESULT>): Promise<Option<RESULT>> =>
         promise.then(value => wrap(value), () => None)
 
@@ -82,7 +82,7 @@ export namespace Option {
         readonly map = <U>(_: (_: never) => Maybe<U>): Option<U> => None
         readonly mapOr = <U>(_: Func<never, U>, or: ValueOrProvider<U>): U => getOrProvide(or)
         readonly flatMap = (_: (_: never) => Option<never>): Option<never> => None
-        readonly equals = (other: Option<any>): boolean => other.isEmpty()
+        readonly equals = (other: Option<unknown>): boolean => other.isEmpty()
         readonly assert = (fail?: ValueOrProvider<string>): this => panic(getOrProvide(fail) ?? "assert failed")
         readonly toString = (): string => "{Option.None}"
         get [Symbol.toStringTag]() {return this.toString()}

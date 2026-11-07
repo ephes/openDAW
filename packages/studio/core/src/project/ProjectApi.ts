@@ -119,7 +119,7 @@ export class ProjectApi {
 
     createInstrument<A, INST extends InstrumentBox>(
         {create, defaultIcon, defaultName, trackType}: InstrumentFactory<A, INST>,
-        options: InstrumentOptions<A> = {} as any): InstrumentProduct<INST> {
+        options: InstrumentOptions<A> = {} as InstrumentOptions<A>): InstrumentProduct<INST> {
         const {name, icon, index} = options
         const {boxGraph, rootBox, userEditingManager} = this.#project
         assert(rootBox.isAttached(), "rootBox not attached")
@@ -139,7 +139,7 @@ export class ProjectApi {
         return {audioUnitBox, instrumentBox, trackBox}
     }
 
-    createAnyInstrument(factory: InstrumentFactory<any, any>): InstrumentProduct<InstrumentBox> {
+    createAnyInstrument(factory: InstrumentFactory): InstrumentProduct<InstrumentBox> {
         return this.createInstrument(factory)
     }
 
