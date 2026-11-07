@@ -91,3 +91,11 @@ grids, analytic midpoints, clamping and DefaultDecibel silence/-12 dB center.
 ObjectPool tests enforce exclusive live identities, counter conservation and
 error-safe foreign/double release, without prescribing a growth batch size.
 Run `npm test --workspace=@opendaw/lib-std` after the root build.
+
+RuntimeSignal tests isolate the real process-global module and verify idempotent
+unsubscription, surviving consumers and synchronous nested/self-removing delivery.
+TimeSpan tests control performance.now for progress estimates, unit carries,
+negative/past semantics and explicit NaN/infinity formatting. Compact strings retain
+their existing unsigned wording (including singular zero units); relative strings
+use explicit English past/future wording. No wall-clock waits or locale defaults
+are used.
