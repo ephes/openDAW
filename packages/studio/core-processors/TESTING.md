@@ -39,3 +39,10 @@ callbacks added at a future position can run in the current render, while additi
 handled position wait for a later visit. Loop/marker rewinds permit dispatch on the next traversal. Renderer teardown owns BPM, marker and tempo subscriptions.
 Parameter disposal terminates active automation broadcasting as well as its adapter listener;
 ordinary stop-automation still restores and notifies the manual value.
+
+Frozen playback maps musical seeks with the tempo map and the source sample rate, then advances
+one source frame per output sample (no implicit resampling). PCM bounds and paused blocks are silence.
+Metronome downbeats use the full numerator times subdivision count per measure; one-frame synthetic
+clicks identify accents independently of waveform generation. Event dispatch tests specify update/note
+order, one-shot flags and exact chunk coverage. Mixer fixtures use UUID containers and existing
+bus/AuxSend visitors to check audible membership through shared branches and cycles.
