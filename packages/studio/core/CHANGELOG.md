@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve failed recovery reads and publish complete locked backup generations with explicit consumption markers.
+
 - Retain edits during project writes, isolate Save As metadata/cover ownership, and persist cover removal.
 
 - Correlate OAuth callbacks with random per-attempt state/provider, ignore replays, and redact codes/tokens/provider failures from diagnostics.

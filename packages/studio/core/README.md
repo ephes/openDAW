@@ -208,3 +208,17 @@ Save As of an existing project deep-copies metadata and cover bytes; it never ed
 the original profile. Saving an absent cover deletes its owned image file. Deletion
 is idempotent in OPFS; other errors reject the save and retain dirty state. Ordinary
 project files are still written in place; this does not promise crash-atomic saves.
+
+## Crash recovery generations
+
+Updated clients serialize recovery writers/readers with the `opendaw:recovery`
+Web Lock. Each backup writes four files to a fresh `.backup/generations` folder,
+then publishes a fresh JSON pointer in `.backup/commits`. Failed writes reject
+the command; incomplete pointers are ignored and previous complete backups remain.
+Restore validates identity, metadata and saved state, then loads the project before
+consumption. Failed reads/conversion preserve the backup and emit a bounded warning.
+A fresh consumption marker prevents older retained generations from resurfacing;
+cleanup removes only the accepted generation. Legacy four-file backups remain
+readable and are removed only after successful construction. Old clients do not
+understand generations: use updated clients together. Retained older and orphaned
+generations are not garbage-collected automatically; recovery still excludes covers.
