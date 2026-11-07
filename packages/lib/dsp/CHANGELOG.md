@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cover transient marker invariants, position-aware musical durations and adjacent half-open Fragmentor windows.
+
 - Add oscillator API/partition parity, LFO phase/reset and Tidal periodicity/boundary reference tests.
 
 - Add limiter/waveshaper/Crusher state tests and fix Crusher filter/hold ramps depending on block partitions.
