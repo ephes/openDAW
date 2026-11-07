@@ -32,6 +32,7 @@ class LinearInteger implements ValueMapping<int> {
     constructor(min: int, max: int) {
         this.#min = clamp(Math.round(min), Integer.MIN_VALUE, Integer.MAX_VALUE)
         this.#max = clamp(Math.round(max), Integer.MIN_VALUE, Integer.MAX_VALUE)
+        assert(this.#min < this.#max, "LinearInteger requires increasing rounded bounds")
         this.#range = this.#max - this.#min
     }
     x(y: int): unitValue {return (this.clamp(y) - this.#min) / this.#range}
@@ -86,13 +87,14 @@ class Values<T> implements ValueMapping<T> {
     readonly #values: ReadonlyArray<T>
 
     constructor(values: ReadonlyArray<T>) {
+        assert(values.length > 0, "Values requires a nonempty list")
         this.#values = values
     }
     x(y: T): unitValue {
         const index = this.#values.findIndex(value => value === y)
         return index === -1
             ? panic(`Could not find index for ${y}`)
-            : index / (this.#values.length - 1)
+            : this.#values.length === 1 ? 0.0 : index / (this.#values.length - 1)
     }
     y(x: unitValue): T {
         const index = Math.round(clamp(x, 0.0, 1.0) * (this.#values.length - 1))
