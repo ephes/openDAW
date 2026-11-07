@@ -75,3 +75,9 @@ transfer boundaries. Crusher crush-rate ramps update filtering and hold cadence
 at each sample; identical parameter changes at identical sample positions produce
 the same output across block partitions. Reset plus the same configuration matches
 a fresh effect. Unequal stereo signals test channel independence and wet/dry paths.
+
+Oscillator tests compare constant and per-sample frequency APIs, phase/integrator
+continuity across partitions, analytic sine references (including varying frequencies) and finite zero-frequency
+behavior. LFO quarter-cycle tests pin all four shapes, reset and shape-switch phase.
+Tidal tests cover depth/slope/symmetry endpoints, integer-period wraps, bounded gain
+and continuity at the symmetric midpoint join with independent triangular reference values.
