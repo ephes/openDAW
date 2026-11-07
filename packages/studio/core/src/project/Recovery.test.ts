@@ -108,3 +108,28 @@ it("consumes a successful legacy restore only after validation", async () => {
     expect((await recovery().restoreProfile()).unwrap().meta.name).toBe("Legacy")
     expect(files.size).toBe(0)
 })
+
+for (const file of ["uuid", "project.od", "meta.json", "saved", "pointer"]) {
+    it(`retains a committed generation on ${file} read failure`, async () => {
+        const r = recovery()
+        await r.createBackupCommand().unwrap()()
+        const before = new Map(files)
+        const read = vi.mocked(Workers.Opfs.read).getMockImplementation()!
+        vi.mocked(Workers.Opfs.read).mockImplementation(async path => {
+            if (file === "pointer" ? path.includes("/commits/") : path.endsWith(`/${file}`)) {throw new Error("read failed")}
+            return read(path)
+        })
+        expect((await r.restoreProfile()).isEmpty()).toBe(true)
+        expect(files).toEqual(before)
+        expect(Workers.Opfs.delete).not.toHaveBeenCalled()
+    })
+}
+it("retains the generation if recording its consumption fails", async () => {
+    const r = recovery()
+    await r.createBackupCommand().unwrap()()
+    const before = new Map(files)
+    vi.mocked(Workers.Opfs.write).mockRejectedValueOnce(new Error("consumption failed"))
+    expect((await r.restoreProfile()).isEmpty()).toBe(true)
+    expect(files).toEqual(before)
+    expect(Workers.Opfs.delete).not.toHaveBeenCalled()
+})
