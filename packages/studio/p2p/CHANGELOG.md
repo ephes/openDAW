@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Settle duplicate requests explicitly, clean failed/stalled offers, and prevent provider resurrection after termination.
+
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
 
 ## [0.0.14](https://github.com/andremichelle/openDAW/compare/@opendaw/studio-p2p@0.0.13...@opendaw/studio-p2p@0.0.14) (2026-05-22)

@@ -5,12 +5,13 @@ import * as Protocol from "./ChunkProtocol"
 import {PeerAssetProvider} from "./PeerAssetProvider"
 import {AssetSignaling} from "./AssetSignaling"
 import {AssetZip} from "./AssetZip"
-const fake = vi.hoisted(() => ({channels: [] as Array<Record<string, (event: {data: ArrayBuffer}) => void>>, terminate: vi.fn()}))
+const fake = vi.hoisted(() => ({channels: [] as Array<Record<string, (event: {data: ArrayBuffer}) => void>>, terminate: vi.fn(), offer: vi.fn().mockResolvedValue(undefined)}))
 vi.mock("./AssetPeerConnection", () => ({AssetPeerConnection: class {
-    async createOffer() {const channel = {send: vi.fn()}; fake.channels.push(channel); return channel}
+    async createOffer() {const channel = {send: vi.fn()}; fake.channels.push(channel); await fake.offer(); return channel}
     terminate = fake.terminate
 }}))
-afterEach(() => {vi.restoreAllMocks(); fake.channels.length = 0; fake.terminate.mockClear()})
+const providers: PeerAssetProvider[] = []
+afterEach(() => {for (const provider of providers.splice(0)) {provider.terminate()} vi.restoreAllMocks(); fake.channels.length = 0; fake.terminate.mockClear(); fake.offer.mockReset().mockResolvedValue(undefined); vi.useRealTimers()})
 const id = UUID.parse("00000000-0000-4000-8000-000000000001")
 for (let length = 0; length < Protocol.HEADER_SIZE; length++) {
     it(`rejects short frame ${length}`, () => expect(() => Protocol.decode(new ArrayBuffer(length))).toThrow())
@@ -23,14 +24,15 @@ const setup = async () => {
     let listener!: (message: Record<string, unknown>) => void
     const signaling = {subscribe: vi.fn((fn: (message: Record<string, unknown>) => void) => {listener = fn; return {terminate: vi.fn()}}), publish: vi.fn()}
     const provider = new PeerAssetProvider(signaling as unknown as AssetSignaling, "local")
+    providers.push(provider)
     const progress = vi.fn()
     const pending = provider.fetchSample(id, progress)
     const outcome = pending.catch(error => error)
     listener({type: "asset-inventory", peerId: "peer", targetPeerId: "local", have: [UUID.toString(id)]})
-    await Promise.resolve(); await Promise.resolve()
+    for (let i = 0; i < 8; i++) {await Promise.resolve()}
     const channel = fake.channels.at(-1)!
     const send = (type: number, payload = new Uint8Array(), index = 0, asset = id) => fake.channels.at(-1)!.onmessage({data: Protocol.encode(type, asset, index, payload)})
-    return {provider, outcome, progress, send, channel, listener}
+    return {provider, outcome, progress, send, channel, listener, signaling}
 }
 const exhaust = async (fixture: Awaited<ReturnType<typeof setup>>, action: () => void) => {
     let settled = false
@@ -121,4 +123,58 @@ it("retries a bad peer then accepts a good peer, ignoring stale frames", async (
     f.send(Protocol.MsgType.TransferComplete)
     await expect(f.outcome).resolves.toBe(result)
     f.provider.terminate()
+})
+
+for (const kind of ["same", "cross type"]) {
+    it(`rejects a duplicate ${kind} without orphaning the original`, async () => {
+        const f = await setup()
+        const second = kind === "same" ? f.provider.fetchSample(id, () => {}) : f.provider.fetchSoundfont(id, () => {})
+        await expect(second).rejects.toThrow(/pending/)
+        f.provider.terminate()
+        await expect(f.outcome).resolves.toBeInstanceOf(Error)
+    })
+}
+it("cleans an offer rejection and permits a later transfer attempt", async () => {
+    fake.offer.mockRejectedValueOnce(new Error("synthetic offer"))
+    const f = await setup()
+    for (let i = 0; i < 8; i++) {await Promise.resolve()}
+    expect(fake.terminate).toHaveBeenCalledTimes(1)
+    f.listener({type: "asset-inventory", peerId: "peer", targetPeerId: "local", have: [UUID.toString(id)]})
+    for (let i = 0; i < 8; i++) {await Promise.resolve()}
+    expect(fake.channels).toHaveLength(2)
+    const channel = fake.channels.at(-1)!
+    const requestsBefore = f.signaling.publish.mock.calls.length
+    channel.onmessage({data: new ArrayBuffer(0)})
+    expect(fake.terminate).toHaveBeenCalledTimes(2)
+    expect(f.signaling.publish).toHaveBeenCalledTimes(requestsBefore + 1)
+    f.provider.terminate()
+    await expect(f.outcome).resolves.toBeInstanceOf(Error)
+})
+it("times out hung offer setup and fences its late completion", async () => {
+    vi.useFakeTimers()
+    let release!: () => void
+    fake.offer.mockImplementationOnce(() => new Promise<void>(resolve => {release = resolve}))
+    const f = await setup()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(fake.terminate).toHaveBeenCalledTimes(1)
+    release()
+    for (let i = 0; i < 8; i++) {await Promise.resolve()}
+    expect(f.channel.onmessage).toBeUndefined()
+    f.provider.terminate()
+    await expect(f.outcome).resolves.toBeInstanceOf(Error)
+})
+it("disposes signaling and prevents work after termination or late offers", async () => {
+    let release!: () => void
+    fake.offer.mockImplementationOnce(() => new Promise<void>(resolve => {release = resolve}))
+    const f = await setup()
+    f.provider.terminate()
+    expect(f.signaling.subscribe.mock.results[0].value.terminate).toHaveBeenCalledTimes(1)
+    release()
+    for (let i = 0; i < 8; i++) {await Promise.resolve()}
+    expect(f.channel.onmessage).toBeUndefined()
+    await expect(f.provider.fetchSample(id, () => {})).rejects.toThrow(/terminated/)
+    const count = fake.channels.length
+    f.listener({type: "asset-inventory", peerId: "peer2", targetPeerId: "local", have: [UUID.toString(id)]})
+    expect(fake.channels).toHaveLength(count)
+    await expect(f.outcome).resolves.toBeInstanceOf(Error)
 })
