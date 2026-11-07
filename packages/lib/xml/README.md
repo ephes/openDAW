@@ -158,3 +158,27 @@ console.debug(Xml.pretty(Xml.toElement("Project", project)))
     </Structure>
 </Project>
 ```
+
+### Import validation and tests
+
+`Xml.parse(text, Schema)` requires a well-formed XML document whose root tag
+exactly matches the requested schema's `@Xml.Class` name. Leading whitespace and
+XML declarations are accepted. Default namespaces do not change the tag name;
+prefixed tags must match the decorated name exactly. Parser-error documents and
+wrong roots fail before deserialization. Diagnostic `parsererror` elements in the
+Mozilla parser-error or XHTML namespaces are reserved and rejected, including
+Chromium diagnostics embedded beneath a partial root. Ordinary elements with
+that name in other namespaces retain normal schema handling.
+
+Required and optional numeric attributes must contain nonblank finite values.
+For compatibility, conversion retains JavaScript `Number()` forms, including
+zero, signed decimal/exponent values and hexadecimal, binary and octal prefixes.
+It does not add an XML Schema decimal grammar restriction. Boolean attributes
+accept `true`/`false` (case-insensitive) and `1`/`0`, with surrounding whitespace
+ignored. Other present values fail with an error naming the attribute. Missing
+optional attributes remain `undefined`. These rules also validate values during
+serialization, so invalid numbers and booleans cannot be exported silently.
+
+Run `npm test --workspace=@opendaw/lib-xml` for the jsdom parser/serialization
+suite. The root `npm test` command runs the same suite through Turbo; neither
+command publishes packages or deploys the application.

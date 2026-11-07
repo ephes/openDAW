@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Execute the XML workspace suite in the root test gate.
+- Reject malformed documents and wrong schema roots before deserialization.
+- Require finite numeric attributes and explicit boolean literals; retain absent optional values.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.64](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-xml@0.0.63...@opendaw/lib-xml@0.0.64) (2026-05-22)

@@ -21,22 +21,29 @@ export namespace Xml {
     export const StringRequired: AttributeValidator<string> = {required: true, parse: value => value}
     export const StringOptional: AttributeValidator<string> = {required: false, parse: value => value}
 
-    export const BoolRequired: AttributeValidator<boolean> = {
-        required: true,
-        parse: value => typeof value === "boolean" ? value : value?.toLowerCase() === "true"
-    }
-    export const BoolOptional: AttributeValidator<boolean> = {
-        required: false,
-        parse: value => typeof value === "boolean" ? value : value?.toLowerCase() === "true"
-    }
-
-    export const NumberRequired: AttributeValidator<number> = {
-        required: true, parse: value => {
-            const number = Number(value)
-            return isNaN(number) ? panic("NumberRequired") : number
+    const parseBoolean = (value: string | boolean): boolean => {
+        if (typeof value === "boolean") {return value}
+        switch (value.trim().toLowerCase()) {
+            case "true":
+            case "1": return true
+            case "false":
+            case "0": return false
+            default: return panic("Expected an XML boolean literal")
         }
     }
-    export const NumberOptional: AttributeValidator<number> = {required: false, parse: value => Number(value)}
+
+    const parseNumber = (value: string | number): number => {
+        if (typeof value === "string" && value.trim().length === 0) {
+            return panic("Expected a nonblank XML number")
+        }
+        const number = Number(value)
+        return Number.isFinite(number) ? number : panic("Expected a finite XML number")
+    }
+
+    export const BoolRequired: AttributeValidator<boolean> = {required: true, parse: parseBoolean}
+    export const BoolOptional: AttributeValidator<boolean> = {required: false, parse: parseBoolean}
+    export const NumberRequired: AttributeValidator<number> = {required: true, parse: parseNumber}
+    export const NumberOptional: AttributeValidator<number> = {required: false, parse: parseNumber}
 
     export const Attribute = (name: string, validator?: AttributeValidator<unknown>): PropertyDecorator =>
         (target: object, propertyKey: PropertyKey) =>
@@ -211,10 +218,13 @@ export namespace Xml {
                 if (meta.type === "attribute") {
                     const attribute = element.getAttribute(meta.name)
                     if (isDefined(attribute)) {
-                        Object.defineProperty(instance, key, {
-                            value: meta.validator?.parse?.call(null, attribute) ?? attribute,
-                            enumerable: true
-                        })
+                        let value: unknown
+                        try {
+                            value = meta.validator?.parse?.call(null, attribute) ?? attribute
+                        } catch (cause) {
+                            throw new Error(`Invalid XML attribute '${meta.name}'`, {cause})
+                        }
+                        Object.defineProperty(instance, key, {value, enumerable: true})
                     } else {
                         meta.validator?.required && panic(`Missing attribute '${meta.name}'`)
                         Object.defineProperty(instance, key, {value: undefined, enumerable: true})
@@ -296,7 +306,20 @@ export namespace Xml {
             }
             return instance
         }
-        const xmlDoc = new DOMParser().parseFromString(xml.trimStart(), "application/xml").documentElement
-        return deserialize(xmlDoc, clazz)
+        const document = new DOMParser().parseFromString(xml.trimStart(), "application/xml")
+        const root = document.documentElement
+        // Chromium inserts an XHTML diagnostic under the partially parsed root.
+        const parserErrorNamespaces = [
+            "http://www.mozilla.org/newlayout/xml/parsererror.xml",
+            "http://www.w3.org/1999/xhtml"
+        ]
+        if (!root || parserErrorNamespaces.some(namespace =>
+            document.getElementsByTagNameNS(namespace, "parsererror").length > 0)) {
+            return panic("Invalid XML document")
+        }
+        const rootMeta = MetaClassMap.get(clazz)?.get("class")
+        if (rootMeta?.type !== "class") {return panic("Missing @Xml.Class decorator on root schema")}
+        if (root.nodeName !== rootMeta.name) {return panic(`Expected XML root '${rootMeta.name}'`)}
+        return deserialize(root, clazz)
     }
 }
