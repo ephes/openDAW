@@ -4,6 +4,7 @@ import {SampleStorage, OpenSampleAPI} from "./samples"
 import {SoundfontStorage, OpenSoundfontAPI} from "./soundfont"
 import {CloudBackupSamples} from "./cloud/CloudBackupSamples"
 import {CloudBackupSoundfonts} from "./cloud/CloudBackupSoundfonts"
+import {syntheticSoundfont} from "./soundfont/syntheticSoundfont.test-fixture"
 import {Workers} from "./Workers"
 
 vi.mock("./Workers", () => ({Workers: {Opfs: {list: vi.fn(), read: vi.fn(), write: vi.fn(), delete: vi.fn()}}}))
@@ -72,9 +73,11 @@ it("waits for a soundfont writer before taking a strict inventory", async () => 
     let release!: () => void
     const gate = new Promise<void>(resolve => {release = resolve})
     vi.mocked(Workers.Opfs.write).mockImplementation(async path => {if (path.endsWith("soundfont.sf2")) {await gate}})
+    vi.mocked(Workers.Opfs.list).mockResolvedValueOnce([]).mockResolvedValue([{name: a, kind: "directory"}])
     const storage = SoundfontStorage.get()
-    const saving = storage.save({uuid: UUID.parse(a), file: new ArrayBuffer(1), meta: {name: "Synthetic", size: 1, url: "", license: "", origin: "import"}})
+    const saving = storage.save({uuid: UUID.parse(a), file: syntheticSoundfont().buffer as ArrayBuffer, meta: {name: "Synthetic", size: syntheticSoundfont().byteLength, url: "", license: "", origin: "import"}})
     await vi.waitFor(() => expect(Workers.Opfs.write).toHaveBeenCalled())
+    vi.mocked(Workers.Opfs.list).mockClear()
     const listing = storage.list({strict: true})
     await Promise.resolve(); await Promise.resolve()
     expect(Workers.Opfs.list).not.toHaveBeenCalled()

@@ -169,3 +169,20 @@ the local edited presets and retry backup before restoring them elsewhere. A con
 local save can also change bytes after the initial index scan; this slice does not
 capture a coherent preset pair or provide transactional preset generations. Successful
 project generation preservation does not extend to presets.
+
+Soundfont saves share the asset-domain Web Lock with inventory and deletion. New
+media and metadata must validate; SF2 bytes finish before metadata makes the asset
+visible. Repeated saves validate and preserve complete existing UUIDs. Fresh validated input can repair missing/invalid media or metadata after the old
+visibility marker is retired. Operational read failures stop repair. Failure cleanup
+removes a whole directory only when the current save created it; failed repairs keep
+the existing directory without the new metadata marker, ready for retry. Primary
+write failures survive cleanup errors. Stock fetch uses this repair path when cache reads fail (missing files or
+unparseable metadata). Corrupt SF2 with readable metadata still requires fresh
+re-import; loader retry alone re-reads that cache.
+
+Sample metadata edits take the same lock as save/delete and check nonempty audio plus valid metadata
+before writing, without decoding the whole WAV or regenerating peaks. A stale edit after deletion fails instead of recreating a metadata-only
+asset or clearing its tombstone; an earlier completed edit can be deleted normally.
+
+A stale sample edit refreshes the library and reports a bounded failure in the studio
+instead of leaving an unhandled rejection.

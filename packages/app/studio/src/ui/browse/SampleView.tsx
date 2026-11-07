@@ -1,6 +1,6 @@
 import css from "./SampleView.sass?inline"
 import {createElement} from "@opendaw/lib-jsx"
-import {Exec, Lifecycle, Objects, UUID} from "@opendaw/lib-std"
+import {Exec, Lifecycle, Objects, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {SamplePlayback} from "@/service/SamplePlayback"
 import {Icon} from "../components/Icon"
 import {Sample} from "@opendaw/studio-adapters"
@@ -66,9 +66,16 @@ export const SampleView = ({lifecycle, service, sampleSelection, sample, playbac
                               const {status, value: meta} =
                                   await Promises.tryCatch(SampleDialogs.showEditSampleDialog(sample))
                               if (status === "resolved") {
-                                  await SampleStorage.get()
-                                      .updateSampleMeta(UUID.parse(meta.uuid), Objects.exclude(meta, "uuid"))
+                                  const result = await Promises.tryCatch(SampleStorage.get()
+                                      .updateSampleMeta(UUID.parse(meta.uuid), Objects.exclude(meta, "uuid")))
                                   refresh()
+                                  if (result.status === "rejected") {
+                                      console.warn("Sample metadata update failed", result.error)
+                                      await RuntimeNotifier.info({
+                                          headline: "Could not update sample",
+                                          message: "The sample is unavailable or could not be read. The library has been refreshed."
+                                      })
+                                  }
                               }
                           }}/>
                     <Icon symbol={IconSymbol.Close}
