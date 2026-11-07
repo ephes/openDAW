@@ -2,7 +2,6 @@ import {
     ArrayMultimap,
     clamp,
     DefaultObservableValue,
-    EmptyExec,
     Option,
     Procedure,
     RuntimeNotifier,
@@ -31,6 +30,9 @@ export class SamplePlayback {
 
     #current: Option<string> = Option.None
     #errorDialogOpen: boolean = false
+    #generation = 0
+    #loading = false
+    #ownedUrl: string | undefined
 
     constructor() {
         this.#audio = new Audio()
@@ -54,40 +56,66 @@ export class SamplePlayback {
 
     toggle(uuidAsString: string): void {
         if (this.#current.contains(uuidAsString)) {
+            if (this.#loading) {return}
             if (this.#audio.paused) {
                 this.#notify(uuidAsString, {type: "buffering"})
-                this.#audio.play().catch(EmptyExec)
+                this.#play(uuidAsString, this.#generation)
             } else {
+                ++this.#generation
                 this.#audio.currentTime = 0.0
                 this.#audio.pause()
             }
-        } else {
-            this.#watchAudio(uuidAsString)
-            this.#notify(uuidAsString, {type: "buffering"})
-
-            SampleStorage.get().load(UUID.parse(uuidAsString))
-                .then(([audio]) => {
-                    this.#audio.src = URL.createObjectURL(new Blob([WavFile.encodeFloats({
-                        frames: audio.frames.slice(),
-                        sampleRate: audio.sampleRate,
-                        numberOfFrames: audio.numberOfFrames,
-                        numberOfChannels: audio.numberOfChannels
-                    })], {type: "audio/wav"}))
-                }, () => {
-                    this.#audio.src = `${OpenSampleAPI.FileRoot}/${uuidAsString}`
-                })
-                .finally(() => this.#audio.play().catch(EmptyExec))
-
-            this.#current.ifSome(uuid => this.#notify(uuid, {type: "idle"}))
-            this.#current = Option.wrap(uuidAsString)
+            return
         }
+        this.eject()
+        const generation = this.#generation
+        this.#current = Option.wrap(uuidAsString)
+        this.#watchAudio(uuidAsString)
+        this.#loading = true
+        this.#notify(uuidAsString, {type: "buffering"})
+        void SampleStorage.get().load(UUID.parse(uuidAsString)).then(([audio]) => {
+            if (generation !== this.#generation) {return}
+            const url = URL.createObjectURL(new Blob([WavFile.encodeFloats({
+                frames: audio.frames.slice(),
+                sampleRate: audio.sampleRate,
+                numberOfFrames: audio.numberOfFrames,
+                numberOfChannels: audio.numberOfChannels
+            })], {type: "audio/wav"}))
+            this.#ownedUrl = url
+            this.#audio.src = url
+        }, () => {
+            if (generation === this.#generation) {this.#audio.src = `${OpenSampleAPI.FileRoot}/${uuidAsString}`}
+        }).then(() => {
+            if (generation !== this.#generation) {return}
+            this.#loading = false
+            this.#play(uuidAsString, generation)
+        }).catch(() => {
+            if (generation !== this.#generation) {return}
+            this.eject()
+            this.#notify(uuidAsString, {type: "error", reason: "Could not prepare preview; try again"})
+        })
     }
 
     eject(): void {
+        ++this.#generation
+        this.#loading = false
+        this.#unwatchAudio()
+        this.#audio.pause()
+        this.#audio.removeAttribute("src")
+        this.#audio.load()
+        if (this.#ownedUrl !== undefined) {
+            URL.revokeObjectURL(this.#ownedUrl)
+            this.#ownedUrl = undefined
+        }
         this.#current.ifSome(uuid => this.#notify(uuid, {type: "idle"}))
         this.#current = Option.None
-        this.#audio.pause()
-        this.#unwatchAudio()
+    }
+
+    #play(uuid: string, generation: number): void {
+        void this.#audio.play().catch(() => {
+            if (generation !== this.#generation) {return}
+            this.#notify(uuid, {type: "error", reason: "Could not play preview; try again"})
+        })
     }
 
     subscribe(uuidAsString: string, procedure: Procedure<PlaybackEvent>): Subscription {
