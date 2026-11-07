@@ -101,3 +101,12 @@ The progress guard also rejects half-ULP tie cases that can stall at an even
 mantissa. Preflight does not impose a wall-clock deadline or practical work ceiling:
 callers choose the budget through scanSteps and scanSamples, whose product
 determines scan work.
+
+## Streaming analysis and fades
+
+RMS is the amplitude square root of a finite rolling energy window, initially padded with zeros.
+Analysis windows require an integer length of at least two; unsupported lengths throw RangeError.
+Fade buffers sample the half-open interval `[start,end)` at `start+i*(end-start)/sampleCount`,
+matching `gainAt` for curved and overlapping fades, and leave samples beyond the count untouched.
+Spectral tests use deterministic bin-centered stereo sines and real FFT/window dependencies;
+RMS tests compare scalar/block calls to an independent FIFO energy oracle.
