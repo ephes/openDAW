@@ -22,7 +22,7 @@ export class CloudBackupSamples {
         log("Collecting all sample domains...")
         const [stock, local, cloud] = await Promise.all([
             OpenSampleAPI.get().all(),
-            SampleStorage.get().list(),
+            SampleStorage.get().list({strict: true}),
             cloudHandler.download(CloudBackupSamples.RemoteCatalogPath)
                 .then(json => JSON.parse(new TextDecoder().decode(json)))
                 .catch(reason => reason instanceof Errors.FileNotFound ? Arrays.empty() : panic(reason))

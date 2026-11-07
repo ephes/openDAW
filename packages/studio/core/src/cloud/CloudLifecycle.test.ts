@@ -39,6 +39,9 @@ it("preserves primary backup failure and tears down even when release fails", as
     vi.mocked(cloud.delete).mockRejectedValue(new Error("release failed"))
     await expect(CloudBackup.backupWithHandler(cloud, service)).rejects.toBe(primary)
     expect(terminate).toHaveBeenCalledTimes(1)
+    expect(CloudBackupProjects.start).not.toHaveBeenCalled()
+    expect(CloudBackupSoundfonts.start).not.toHaveBeenCalled()
+    expect(CloudBackupPresets.start).not.toHaveBeenCalled()
 })
 it("does not delete a lock whose upload failed", async () => {
     vi.mocked(cloud.upload).mockRejectedValue(new Error("upload failed"))
