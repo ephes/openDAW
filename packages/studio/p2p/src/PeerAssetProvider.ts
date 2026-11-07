@@ -1,4 +1,4 @@
-import {Progress, UUID} from "@opendaw/lib-std"
+import {Progress, Subscription, UUID} from "@opendaw/lib-std"
 import {AudioData} from "@opendaw/lib-dsp"
 import {SampleMetaData, SoundfontMetaData} from "@opendaw/studio-adapters"
 import {type SignalingMessage, AssetSignaling} from "./AssetSignaling"
@@ -35,13 +35,14 @@ export class PeerAssetProvider {
     readonly #transferringAssets: Map<string, string> = new Map()
     readonly #activePeerTransfers: Map<string, string> = new Map()
     readonly #peerQueues: Map<string, Array<string>> = new Map()
+    readonly #subscription: Subscription
     #terminated: boolean = false
 
     constructor(signaling: AssetSignaling, localPeerId: string, trafficMeter?: TrafficMeter) {
         this.#signaling = signaling
         this.#localPeerId = localPeerId
         this.#trafficMeter = trafficMeter ?? new TrafficMeter()
-        this.#signaling.subscribe(message => this.#onSignalingMessage(message))
+        this.#subscription = this.#signaling.subscribe(message => this.#onSignalingMessage(message))
         console.debug("[P2P:Provider] initialized, peerId:", localPeerId)
     }
 
@@ -59,7 +60,9 @@ export class PeerAssetProvider {
     }
 
     #requestAsset(uuid: UUID.Bytes, assetType: "sample" | "soundfont", progress: Progress.Handler): Promise<ArrayBuffer> {
+        if (this.#terminated) {return Promise.reject(new Error("P2P session terminated"))}
         const uuidString = UUID.toString(uuid)
+        if (this.#pendingRequests.has(uuidString)) {return Promise.reject(new Error("Asset request already pending"))}
         const {promise, resolve, reject} = Promise.withResolvers<ArrayBuffer>()
         this.#pendingRequests.set(uuidString, {
             uuid, uuidString, assetType, progress, resolve, reject,
@@ -122,6 +125,7 @@ export class PeerAssetProvider {
     }
 
     #drainPeerQueue(peerId: string): void {
+        if (this.#terminated) {return}
         const queue = this.#peerQueues.get(peerId)
         if (queue === undefined || queue.length === 0) {return}
         while (queue.length > 0) {
@@ -146,6 +150,7 @@ export class PeerAssetProvider {
     }
 
     #onSignalingMessage(message: SignalingMessage): void {
+        if (this.#terminated) {return}
         const peerId = message.peerId as string | undefined
         if (peerId !== undefined && peerId !== this.#localPeerId && !this.#knownPeers.has(peerId)) {
             this.#knownPeers.add(peerId)
@@ -188,39 +193,29 @@ export class PeerAssetProvider {
     }
 
     async #initiateTransfer(pending: PendingRequest, remotePeerId: string): Promise<void> {
-        this.#transferringAssets.set(pending.uuidString, remotePeerId)
-        this.#activePeerTransfers.set(remotePeerId, pending.uuidString)
-        const connection = new AssetPeerConnection(this.#signaling, this.#localPeerId, remotePeerId)
-        this.#connections.set(remotePeerId, connection)
-        console.debug("[P2P:Provider] creating WebRTC offer to", remotePeerId)
-        const channel = await connection.createOffer()
-        const current = () => this.#connections.get(remotePeerId) === connection
-        if (!current()) {return}
-        console.debug("[P2P:Provider] offer created, waiting for data channel open")
-        this.#resetStallTimer(pending)
-        channel.onmessage = (event: MessageEvent) => {
-            if (current()) {this.#onDataChannelMessage(pending, event.data as ArrayBuffer)}
-        }
-        channel.onerror = () => {
+        if (this.#terminated || this.#pendingRequests.get(pending.uuidString) !== pending) {return}
+        let connection: AssetPeerConnection | undefined
+        const current = () => !this.#terminated && this.#pendingRequests.get(pending.uuidString) === pending &&
+            connection !== undefined && this.#connections.get(remotePeerId) === connection
+        try {
+            this.#transferringAssets.set(pending.uuidString, remotePeerId)
+            this.#activePeerTransfers.set(remotePeerId, pending.uuidString)
+            connection = new AssetPeerConnection(this.#signaling, this.#localPeerId, remotePeerId)
+            this.#connections.set(remotePeerId, connection)
+            this.#resetStallTimer(pending)
+            const channel = await connection.createOffer()
             if (!current()) {return}
-            console.warn("[P2P:Provider] data channel error for", pending.uuidString)
-            this.#retryTransfer(pending.uuidString, "data channel error")
-        }
-        channel.onclose = () => {
-            if (!current()) {return}
-            console.debug("[P2P:Provider] data channel closed for", pending.uuidString)
-            if (this.#transferringAssets.has(pending.uuidString)) {
-                this.#retryTransfer(pending.uuidString, "data channel closed")
+            channel.onmessage = event => {if (current()) {this.#onDataChannelMessage(pending, event.data)}}
+            channel.onerror = () => {if (current()) {this.#retryTransfer(pending.uuidString, "data channel error")}}
+            channel.onclose = () => {if (current()) {this.#retryTransfer(pending.uuidString, "data channel closed")}}
+            channel.onopen = () => {
+                if (!current()) {return}
+                try {channel.send(JSON.stringify({type: "transfer-request", uuid: pending.uuidString, assetType: pending.assetType}))}
+                catch {this.#retryTransfer(pending.uuidString, "transfer setup failed")}
             }
-        }
-        channel.onopen = () => {
-            if (!current()) {return}
-            console.debug("[P2P:Provider] data channel open, sending transfer-request for", pending.uuidString)
-            channel.send(JSON.stringify({
-                type: "transfer-request",
-                uuid: pending.uuidString,
-                assetType: pending.assetType
-            }))
+        } catch {
+            if (this.#pendingRequests.get(pending.uuidString) === pending && !this.#terminated &&
+                (connection === undefined || current())) {this.#retryTransfer(pending.uuidString, "transfer setup failed")}
         }
     }
 
@@ -315,6 +310,7 @@ export class PeerAssetProvider {
     terminate(): void {
         if (this.#terminated) {return}
         this.#terminated = true
+        this.#subscription.terminate()
         console.debug("[P2P:Provider] terminating")
         for (const pending of this.#pendingRequests.values()) {
             if (pending.stallTimer !== null) {
