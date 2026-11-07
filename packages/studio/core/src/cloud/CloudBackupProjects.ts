@@ -8,9 +8,7 @@ import {
     panic,
     Procedure,
     Progress,
-    Provider,
     RuntimeNotifier,
-    TimeSpan,
     UUID
 } from "@opendaw/lib-std"
 import {network, Promises} from "@opendaw/lib-runtime"
@@ -25,7 +23,7 @@ import {ProjectPaths} from "../project/ProjectPaths"
 const catalogFields = ["name", "modified", "created", "tags", "description"] as const
 
 type CatalogFields = typeof catalogFields[number]
-type MetaFields = Pick<ProjectMeta, CatalogFields>
+type MetaFields = Pick<ProjectMeta, CatalogFields> & {generation?: UUID.String}
 type Projects = Record<UUID.String, MetaFields>
 type ProjectDomains = Record<"local" | "cloud", Projects>
 
@@ -86,28 +84,45 @@ export class CloudBackupProjects {
                 progress((index + 1) / length)
                 this.#log(`Uploading project '${meta.name}'`)
                 const uuid = UUID.parse(uuidAsString)
-                const folder = `${CloudBackupProjects.RemotePath}/${uuidAsString}`
                 const metaFile = await ProjectStorage.loadMeta(uuid)
                 const projectFile = await ProjectStorage.loadProject(uuid)
                 const optCoverFile = await ProjectStorage.loadCover(uuid)
-                const tasks: Array<Provider<Promise<void>>> = []
-                const removeProjectPath = `${folder}/project.od`
-                const remoteMetaPath = `${folder}/meta.json`
-                tasks.push(() => this.#cloudHandler.upload(removeProjectPath, projectFile))
-                tasks.push(() => this.#cloudHandler.upload(remoteMetaPath, metaFile))
-                optCoverFile.ifSome(cover => {
-                    const removeCoverPath = `${folder}/image.bin`
-                    return tasks.push(() => this.#cloudHandler.upload(removeCoverPath, cover))
-                })
-                await Promises.approvedRetry(() =>
-                    Promises.timeout(Promises.sequentialAll(tasks),
-                        TimeSpan.minutes(10), "Upload timeout (10 min)."), error => ({
+                const generation = await Promises.approvedRetry(async () => {
+                    const generation = UUID.toString(UUID.generate())
+                    const folder = `${CloudBackupProjects.RemotePath}/${uuidAsString}/generations/${generation}`
+                    const files = [
+                        {path: `${folder}/project.od`, data: projectFile},
+                        {path: `${folder}/meta.json`, data: metaFile}
+                    ]
+                    optCoverFile.ifSome(data => {files.push({path: `${folder}/image.bin`, data})})
+                    const controller = new AbortController()
+                    let expired = false
+                    const deadline = setTimeout(() => {
+                        expired = true
+                        controller.abort()
+                    }, 10 * 60_000)
+                    try {
+                        // Keep backup ownership until the started operation settles, even
+                        // if a transport ignores abort. Never overlap retry with old work.
+                        for (const {path, data} of files) {
+                            controller.signal.throwIfAborted()
+                            await this.#cloudHandler.upload(path, data, controller.signal)
+                        }
+                        controller.signal.throwIfAborted()
+                        return generation
+                    } catch (error) {
+                        if (expired) {throw new Error("Upload timeout (10 min).")}
+                        throw error
+                    } finally {
+                        clearTimeout(deadline)
+                    }
+                }, error => ({
                     headline: "Upload failed",
                     message: `Failed to upload project '${meta.name}'. '${error}'`,
                     approveText: "Retry",
                     cancelText: "Cancel"
                 }))
-                return {uuidAsString, meta}
+                return {uuidAsString, meta: {...meta, generation}}
             }))
         const catalog = uploaded
             .reduce((projects, project) => {
@@ -160,7 +175,8 @@ export class CloudBackupProjects {
             download.map(([uuidAsString, meta], index, {length}) => async () => {
                 progress((index + 1) / length)
                 const uuid = UUID.parse(uuidAsString)
-                const path = `${CloudBackupProjects.RemotePath}/${uuidAsString}`
+                const root = `${CloudBackupProjects.RemotePath}/${uuidAsString}`
+                const path = meta.generation === undefined ? root : `${root}/generations/${meta.generation}`
                 this.#log(`Downloading project '${meta.name}'`)
                 const files = await Promises.guardedRetry(() =>
                     this.#cloudHandler.list(path), network.defaultRetry)
@@ -175,7 +191,7 @@ export class CloudBackupProjects {
                         cancelText: "Ignore"
                     })
                     if (approvedDeletion) {
-                        await this.#cloudHandler.delete(path)
+                        await this.#cloudHandler.delete(root)
                         const catalog = {...this.#projectDomains.cloud}
                         delete catalog[UUID.asString(uuidAsString)]
                         await this.#uploadCatalog(catalog)

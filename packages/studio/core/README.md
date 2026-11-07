@@ -91,3 +91,29 @@ Dropbox ignores only its HTTP 409 path_lookup/not_found delete classification;
 authentication, permissions, write errors and transport failures still abort cleanup.
 Drive cleanup resolves both files and project folders, while downloads/uploads keep
 their file-only target lookup. Missing targets are no-ops; other errors propagate.
+
+### Project generations and upload deadlines
+
+New project backups upload to immutable `projects/<uuid>/generations/<generation>/`
+directories. The catalog publishes that generation only after project, metadata and
+optional cover uploads succeed. Failure (including catalog publication) leaves the
+previous referenced generation intact. Restore follows the catalog reference; entries
+without a generation continue to use the legacy `projects/<uuid>/` layout. A missing
+referenced generation is corruption, never a reason to mix in legacy files. Failed
+or superseded generations are retained; there is no automatic garbage collection.
+Explicit project deletion removes its entire project directory.
+
+A ten-minute per-project attempt deadline aborts supported provider requests and stops
+scheduling later files. The attempt still owns the backup until an already-started
+upload settles, even if a custom transport ignores abort. Retry/Cancel is offered only
+then; retries use new generations and never overlap prior work. This can wait beyond
+the deadline on a non-cooperative transport, protecting ownership over prompt timeout.
+
+Generation compatibility is one-way: updated clients restore legacy catalogs, but
+older clients do not understand generation references. Before the first generation
+backup, close old studio tabs and update every device used with this cloud account.
+An older client may restore stale legacy bytes or offer to delete a new project as
+corrupt; never approve that deletion. Use an updated client for restore/cleanup.
+Each successful modified-project backup and abandoned attempt consumes another full
+project copy in provider storage. Quota usage grows until deliberate owner cleanup;
+this change intentionally adds no automatic generation deletion.

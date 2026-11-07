@@ -13,3 +13,6 @@ the production backup entry points, asserting no domain mutations or asset resto
 
 Provider deletion tests drive the actual handlers with synthetic SDK/fetch responses,
 including a completed delete followed by failed catalog publication and retry.
+
+Project generation tests inject failures at each upload and catalog publication,
+then restore afresh. Fake time/deferred transports test timeout, retry and lock ownership.

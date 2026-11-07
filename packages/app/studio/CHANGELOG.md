@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Generation backups require updated clients on every device: older clients can restore stale bytes or misidentify projects as corrupt. Full retained generations increase cloud quota usage; no automatic cleanup is performed.
+
+- Preserve the last complete cloud project when uploads fail and wait for owned uploads before retry/cancel.
+
 - Clean up cloud project folders and permit retry after a completed Dropbox deletion.
 
 - Refuse invalid cloud catalogs or unreadable deletion journals before synchronizing a domain.
