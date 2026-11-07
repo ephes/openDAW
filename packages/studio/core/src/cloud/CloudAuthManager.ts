@@ -1,4 +1,4 @@
-import {asDefined, Errors, isDefined, isNull, Maps, panic, RuntimeNotifier, TimeSpan} from "@opendaw/lib-std"
+import {Errors, Maps, panic, RuntimeNotifier, TimeSpan} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {CloudService} from "./CloudService"
 import {CloudHandler} from "./CloudHandler"
@@ -50,12 +50,12 @@ export class CloudAuthManager {
             }
         })
         const handler = await memo()
-        const {status, error} = await Promises.tryCatch(handler.alive())
+        const {status} = await Promises.tryCatch(handler.alive())
         if (status === "rejected") {
             // Do not auto-retry here to avoid reopening the OAuth popup in a loop.
             // Instead, clear the memoized handler and surface the error to the caller.
             this.#memoizedHandlers.delete(service)
-            return Promise.reject(error)
+            throw new Error("Cloud authentication check failed")
         }
         console.debug(`Handler for '${service}' is alive`)
         return handler
@@ -81,69 +81,81 @@ export class CloudAuthManager {
             code_challenge_method: "S256",
             ...(config.extraAuthParams ?? {})
         })
-        const authUrl = `${config.authUrlBase}?${params.toString()}`
-        console.debug("[CloudAuth] Opening auth window:", authUrl)
-        const authWindow = window.open(authUrl, "cloudAuth")
-        if (isNull(authWindow)) {
+        return this.#authorize(config.service, config.authUrlBase, params, async (data, signal) => {
+            if (typeof data.code !== "string" || data.code.length === 0) {throw new Error("Invalid authentication response")}
+            const tokenParams = new URLSearchParams({
+                code: data.code,
+                grant_type: "authorization_code",
+                client_id: config.clientId,
+                redirect_uri: redirectUri,
+                code_verifier: codeVerifier,
+                ...(config.extraTokenParams ?? {})
+            })
+            const response = await fetch(config.tokenUrl, {
+                method: "POST",
+                headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                body: tokenParams.toString(), signal
+            })
+            if (!response.ok) {throw new Error(`Token exchange failed (HTTP ${response.status})`)}
+            const result = await response.json()
+            if (typeof result?.access_token !== "string" || result.access_token.length === 0) {
+                throw new Error("Invalid token response")
+            }
+            return result.access_token
+        })
+    }
+
+    async #authorize(service: string, authUrlBase: string, params: URLSearchParams,
+                     readToken: (data: Record<string, unknown>, signal: AbortSignal) => Promise<string>): Promise<CloudHandler> {
+        const state = `${service}.${crypto.randomUUID()}`
+        params.set("state", state)
+        const channel = new BroadcastChannel("auth-callback")
+        const authWindow = window.open(`${authUrlBase}?${params}`, `cloudAuth-${state}`)
+        if (authWindow === null) {
+            channel.close()
             return Errors.warn("Failed to open authentication window. Please check popup blockers.")
         }
         const {resolve, reject, promise} = Promise.withResolvers<CloudHandler>()
-        const channel = new BroadcastChannel("auth-callback")
+        const controller = new AbortController()
+        let phase: "waiting" | "handling" | "settled" = "waiting"
+        const fail = (message: string) => {
+            if (phase === "settled") {return}
+            phase = "settled"
+            controller.abort()
+            reject(new Error(message))
+        }
         const dialog = RuntimeNotifier.progress({
-            headline: "Cloud Service",
-            message: "Please wait for authentication...",
-            cancel: () => reject("cancelled")
+            headline: service === "google" ? "Google Drive" : "Cloud Service",
+            message: service === "google" ? "Please authorize access to app data..." : "Please wait for authentication...",
+            cancel: () => fail("Authentication cancelled")
         })
-        let handled = false
-        channel.onmessage = async (event: MessageEvent<{type: string, code?: string, access_token?: string}>) => {
-            const data = asDefined(event.data, "No data")
-            console.debug("[CloudAuth] Received via BroadcastChannel")
-            if (data.type === "auth-callback" && isDefined(data.code)) {
-                if (handled) {return}
-                handled = true
-                console.debug("[CloudAuth] Processing code from BroadcastChannel...", data.type, data.code)
-                try {
-                    const tokenParams = new URLSearchParams({
-                        code: data.code,
-                        grant_type: "authorization_code",
-                        client_id: config.clientId,
-                        redirect_uri: redirectUri,
-                        code_verifier: codeVerifier,
-                        ...(config.extraTokenParams ?? {})
-                    })
-                    const response = await fetch(config.tokenUrl, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/x-www-form-urlencoded"},
-                        body: tokenParams.toString()
-                    })
-                    if (!response.ok) {
-                        const errorText = await response.text()
-                        console.error("[CloudAuth] Token exchange error:", errorText)
-                        return panic(`Token exchange failed: ${errorText}`)
-                    }
-                    const dataJson = await response.json()
-                    const accessToken = dataJson.access_token
-                    if (!accessToken) {
-                        return panic("No access_token in token response")
-                    }
-                    resolve(await this.#createHandler(config.service, accessToken))
-                } catch (err) {
-                    console.debug("[CloudAuth] Token exchange failed:", err)
-                    reject(err)
-                }
-            } else if (data.type === "closed") {
-                // Only reject if we did not already start handling a code
-                if (!handled) {
-                    console.debug("[CloudAuth] Callback window closed before code received")
-                    reject(null)
-                }
+        // COOP severs cross-origin popup proxies; `closed` cannot distinguish a
+        // live provider popup from a user-closed one. Use correlated callback messages.
+        channel.onmessage = async (event: MessageEvent) => {
+            const data = event.data
+            if (phase !== "waiting" || data === null || typeof data !== "object"
+                || data.state !== state || data.service !== service) {return}
+            if (data.type === "closed") {fail("Authentication window closed"); return}
+            if (data.type === "auth-error") {fail("Authentication rejected by provider"); return}
+            if (data.type !== "auth-callback") {return}
+            phase = "handling"
+            try {
+                const token = await readToken(data, controller.signal)
+                if (controller.signal.aborted) {return}
+                const handler = await this.#createHandler(service, token)
+                if (controller.signal.aborted) {return}
+                phase = "settled"
+                resolve(handler)
+            } catch {
+                // Provider bodies, codes, tokens and raw exceptions must never become diagnostics.
+                fail("Authentication failed")
             }
         }
         return promise.finally(() => {
-            console.debug("[CloudAuth] Closing auth window")
+            channel.onmessage = null
+            channel.close()
             authWindow.close()
             dialog.terminate()
-            channel.close()
         })
     }
 
@@ -172,39 +184,11 @@ export class CloudAuthManager {
             include_granted_scopes: "true",
             prompt: "consent"
         })
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-        console.debug("[CloudAuth] Opening auth window:", authUrl)
-        const authWindow = window.open(authUrl, "cloudAuth")
-        if (isNull(authWindow)) {
-            return Errors.warn("Failed to open authentication window. Please check popup blockers.")
-        }
-        const {resolve, reject, promise} = Promise.withResolvers<CloudHandler>()
-        const channel = new BroadcastChannel("auth-callback")
-        const dialog = RuntimeNotifier.progress({
-            headline: "Google Drive",
-            message: "Please authorize access to app data...",
-            cancel: () => reject("cancelled")
-        })
-        channel.onmessage = async (event: MessageEvent<{type: string, code?: string, access_token?: string}>) => {
-            const data = asDefined(event.data, "No data")
-            console.debug("[CloudAuth] Received via BroadcastChannel:", data)
-            if (data.type === "auth-callback" && isDefined(data.access_token)) {
-                try {
-                    const accessToken = data.access_token
-                    resolve(await this.#createHandler("google", accessToken))
-                } catch (err) {
-                    reject(err)
-                }
-            } else if (data.type === "closed") {
-                console.debug("[CloudAuth] Callback window closed")
-                reject(null)
+        return this.#authorize("google", "https://accounts.google.com/o/oauth2/v2/auth", params, async data => {
+            if (typeof data.access_token !== "string" || data.access_token.length === 0) {
+                throw new Error("Invalid authentication response")
             }
-        }
-        return promise.finally(() => {
-            console.debug("[CloudAuth] Closing auth window")
-            authWindow.close()
-            dialog.terminate()
-            channel.close()
+            return data.access_token
         })
     }
 

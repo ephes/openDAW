@@ -32,3 +32,8 @@ Fresh validated soundfont input repairs incomplete existing UUIDs without granti
 whole-directory cleanup ownership. Actual stock-loader retry and re-import tests cover
 recovery; operational reads still fail closed. Sample edit UI tests execute the real
 icon handler and verify refresh/feedback instead of an unhandled stale-target error.
+
+OAuth regressions execute the actual callback HTML and manager with synthetic state,
+popups, channels and provider responses. The three input/correlation/privacy slices
+exclude pre-callback popup closure detection, which requires an isolation/header design
+beyond the existing cross-origin opener proxy.

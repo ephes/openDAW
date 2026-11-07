@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Correlate OAuth callbacks with random per-attempt state/provider, ignore replays, and redact codes/tokens/provider failures from diagnostics.
+
 - Publish soundfont metadata only after validated SF2 completion, preserve complete UUIDs and own failure cleanup; serialize sample metadata edits with deletion and reject stale edits.
 
 - Preset updates remain in place: partial batch/catalog failure can leave newer bytes with older metadata until a successful retry. Keep local edits and retry before restoring elsewhere.
