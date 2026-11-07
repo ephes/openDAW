@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Generate short and partial waveform peaks correctly, serialize exact channel views, and preflight binary peak layouts before allocation.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 - Store only the supplied OPFS typed-array view, complete short transfers, and reject incomplete transfers.
 - Preserve operational OPFS errors while retaining missing-entry and empty-file semantics.
