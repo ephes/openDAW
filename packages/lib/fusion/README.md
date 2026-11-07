@@ -38,3 +38,10 @@ The existing PEAKS format validates ordered shifts (0–30), contiguous stage of
 frame/bucket counts, matching channel counts bounded by the complete input, complete aligned byte
 lengths and input bounds before allocation. Invalid stored files use the existing
 sample recovery/regeneration path. No binary format version change.
+
+Preferences fall back to schema defaults when storage discovery or reads fail,
+with one bounded diagnostic and no writes through the unavailable storage. Valid
+persisted sections survive schema changes. Queued facade updates coalesce to the
+latest settings and only reach the current host binding; replacement, release and
+termination invalidate already queued work. Run `npm test --workspace=@opendaw/lib-fusion`
+after the root build for synthetic storage and microtask lifecycle regressions.

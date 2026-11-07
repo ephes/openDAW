@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fall back safely on preference storage discovery/read errors and fence queued updates to retired hosts.
+
 - Validate live structures/payloads before mutation, resize cached arrays and release failed subscriber frames.
 
 - Generate short and partial waveform peaks correctly, serialize exact channel views, and preflight binary peak layouts before allocation.
