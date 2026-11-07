@@ -3,6 +3,7 @@ import {OpfsProtocol} from "@opendaw/lib-fusion"
 
 export interface InferenceConfig {
     readonly opfs: OpfsProtocol
+    readonly modelDownloadTimeoutMs?: number
 }
 
 let installed: Option<InferenceConfig> = Option.None

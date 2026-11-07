@@ -75,3 +75,22 @@ That legacy error export is deprecated. Compare failures with the caller's
 `signal.reason`. Concurrent same-task loads use the first model/provider selection;
 await release before switching descriptors/providers. Release after a failed load
 is a no-op; disposal failures from a loaded session still reach explicit callers.
+
+### Model cache and transfer limits
+
+`isCached` is a metadata/existence probe; `ensure` checks metadata shape, byte length
+and the SHA-256 of the actual returned cached bytes. Corruption triggers a verified
+download. Downloads have a 512 MiB actual-byte ceiling and a one-hour default whole-transfer
+deadline, combined with caller cancellation. Content-Length/model.bytes are progress
+hints, not exact-length requirements. Tests can lower `maxBytes` and `timeoutMs`;
+the byte option cannot raise the intrinsic byte ceiling. Install configuration
+`modelDownloadTimeoutMs` may raise the deadline for slow links, up to a finite
+24-hour ceiling; per-transfer `timeoutMs` uses the same ceiling. Failed transfers cancel/release
+the reader and never publish a cache entry.
+
+HTTP download failures retain bounded status text and the model origin/path, with
+URL credentials, queries and fragments excluded from diagnostics. Cached reads
+are hashed directly without an additional full-model copy.
+
+Download limits are checked before transfer; invalid nonpositive/nonfinite limits
+fail then. Deadline settings greater than 24 hours are clamped to that ceiling.
