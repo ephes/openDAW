@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fence sample preview loads and play failures; release owned Blob URLs on replacement/eject.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 - Explain incomplete asset usage scans and close progress dialogs when deletion is blocked.
 
