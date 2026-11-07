@@ -16,3 +16,9 @@ MIDI ring tests decode real shared memory, observing registration before publica
 messages, wrap/full behavior and the 64-device limit. Explicit position assignment raises one
 consumable leap; ordinary advance does not. Pause preserves position/metronome preference and
 clears transport, recording and count-in.
+
+Voice fixtures record identities, starts, glides and releases and add deterministic audio.
+Strategies clear only their requested output span; Voicing renders tails into a reusable buffer
+before summing them into the current strategy output. Retirement waits for the last sounding voice.
+Unison preserves parent gain in the sum of squared child gains and centers spreads on the parent.
+The initial placeholder strategy has no tail and is never rendered after strategy selection.

@@ -6,6 +6,7 @@ import {VoicingStrategy} from "./VoicingStrategy"
 export class Voicing {
     #strategy: VoicingStrategy
 
+    readonly #tailBuffer = new AudioBuffer()
     readonly #expiring: Array<VoicingStrategy> = []
 
     constructor(strategy: VoicingStrategy = VoicingStrategy.NotSet) {
@@ -13,8 +14,10 @@ export class Voicing {
     }
 
     set strategy(strategy: VoicingStrategy) {
-        this.#expiring.push(this.#strategy)
-        this.#strategy.forceStop()
+        if (this.#strategy !== VoicingStrategy.NotSet) {
+            this.#expiring.push(this.#strategy)
+            this.#strategy.forceStop()
+        }
         this.#strategy = strategy
     }
 
@@ -32,9 +35,14 @@ export class Voicing {
         this.#strategy.process(output, block, fromIndex, toIndex)
         for (let i = this.#expiring.length - 1; i >= 0; i--) {
             const strategy = this.#expiring[i]
-            if (strategy.process(output, block, fromIndex, toIndex)) {
-                this.#expiring.splice(i, 1)
-            }
+            const finished = strategy.process(this.#tailBuffer, block, fromIndex, toIndex)
+            output.channels().forEach((channel, index) => {
+                const tail = this.#tailBuffer.getChannel(index)
+                for (let sample = fromIndex; sample < toIndex; sample++) {
+                    channel[sample] += tail[sample]
+                }
+            })
+            if (finished) {this.#expiring.splice(i, 1)}
         }
     }
 
