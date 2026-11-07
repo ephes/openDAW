@@ -32,7 +32,7 @@ export namespace MidiFile {
             output.littleEndian = false
             output.writeInt(Chunk.MTHD)
             output.writeInt(6)
-            output.writeShort(0) // formatType
+            output.writeShort(this.#tracks.length > 1 ? 1 : 0) // formatType
             output.writeShort(this.#tracks.length)
             output.writeShort(96) // timeDivision
             this.#tracks.forEach(track => {

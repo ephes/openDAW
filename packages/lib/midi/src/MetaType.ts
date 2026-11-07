@@ -30,10 +30,13 @@ export class MetaEvent implements Event<MetaType> {
         const length = decoder.readVarLen()
         switch (type) {
             case MetaType.SET_TEMPO:
+                if (length !== 3) {throw new Error("Invalid MIDI tempo length")}
                 return new MetaEvent(ticks, type, decoder.readTempo())
             case MetaType.TIME_SIGNATURE:
+                if (length !== 4) {throw new Error("Invalid MIDI time signature length")}
                 return new MetaEvent(ticks, type, decoder.readSignature())
             case MetaType.END_OF_TRACK:
+                if (length !== 0) {throw new Error("Invalid MIDI end-of-track length")}
                 return new MetaEvent(ticks, type, null)
             case MetaType.TEXT_EVENT:
             case MetaType.COPYRIGHT_NOTICE:
