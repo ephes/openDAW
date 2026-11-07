@@ -23,6 +23,7 @@ import {Flags} from "./Flags"
 
 interface Package<T> extends Terminable {
     dispatch(address: Address, input: ByteArrayInput): void
+    validate(input: ByteArrayInput): void
     subscribe(address: Address, procedure: Procedure<T>): Subscription
     hasSubscribers(address: Address): boolean
 }
@@ -30,6 +31,10 @@ interface Package<T> extends Terminable {
 class FloatPackage implements Package<float> {
     readonly subscribers = new Subscribers<Procedure<float>>()
 
+    validate(input: ByteArrayInput): void {
+        assert(input.available(4), "Invalid scalar payload length")
+        input.skip(4)
+    }
     dispatch(address: Address, input: ByteArrayInput): void {
         const value = input.readFloat()
         this.subscribers.getOrNull(address)?.forEach(procedure => procedure(value))
@@ -44,6 +49,10 @@ class FloatPackage implements Package<float> {
 class IntegerPackage implements Package<int> {
     readonly subscribers = new Subscribers<Procedure<int>>()
 
+    validate(input: ByteArrayInput): void {
+        assert(input.available(4), "Invalid scalar payload length")
+        input.skip(4)
+    }
     dispatch(address: Address, input: ByteArrayInput): void {
         const value = input.readInt()
         this.subscribers.getOrNull(address)?.forEach(procedure => procedure(value))
@@ -63,21 +72,35 @@ abstract class ArrayPackage<T extends ArrayTypes> implements Package<T> {
     readonly subscribers = new Subscribers<Procedure<T>>()
     readonly #arrays: SortedSet<Address, ArrayEntry<T>> = Address.newSet<ArrayEntry<T>>(entry => entry.address)
 
+    abstract readonly bytesPerElement: number
     abstract create(length: int): T
     abstract read(input: ByteArrayInput, array: T, length: int): void
 
     dispatch(address: Address, input: ByteArrayInput): void {
-        const length = input.readInt()
+        const length = this.#readLength(input)
         const entry = this.#arrays.getOrNull(address)
         let array: T
-        if (isDefined(entry)) {
+        if (isDefined(entry) && entry.array.length === length) {
             array = entry.array
         } else {
             array = this.create(length)
+            if (isDefined(entry)) {this.#arrays.removeByKey(address)}
             this.#arrays.add({address, array})
         }
         this.read(input, array, length)
         this.subscribers.getOrNull(address)?.forEach(procedure => procedure(array))
+    }
+
+    validate(input: ByteArrayInput): void {
+        const length = this.#readLength(input)
+        input.skip(length * this.bytesPerElement)
+    }
+
+    #readLength(input: ByteArrayInput): int {
+        assert(input.available(4), "Missing array length")
+        const length = input.readInt()
+        assert(length >= 0 && length <= Math.floor(input.remaining() / this.bytesPerElement), "Invalid array payload length")
+        return length
     }
 
     subscribe(address: Address, procedure: Procedure<T>): Subscription {
@@ -97,6 +120,7 @@ abstract class ArrayPackage<T extends ArrayTypes> implements Package<T> {
 }
 
 class FloatArrayPackage extends ArrayPackage<Float32Array> {
+    readonly bytesPerElement = 4
     create(length: number): Float32Array {return new Float32Array(length)}
     read(input: ByteArrayInput, array: Float32Array, length: number): void {
         for (let i = 0; i < length; i++) {array[i] = input.readFloat()}
@@ -104,6 +128,7 @@ class FloatArrayPackage extends ArrayPackage<Float32Array> {
 }
 
 class IntegerArrayPackage extends ArrayPackage<Int32Array> {
+    readonly bytesPerElement = 4
     create(length: number): Int32Array {return new Int32Array(length)}
     read(input: ByteArrayInput, array: Int32Array, length: number): void {
         for (let i = 0; i < length; i++) {array[i] = input.readInt()}
@@ -111,6 +136,7 @@ class IntegerArrayPackage extends ArrayPackage<Int32Array> {
 }
 
 class ByteArrayPackage extends ArrayPackage<Int8Array> {
+    readonly bytesPerElement = 1
     create(length: number): Int8Array {return new Int8Array(length)}
     read(input: ByteArrayInput, array: Int8Array, _length: number): void {
         input.readBytes(array)
@@ -228,10 +254,13 @@ export class LiveStreamReceiver implements Terminable {
         const lock = this.#optLock.unwrap()
         if (Atomics.load(lock, 0) === Lock.READ) {
             const byteArrayInput = this.#memory.unwrap()
-            this.#dispatchData(byteArrayInput)
-            byteArrayInput.position = 0 // Reset to start of data view (view is already offset past flags)
-            this.#writeSubscriptionFlags()
-            Atomics.store(lock, 0, Lock.WRITE)
+            try {
+                this.#dispatchData(byteArrayInput)
+            } finally {
+                byteArrayInput.position = 0
+                this.#writeSubscriptionFlags()
+                Atomics.store(lock, 0, Lock.WRITE)
+            }
         }
     }
 
@@ -245,8 +274,6 @@ export class LiveStreamReceiver implements Terminable {
     }
 
     #updateStructure(input: ByteArrayInput): void {
-        Arrays.clear(this.#procedures)
-        Arrays.clear(this.#structure)
         this.#parseStructure(input)
     }
 
@@ -257,6 +284,10 @@ export class LiveStreamReceiver implements Terminable {
             return false
         }
         if (input.readInt() !== Flags.START) {throw new Error("stream is broken (no start flag)")}
+        const payloadPosition = input.position
+        for (const entry of this.#structure) {entry.package.validate(input)}
+        assert(input.available(4) && input.readInt() === Flags.END, "Invalid payload end flag")
+        input.position = payloadPosition
         for (const procedure of this.#procedures) {procedure(input)}
         if (input.readInt() !== Flags.END) {throw new Error("stream is broken (no end flag)")}
         return true
@@ -268,13 +299,29 @@ export class LiveStreamReceiver implements Terminable {
         if (version <= this.#structureVersion) {
             return panic("Invalid version. new: " + version + `, was: ${this.#structureVersion}, id: ${this.#id}`)
         }
-        this.#structureVersion = version
-        this.#numPackages = input.readInt()
-        for (let i = 0; i < this.#numPackages; i++) {
+        const count = input.readInt()
+        assert(count >= 0 && count <= Math.floor(input.remaining() / 18), "Invalid package count")
+        const structure: Array<StructureEntry> = []
+        for (let i = 0; i < count; i++) {
+            const position = input.position
+            assert(input.available(18), "Truncated package address")
+            input.skip(16)
+            const fields = input.readByte()
+            assert(fields >= 0 && input.available(fields * 2 + 1), "Invalid package address")
+            input.position = position
             const address = Address.read(input)
             const pkg = this.#packages[input.readByte() as PackageType]
-            this.#structure.push({address, package: pkg})
-            this.#procedures.push(input => pkg.dispatch(address, input))
+            assert(isDefined(pkg), "Unknown package type")
+            structure.push({address, package: pkg})
         }
+        assert(input.remaining() === 0, "Unexpected structure bytes")
+        Arrays.clear(this.#structure)
+        Arrays.clear(this.#procedures)
+        for (const entry of structure) {
+            this.#structure.push(entry)
+            this.#procedures.push(input => entry.package.dispatch(entry.address, input))
+        }
+        this.#structureVersion = version
+        this.#numPackages = count
     }
 }

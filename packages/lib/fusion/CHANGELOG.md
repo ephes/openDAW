@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Validate live structures/payloads before mutation, resize cached arrays and release failed subscriber frames.
+
 - Generate short and partial waveform peaks correctly, serialize exact channel views, and preflight binary peak layouts before allocation.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
