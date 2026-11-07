@@ -7,7 +7,7 @@ const uuid = z.string().refine(UUID.validateString)
 const date = z.string().refine(value => Number.isFinite(Date.parse(value)))
 const project = z.object({
     name: z.string(), description: z.string(), tags: z.array(z.string()),
-    created: date, modified: date
+    created: date, modified: date, generation: uuid.optional()
 }).passthrough()
 const presetCommon = z.object({
     uuid, name: z.string(), description: z.string(),

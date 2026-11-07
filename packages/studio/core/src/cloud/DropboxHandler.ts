@@ -16,8 +16,14 @@ export class DropboxHandler implements CloudHandler {
         if (status === "rejected") return panic(error)
     }
 
-    async upload(path: string, buffer: ArrayBuffer): Promise<void> {
-        const client = await this.#ensureClient()
+    async upload(path: string, buffer: ArrayBuffer, signal?: AbortSignal): Promise<void> {
+        signal?.throwIfAborted()
+        const {Dropbox} = await import("dropbox")
+        const client = signal === undefined ? await this.#ensureClient() : new Dropbox({
+            accessToken: this.#accessToken,
+            fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, {...init, signal})
+        })
+        signal?.throwIfAborted()
         const fullPath = this.#getFullPath(path)
         console.debug("[Dropbox] Uploading to:", fullPath)
         const {status, error, value: result} = await Promises.tryCatch(client

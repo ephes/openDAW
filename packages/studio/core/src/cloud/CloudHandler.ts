@@ -1,5 +1,5 @@
 export interface CloudHandler {
-    upload(path: string, data: ArrayBuffer): Promise<void>
+    upload(path: string, data: ArrayBuffer, signal?: AbortSignal): Promise<void>
     exists(path: string): Promise<boolean>
     download(path: string): Promise<ArrayBuffer>
     list(path?: string): Promise<string[]>
