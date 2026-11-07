@@ -14,10 +14,10 @@ export class MidiTrack {
         let channel: Channel = 0
         for (;;) {
             const varLen = decoder.readVarLen()
+            ticks += varLen
             const b = decoder.readByte() & 0xff
             if (b < 0xf0) {
                 // 0x00....0xEF (MidiControl)
-                ticks += varLen
                 if (b < 0x80) {
                     // running mode, use the last eventType/channel!
                     decoder.skip(-1)
@@ -29,11 +29,9 @@ export class MidiTrack {
                 if (isDefined(event)) {
                     controlEvents.add(channel, event)
                 }
-            } else if (b < 0xf8) {
-                decoder.skipSysEx(b) // 0xF0....0xF7
-            } else {
-                // 0xF8....0xFF
-                ticks += varLen
+            } else if (b === 0xf0 || b === 0xf7) {
+                decoder.skipSysEx(b)
+            } else if (b === 0xff) {
                 const event: MetaEvent | null = MetaEvent.decode(decoder, ticks)
                 if (event !== null) {
                     metaEvents.push(event)
@@ -41,6 +39,8 @@ export class MidiTrack {
                         break
                     }
                 }
+            } else {
+                throw new Error("Unsupported MIDI system event")
             }
         }
         return new MidiTrack(controlEvents, metaEvents)
@@ -96,6 +96,10 @@ export class MidiTrack {
             })
         })
 
+        writeVarInt(0)
+        output.writeByte(0xff)
+        output.writeByte(MetaType.END_OF_TRACK)
+        output.writeByte(0)
         return output.toArrayBuffer()
     }
 }
