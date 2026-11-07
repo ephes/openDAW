@@ -53,3 +53,25 @@ bounds cleanup without waiting for an acknowledgement. Reinstall creates a new h
 The inference browser baseline requires the standard `AbortSignal.any` and
 `AbortSignal.throwIfAborted` APIs. Worker failures retain at most 300 characters of
 startup/runtime message detail alongside retry guidance.
+
+### Shared session ownership and cancellation
+
+Concurrent loads of one task share one operation; different tasks remain independent.
+Each caller can cancel its own wait, preserving its abort reason. Shared loading
+continues while another waiter remains. The last cancelled waiter aborts the shared
+download; no worker is created afterward. Already dispatched ONNX session creation
+cannot be forcibly interrupted; its result remains releasable/cached on the host. The
+first caller receives download progress while active; joining callers receive terminal
+progress. Release waits behind queued runs and session creation; worker messages for
+one task execute in order, and disposal finishes before a replacement is created.
+A preload concurrent with a release that has not yet begun may observe the current
+session; await explicit release before requesting a guaranteed replacement.
+Cancellation checks surround awaited inference and successful result/progress
+publication. They do not claim to forcibly interrupt ONNX computation.
+
+Cancellation is an API contract change: failures now preserve `AbortSignal.reason`
+(including default AbortError), rather than constructing InferenceCancelledError.
+That legacy error export is deprecated. Compare failures with the caller's
+`signal.reason`. Concurrent same-task loads use the first model/provider selection;
+await release before switching descriptors/providers. Release after a failed load
+is a no-op; disposal failures from a loaded session still reach explicit callers.

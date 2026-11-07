@@ -1,7 +1,6 @@
 import {asDefined, isDefined, Option, panic, Procedure, Provider, unitValue} from "@opendaw/lib-std"
 import {ExecutionProvider, ModelDescriptor, TaskDefinition} from "./Task"
 import {SessionRun, TensorMap} from "./Tensor"
-import {InferenceCancelledError} from "./Errors"
 import {ModelStore} from "./ModelStore"
 import {MainToWorker, WorkerCallId, WorkerToMain} from "./workers/protocol"
 
@@ -33,6 +32,7 @@ export class EngineHost {
     readonly #loadedTasks = new Set<string>()
     readonly #names = new Map<string, SessionNames>()
     readonly #queue: Array<QueueEntry> = []
+    readonly #loads = new Map<string, {promise: Promise<void>, controller: AbortController, waiters: number}>()
     readonly #lifetime = new AbortController()
     #worker: Option<Worker> = Option.None
     #ready: Option<Promise<void>> = Option.None
@@ -50,10 +50,45 @@ export class EngineHost {
                        executionProviders: ReadonlyArray<ExecutionProvider>,
                        options?: {progress?: Procedure<unitValue>, signal?: AbortSignal}): Promise<void> {
         this.#assertOpen()
+        this.#throwIfAborted(options?.signal)
         if (this.#loadedTasks.has(taskKey)) {options?.progress?.(1.0); return}
         const signal = options?.signal ? AbortSignal.any([options.signal, this.#lifetime.signal]) : this.#lifetime.signal
+        let flight = this.#loads.get(taskKey)
+        if (flight?.controller.signal.aborted) {
+            await this.#waitFor(flight.promise.catch(() => {}), signal)
+            return this.ensureLoaded(taskKey, model, executionProviders, options)
+        }
+        const joined = flight !== undefined
+        if (!flight) {
+            const controller = new AbortController()
+            const promise = Promise.resolve().then(() => this.#performLoad(taskKey, model, executionProviders, {
+                signal: controller.signal,
+                progress: value => {if (!options?.signal?.aborted) {options?.progress?.(value)}}
+            })).finally(() => {if (this.#loads.get(taskKey) === flight) {this.#loads.delete(taskKey)}})
+            flight = {promise, controller, waiters: 0}
+            this.#loads.set(taskKey, flight)
+        }
+        ++flight.waiters
+        try {
+            await this.#waitFor(flight.promise, signal)
+            this.#assertOpen()
+            this.#throwIfAborted(options?.signal)
+            if (joined) {options?.progress?.(1.0)}
+        } finally {
+            if (--flight.waiters === 0 && this.#loads.get(taskKey) === flight) {flight.controller.abort(signal.reason)}
+        }
+    }
+
+    async #performLoad(taskKey: string, model: ModelDescriptor,
+                       executionProviders: ReadonlyArray<ExecutionProvider>,
+                       options?: {progress?: Procedure<unitValue>, signal?: AbortSignal}): Promise<void> {
+        this.#assertOpen()
+        if (this.#loadedTasks.has(taskKey)) {options?.progress?.(1.0); return}
+        const signal = options?.signal ? AbortSignal.any([options.signal, this.#lifetime.signal]) : this.#lifetime.signal
+        signal.throwIfAborted()
         const modelBytes = await ModelStore.ensure(taskKey, model, {...options, signal})
         this.#assertOpen()
+        signal.throwIfAborted()
         await this.#ensureWorker()
         const generation = this.#generation
         this.#throwIfAborted(options?.signal)
@@ -78,6 +113,7 @@ export class EngineHost {
             const result = await this.#dispatch<Extract<WorkerToMain, {kind: "result"}>>({
                 kind: "run", id: this.#nextId(), taskKey, feeds
             })
+            this.#throwIfAborted(signal.unwrapOrUndefined())
             return result.output
         }
     }
@@ -97,12 +133,14 @@ export class EngineHost {
         })
     }
 
-    async releaseTask(taskKey: string): Promise<void> {
-        this.#assertOpen()
-        if (!this.#loadedTasks.has(taskKey)) {return}
-        await this.#dispatch<Extract<WorkerToMain, {kind: "ok"}>>({kind: "release", id: this.#nextId(), taskKey})
-        this.#loadedTasks.delete(taskKey)
-        this.#names.delete(taskKey)
+    releaseTask(taskKey: string): Promise<void> {
+        return this.enqueue(async () => {
+            await this.#loads.get(taskKey)?.promise.catch(() => {})
+            if (!this.#loadedTasks.has(taskKey)) {return}
+            this.#loadedTasks.delete(taskKey)
+            this.#names.delete(taskKey)
+            await this.#dispatch<Extract<WorkerToMain, {kind: "ok"}>>({kind: "release", id: this.#nextId(), taskKey})
+        })
     }
 
     async shutdown(): Promise<void> {
@@ -207,10 +245,21 @@ export class EngineHost {
         })
     }
 
+    #waitFor<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+        if (!signal) {return promise}
+        return new Promise<T>((resolve, reject) => {
+            const abort = () => {signal.removeEventListener("abort", abort); reject(signal.reason)}
+            signal.addEventListener("abort", abort, {once: true})
+            promise.then(value => {signal.removeEventListener("abort", abort); resolve(value)},
+                error => {signal.removeEventListener("abort", abort); reject(error)})
+            if (signal.aborted) {abort()}
+        })
+    }
+
     #nextId(): WorkerCallId {return this.#nextCallId++}
     #assertOpen(): void {if (this.#closed) {throw new Error("Inference host shut down")}}
     #throwIfAborted(signal: AbortSignal | undefined): void {
-        if (signal?.aborted) {throw new InferenceCancelledError()}
+        signal?.throwIfAborted()
     }
 }
 
@@ -250,11 +299,14 @@ export const runTask = async <I, O>(host: EngineHost, args: RunArgs<I, O>): Prom
     })
     const session = host.sessionRunFor(args.task.key, args.signal)
     const names = host.namesFor(args.task.key)
-    return args.task.run(args.input, {
+    args.signal.ifSome(signal => signal.throwIfAborted())
+    const result = await args.task.run(args.input, {
         session,
-        progress: split.inference,
+        progress: value => {args.signal.ifSome(signal => signal.throwIfAborted()); split.inference(value)},
         signal: args.signal,
         inputNames: names.inputs,
         outputNames: names.outputs
     })
+    args.signal.ifSome(signal => signal.throwIfAborted())
+    return result
 }

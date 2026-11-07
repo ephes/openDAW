@@ -77,11 +77,10 @@ const handleRun = async (msg: Extract<MainToWorker, {kind: "run"}>): Promise<voi
     post({kind: "result", id: msg.id, output: fromOrtResults(output)})
 }
 
-const handleRelease = (msg: Extract<MainToWorker, {kind: "release"}>): void => {
+const handleRelease = async (msg: Extract<MainToWorker, {kind: "release"}>): Promise<void> => {
     const session = sessions.get(msg.taskKey)
     if (isDefined(session)) {
-        session.release().catch(() => {})
-        sessions.delete(msg.taskKey)
+        try {await session.release()} finally {sessions.delete(msg.taskKey)}
     }
     post({kind: "ok", id: msg.id})
 }
@@ -112,8 +111,20 @@ const dispatch = async (msg: MainToWorker): Promise<void> => {
     }
 }
 
+const taskQueues = new Map<string, Promise<void>>()
+let closing = false
 self.addEventListener("message", (event: MessageEvent<MainToWorker>) => {
-    void dispatch(event.data)
+    const msg = event.data
+    if (closing) {post({kind: "error", id: msg.id, message: "Inference worker shutting down"}); return}
+    if (msg.kind === "shutdown") {
+        closing = true
+        void Promise.allSettled([...taskQueues.values()]).then(() => dispatch(msg))
+        return
+    }
+    const task = (taskQueues.get(msg.taskKey) ?? Promise.resolve()).catch(() => {}).then(() => dispatch(msg))
+    taskQueues.set(msg.taskKey, task)
+    const cleanup = () => {if (taskQueues.get(msg.taskKey) === task) {taskQueues.delete(msg.taskKey)}}
+    void task.then(cleanup, cleanup)
 })
 
 ortEnv.wasm.numThreads = Math.max(1, (navigator.hardwareConcurrency ?? 4) - 1)
