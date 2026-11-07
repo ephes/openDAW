@@ -117,3 +117,33 @@ corrupt; never approve that deletion. Use an updated client for restore/cleanup.
 Each successful modified-project backup and abandoned attempt consumes another full
 project copy in provider storage. Quota usage grows until deliberate owner cleanup;
 this change intentionally adds no automatic generation deletion.
+
+### Bundle import preservation
+
+Bundle import preflights required version/UUID/project/metadata and decodes the
+project structure before publishing assets. Timestamp fields retain ProjectMeta's
+string contract, including legacy strings. Canonical complete sample/soundfont
+entries, optional metadata UUID identity and shared ZIP entry/expanded-byte budgets
+are validated before writes. WAV fmt/data lengths and channel geometry validate
+before decoded allocation; complete final frames and readable audio before truncated
+ancillary trailers remain compatible.
+
+Migration reads bundled samples through existing loaded loaders. Missing migration
+samples reject without starting a global loader or cache/repair writes. Migration
+holds no storage lock. Decoded validation data is released; only samples requested
+by migration retain loaded loaders, cleared after migration. Expanded entries still
+stage in memory within the shared 1 GiB ceiling; legacy migrations can retain extra
+decoded audio.
+
+Under sample-then-soundfont storage locks, import checks all existing assets before
+publication, preserves complete assets with matching media (including local metadata),
+and rejects conflicting bytes or incomplete/invalid existing assets. Same UUID with
+different WAV bytes rejects even if another browser resampled/re-encoded the same
+source differently. This conservative rule preserves the existing project's media;
+use a new asset identity or resolve the conflict explicitly. Missing/corrupt peaks or
+invalid metadata require explicit library repair before retry; import never silently
+repairs or replaces existing files. Soundfont saves share the same storage lock.
+
+Metadata publishes last. Synchronous project construction shares the lock scope;
+later failure attempts cleanup only for newly owned folders and preserves its primary
+cause if cleanup fails. Cleanup failure can leave a partial new folder requiring repair.

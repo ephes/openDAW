@@ -13,6 +13,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Validate local candidates and whole cloud catalogs and refuse unreadable or malformed deletion journals before domain backup effects; preserve catalog extensions and persist preset tombstones before deletion.
 
+- Preflight and stage project bundles before library publication; preserve matching existing assets, reject conflicts, and compensate only new owned writes.
+
 - Bind asset identities to physical directories and require complete readable sample/soundfont inventories before backup; scan under the storage lock and abort the whole run on incomplete inventory.
 
 - Validate preset index records, preserve valid metadata during recovery, skip unsupported cloud downloads, and serialize fresh index mutations/rebuilds across tabs.

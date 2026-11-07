@@ -9,7 +9,7 @@ export namespace WavFile {
 
     export const decodeFloats = (buffer: ArrayBuffer): AudioData => {
         const view = new DataView(buffer)
-        if (view.getUint32(0, true) !== MAGIC_RIFF
+        if (view.byteLength < 12 || view.getUint32(0, true) !== MAGIC_RIFF
             || view.getUint32(8, true) !== MAGIC_WAVE) {
             return panic("Not a RIFF/WAVE file")
         }
@@ -19,8 +19,15 @@ export namespace WavFile {
         for (let o = 12; o + 8 <= view.byteLength;) {
             const id = view.getUint32(o, true)
             const size = view.getUint32(o + 4, true)
-            const next = o + 8 + ((size + 1) & ~1)
-            if (id === MAGIC_FMT) fmtOffset = o + 8
+            if (size > view.byteLength - o - 8) {
+                if (id === MAGIC_FMT || id === MAGIC_DATA) {return panic("Truncated WAV chunk")}
+                break // Preserve readable audio before a truncated trailing ancillary chunk.
+            }
+            const next = o + 8 + size + (size % 2)
+            if (id === MAGIC_FMT) {
+                if (size < 16) {return panic("Truncated WAV format chunk")}
+                fmtOffset = o + 8
+            }
             if (id === MAGIC_DATA) {
                 dataOffset = o + 8
                 dataSize = size
@@ -36,8 +43,13 @@ export namespace WavFile {
         const blockAlign = view.getUint16(fmtOffset + 12, true)
         const bitsPerSample = view.getUint16(fmtOffset + 14, true)
         const bytesPerSample = bitsPerSample / 8
-        if (blockAlign !== numberOfChannels * bytesPerSample) {
+        if (numberOfChannels === 0 || sampleRate === 0 || blockAlign === 0
+            || blockAlign !== numberOfChannels * bytesPerSample) {
             return panic("Invalid block alignment")
+        }
+        if (!((audioFormat === 3 && bitsPerSample === 32)
+            || (audioFormat === 1 && (bitsPerSample === 16 || bitsPerSample === 24)))) {
+            return panic(`Unsupported WAV format: ${audioFormat}, ${bitsPerSample}-bit`)
         }
         const numberOfFrames = Math.floor(dataSize / blockAlign)
         const audioData = AudioData.create(sampleRate, numberOfFrames, numberOfChannels)
