@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject malformed UUID representations and binary string lengths before decoding.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.78](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-std@0.0.77...@opendaw/lib-std@0.0.78) (2026-05-22)

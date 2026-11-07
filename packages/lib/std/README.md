@@ -67,3 +67,7 @@ Standard library providing core utilities and data structures for TypeScript pro
 * Value guidance systems **value-guides.ts**
 * Value mapping utilities **value-mapping.ts**
 * String mapping operations **string-mapping.ts**
+
+UUID parsing accepts either exactly 32 hexadecimal digits or the canonical 8-4-4-4-12
+groups, case insensitively. Binary strings use nonnegative UTF-16 code-unit lengths;
+the complete byte requirement is checked before reading any characters.

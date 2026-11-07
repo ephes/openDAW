@@ -33,7 +33,7 @@ import {TrackType} from "../timeline/TrackType"
 export namespace PresetDecoder {
     export const decode = (bytes: ArrayBufferLike, target: ProjectSkeleton): ReadonlyArray<AudioUnitBox> => {
         const header = new ByteArrayInput(bytes.slice(0, 8))
-        if (header.readInt() !== PresetHeader.MAGIC_HEADER_OPEN) {
+        if (bytes.byteLength < 8 || header.readInt() !== PresetHeader.MAGIC_HEADER_OPEN) {
             RuntimeNotifier.info({
                 headline: "Could Not Import Preset",
                 message: "Invalid preset file"
@@ -254,7 +254,7 @@ export namespace PresetDecoder {
         kind: PresetHeader.ChainKind
     ): Attempt<void, string> => {
         const headerInput = new ByteArrayInput(bytes.slice(0, 8))
-        if (headerInput.readInt() !== PresetHeader.MAGIC_HEADER_OPEN) {
+        if (bytes.byteLength < 8 || headerInput.readInt() !== PresetHeader.MAGIC_HEADER_OPEN) {
             return Attempts.err("Invalid preset header")
         }
         const version = headerInput.readInt()

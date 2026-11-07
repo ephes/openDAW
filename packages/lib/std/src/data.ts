@@ -271,6 +271,7 @@ export class ByteArrayInput implements DataInput {
 
     readString(): string {
         const length = this.readInt()
+        if (length < 0 || length > Math.floor(this.remaining() / 2)) {return panic("Invalid binary string length")}
         let result = ""
         for (let i = 0; i < length; i++) {result += String.fromCharCode(this.readShort())}
         return result

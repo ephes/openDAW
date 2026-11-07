@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject short preset headers before decoding or graph mutation.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.112](https://github.com/andremichelle/openDAW/compare/@opendaw/studio-adapters@0.0.111...@opendaw/studio-adapters@0.0.112) (2026-05-22)
