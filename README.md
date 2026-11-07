@@ -272,3 +272,13 @@ terms apply automatically.
 ## License
 
 [AGPL v3 (or later)](https://www.gnu.org/licenses/agpl-3.0.txt) © 2025 André Michelle
+
+## Markdown parser security
+
+Studio help rendering retains default markdown-it options and the table plugin. The
+direct 14.x dependency floor and lock require 14.3.3 or newer for
+[GHSA-gfr2-rv44-r23c](https://github.com/advisories/GHSA-gfr2-rv44-r23c).
+Dependency-floor assertions and synthetic unclosed-reference/help/table smoke tests run with
+`npm test --workspace=@opendaw/app-studio`. This targeted patch does not resolve
+unrelated audit findings. Snapshot on 2026-11-07: the full locked graph reports 60 affected packages
+(31 moderate, 25 high, 4 critical); no markdown-it findings remain.

@@ -33,7 +33,7 @@ export class SoundfontStorage extends Storage<Soundfont, SoundfontMetaData, Soun
         const path = `${this.folder}/${UUID.toString(uuid)}`
         return Promise.all([
             Workers.Opfs.read(`${path}/soundfont.sf2`)
-                .then(bytes => bytes.buffer as ArrayBuffer),
+                .then(bytes => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer),
             Workers.Opfs.read(`${path}/meta.json`)
                 .then(bytes => JSON.parse(new TextDecoder().decode(bytes)))
         ])
