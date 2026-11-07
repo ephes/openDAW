@@ -68,3 +68,10 @@ at disjoint offsets, including coherent zero-frame allocation. StereoMatrix test
 use independent basis signals for pan laws, width, inversion and swaps, and compare
 scalar/block/in-place subranges with untouched sentinels. Swapping exchanges input
 channels; inversion applies to the resulting left/right outputs.
+
+Effect tests pin the limiter's linked stereo attack/release recurrence (without
+claiming a brick-wall ceiling), waveshaper display/audio parity and independent
+transfer boundaries. Crusher crush-rate ramps update filtering and hold cadence
+at each sample; identical parameter changes at identical sample positions produce
+the same output across block partitions. Reset plus the same configuration matches
+a fresh effect. Unequal stereo signals test channel independence and wet/dry paths.
