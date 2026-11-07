@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve current voices and all expiring tails when switching voicing strategies.
+
 - Restore comparator equality for simultaneous note lifecycle peers; cover shared MIDI packing and transport transitions.
 
 - Isolate live note releases by pitch, truncate repeated notes at clip ends, sequence every intersected clip cycle, and fan transport messages out to all enabled MIDI destinations.
