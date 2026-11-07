@@ -57,9 +57,15 @@ export class ProjectProfile {
         this.#project.editing.mark()
         this.#hasChanges = true
         const generation = this.#metaGeneration
+        const priorMeta = structuredClone(this.meta)
         const bytes = await ProjectProfile.#writeFiles(this, nextMeta)
         this.#saved = true
-        if (this.#metaGeneration === generation) {Object.assign(this.meta, nextMeta)}
+        for (const [key, value] of Object.entries(nextMeta)) {
+            // Publish requested fields without overwriting edits made during I/O.
+            if (JSON.stringify(Reflect.get(this.meta, key)) === JSON.stringify(Reflect.get(priorMeta, key))) {
+                Object.assign(this.meta, {[key]: value})
+            }
+        }
         this.#finishSave(bytes, generation)
         this.#metaUpdated.notify(this.meta)
         return Option.None

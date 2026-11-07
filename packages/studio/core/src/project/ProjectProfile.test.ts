@@ -27,25 +27,29 @@ const fixture = (saved = true, cover = Option.wrap(new Uint8Array([7, 8]).buffer
     return {profile, editing, edit: () => {value++}}
 }
 for (const saved of [true, false]) {
-    it(`retains graph/title/cover edits during ${saved ? "save" : "initial saveAs"}`, async () => {
-        const {profile, edit} = fixture(saved)
-        const entered = Promise.withResolvers<void>(), gate = Promise.withResolvers<void>()
-        vi.mocked(Workers.Opfs.write).mockImplementation(async (path, bytes) => {
-            if (path.endsWith("project.od")) {entered.resolve(); await gate.promise}
-            files.set(path, bytes.slice())
+    for (const change of ["graph", "title", "cover"]) {
+        it(`retains ${change} edits during ${saved ? "save" : "initial saveAs"}`, async () => {
+            const {profile, edit} = fixture(saved)
+            const entered = Promise.withResolvers<void>(), gate = Promise.withResolvers<void>()
+            vi.mocked(Workers.Opfs.write).mockImplementation(async (path, bytes) => {
+                if (path.endsWith("project.od")) {entered.resolve(); await gate.promise}
+                files.set(path, bytes.slice())
+            })
+            const writing = saved ? profile.save() : profile.saveAs(Object.assign({}, profile.meta, {name: "First"}))
+            await entered.promise
+            if (change === "graph") {edit()}
+            if (change === "title") {profile.updateMetaData("name", "Later")}
+            if (change === "cover") {profile.updateCover(Option.wrap(new Uint8Array([9]).buffer))}
+            gate.resolve(); await writing
+            expect(files.get(ProjectPaths.projectFile(profile.uuid))).toEqual(new Uint8Array([1]))
+            expect(json(files.get(ProjectPaths.projectMeta(profile.uuid))!).name).toBe(saved ? "Original" : "First")
+            expect(files.get(ProjectPaths.projectCover(profile.uuid))).toEqual(new Uint8Array([7, 8]))
+            expect(profile.meta.name).toBe(change === "title" ? "Later" : saved ? "Original" : "First")
+            expect(profile.hasUnsavedChanges()).toBe(true)
+            await profile.save()
+            expect(profile.hasUnsavedChanges()).toBe(false)
         })
-        const writing = saved ? profile.save() : profile.saveAs(Object.assign({}, profile.meta, {name: "First"}))
-        await entered.promise
-        edit(); profile.updateMetaData("name", "Later"); profile.updateCover(Option.wrap(new Uint8Array([9]).buffer))
-        gate.resolve(); await writing
-        expect(files.get(ProjectPaths.projectFile(profile.uuid))).toEqual(new Uint8Array([1]))
-        expect(json(files.get(ProjectPaths.projectMeta(profile.uuid))!).name).toBe(saved ? "Original" : "First")
-        expect(files.get(ProjectPaths.projectCover(profile.uuid))).toEqual(new Uint8Array([7, 8]))
-        expect(profile.meta.name).toBe("Later")
-        expect(profile.hasUnsavedChanges()).toBe(true)
-        await profile.save()
-        expect(profile.hasUnsavedChanges()).toBe(false)
-    })
+    }
 }
 for (const fail of [false, true]) {
     it(`keeps original metadata and dirty state on ${fail ? "failed" : "successful"} Save As`, async () => {

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Publish requested initial-save metadata fields while retaining independent edits made during the write.
+
 - Bound shared worker initialization and clean failed attempts so explicit retries can succeed.
 
 - Write version-2 sync-log payload digests, validate before graph mutation, and reject malformed/truncated lengths; legacy reads require explicit opt-in.
