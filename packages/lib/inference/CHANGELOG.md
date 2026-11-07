@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Settle synchronous queue failures, retire failed worker generations, permit startup retries, and make shutdown terminal for owned work.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.4](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-inference@0.0.3...@opendaw/lib-inference@0.0.4) (2026-05-22)
