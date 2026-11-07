@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add direct synthetic audio-buffer mixing, shared planar isolation and stereo matrix routing tests.
+
 - Refresh modulated biquad coefficients for Q/order changes and validate filter response/cascade history against independent references.
 
 - Fix ramp cancellation, glide endpoint state and ADSR retrigger rates; cover partial blocks, zero sustain and force-stop phase.
