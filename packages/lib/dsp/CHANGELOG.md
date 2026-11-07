@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refresh modulated biquad coefficients for Q/order changes and validate filter response/cascade history against independent references.
+
 - Fix ramp cancellation, glide endpoint state and ADSR retrigger rates; cover partial blocks, zero sustain and force-stop phase.
 
 - Reject truncated WAV fmt/data chunks and invalid channel geometry before allocating decoded audio, retaining complete frames and readable audio before truncated ancillary trailers.

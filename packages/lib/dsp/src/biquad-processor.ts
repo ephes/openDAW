@@ -90,6 +90,7 @@ export class ModulatedBiquad {
     readonly #filter: BiquadStack
 
     #lastIdx: number = -1
+    #lastQReduced: number = NaN
 
     constructor(minFreq: number, maxFreq: number, sampleRate: number) {
         this.#filter = new BiquadStack(4)
@@ -118,8 +119,9 @@ export class ModulatedBiquad {
             const idx = Math.floor(clampUnit(cutoffs[from]) * LUT_SIZE)
             let to = from + 1
             while (to < toIndex && Math.floor(clampUnit(cutoffs[to]) * LUT_SIZE) === idx) ++to
-            if (idx !== lastIdx) {
+            if (idx !== lastIdx || qReduced !== this.#lastQReduced) {
                 lastIdx = idx
+                this.#lastQReduced = qReduced
                 coeff.setLowpassParams(freqLUT[idx], qReduced)
             }
             filter.process(coeff, input, output, from, to)
