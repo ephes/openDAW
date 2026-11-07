@@ -110,7 +110,7 @@ export class ByteArrayOutput implements DataOutput {
         }
     }
 
-    toArrayBuffer(): ArrayBufferLike {return this.#view.buffer.slice(0, this.#position)}
+    toArrayBuffer(): ArrayBufferLike {return this.#view.buffer.slice(this.#view.byteOffset, this.#view.byteOffset + this.#position)}
 
     #ensureSpace(count: int): void {
         const capacity = this.#view.byteLength
@@ -134,7 +134,7 @@ export class ByteCounter implements DataOutput {
     writeDouble(_: double): void {this.#count += 8}
     writeBoolean(_: boolean): void {this.#count++}
     writeBytes(bytes: Int8Array): void {this.#count += bytes.length}
-    writeString(value: string): void {this.#count += value.length + 4}
+    writeString(value: string): void {this.#count += value.length * 2 + 4}
     get count(): int {return this.#count}
 }
 
@@ -188,14 +188,14 @@ export class Checksum implements DataOutput, Equality<Checksum> {
     }
 
     writeLong(value: bigint): void {
-        this.writeByte(Number(value) & 0xff)
-        this.writeByte(Number(value >> 8n) & 0xff)
-        this.writeByte(Number(value >> 16n) & 0xff)
-        this.writeByte(Number(value >> 24n) & 0xff)
-        this.writeByte(Number(value >> 32n) & 0xff)
-        this.writeByte(Number(value >> 40n) & 0xff)
-        this.writeByte(Number(value >> 48n) & 0xff)
-        this.writeByte(Number(value >> 56n) & 0xff)
+        this.writeByte(Number((value) & 0xffn))
+        this.writeByte(Number((value >> 8n) & 0xffn))
+        this.writeByte(Number((value >> 16n) & 0xffn))
+        this.writeByte(Number((value >> 24n) & 0xffn))
+        this.writeByte(Number((value >> 32n) & 0xffn))
+        this.writeByte(Number((value >> 40n) & 0xffn))
+        this.writeByte(Number((value >> 48n) & 0xffn))
+        this.writeByte(Number((value >> 56n) & 0xffn))
     }
 
     writeString(value: string): void {

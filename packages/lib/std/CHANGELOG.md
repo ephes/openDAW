@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fix view-relative binary output, UTF-16 byte counts and bigint/Float64 checksum byte fidelity.
+
 - Reject malformed UUID representations and binary string lengths before decoding.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
