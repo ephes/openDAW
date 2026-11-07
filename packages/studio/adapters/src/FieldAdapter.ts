@@ -12,9 +12,11 @@ import {
     unitValue,
     ValueMapping
 } from "@opendaw/lib-std"
-import {Address, PrimitiveField, PrimitiveType, PrimitiveValues} from "@opendaw/lib-box"
+import {Address, PrimitiveField, PrimitiveType, PrimitiveValues, UnreferenceableType} from "@opendaw/lib-box"
 import {TrackBoxAdapter} from "./timeline/TrackBoxAdapter"
 
+// The default erases invariant value types in heterogeneous parameter collections.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class FieldAdapter<T extends PrimitiveValues = any> implements MutableObservableValue<T>, Terminable {
     readonly #field: PrimitiveField<T>
     readonly #valueMapping: ValueMapping<T>
@@ -27,7 +29,7 @@ export class FieldAdapter<T extends PrimitiveValues = any> implements MutableObs
 
     #trackBoxAdapter: Option<TrackBoxAdapter> = Option.None
 
-    constructor(field: PrimitiveField<T, any>,
+    constructor(field: PrimitiveField<T, UnreferenceableType>,
                 valueMapping: ValueMapping<T>,
                 stringMapping: StringMapping<T>,
                 name: string,

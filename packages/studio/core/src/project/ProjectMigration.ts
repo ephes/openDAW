@@ -57,8 +57,7 @@ export class ProjectMigration {
         const loadAudioData = (uuid: Uint8Array): Promise<AudioData> => {
             const {promise, resolve, reject} = Promise.withResolvers<AudioData>()
             const loader = env.sampleManager.getOrCreate(uuid)
-            let subscription: Subscription
-            subscription = loader.subscribe(state => {
+            const subscription: Subscription = loader.subscribe(state => {
                 if (state.type === "loaded") {
                     queueMicrotask(() => subscription.terminate())
                     resolve(loader.data.unwrap("State mismatch"))

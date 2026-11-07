@@ -5,6 +5,8 @@ import {InstrumentBox} from "./InstrumentBox"
 import {TrackType} from "../timeline/TrackType"
 import {DeviceFactory} from "./DeviceFactory"
 
+// Attachment types differ between instruments and are erased in factory menus.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface InstrumentFactory<A = any, INST extends InstrumentBox = InstrumentBox> extends DeviceFactory {
     trackType: TrackType
     create: (boxGraph: BoxGraph<BoxIO.TypeMap>,

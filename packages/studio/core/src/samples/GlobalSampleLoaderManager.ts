@@ -100,8 +100,7 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
     async getAudioData(uuid: UUID.Bytes): Promise<AudioData> {
         const {promise, resolve, reject} = Promise.withResolvers<AudioData>()
         const loader = this.getOrCreate(uuid)
-        let subscription: Subscription
-        subscription = loader.subscribe(state => {
+        const subscription: Subscription = loader.subscribe(state => {
             if (state.type === "error") {
                 queueMicrotask(() => subscription.terminate())
                 reject(new Error(state.reason))

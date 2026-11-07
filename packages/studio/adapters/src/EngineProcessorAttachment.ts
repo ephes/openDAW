@@ -1,7 +1,7 @@
 import {int, isDefined, Option} from "@opendaw/lib-std"
 import {ppqn} from "@opendaw/lib-dsp"
 
-export type ProcessorOptions = {}
+export type ProcessorOptions = NonNullable<unknown>
 
 // This is the type for passing over information to the main audio-worklet
 export type EngineProcessorAttachment = {
@@ -35,7 +35,7 @@ export namespace ExportConfiguration {
             some: cfg => isDefined(cfg.stems) ? Object.keys(cfg.stems).length : 1
         })
 
-    export const sanitizeFileName = (name: string): string => name.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").trim()
+    export const sanitizeFileName = (name: string): string => Array.from(name, character => character.charCodeAt(0) <= 31 || '<>:"/\\|?*'.includes(character) ? "_" : character).join("").trim()
 
     export const sanitizeExportNamesInPlace = (configuration: ExportConfiguration): void => {
         if (!isDefined(configuration.stems)) {return}

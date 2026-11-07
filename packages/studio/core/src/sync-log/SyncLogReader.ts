@@ -22,7 +22,7 @@ export class SyncLogReader {
         let prevCommit: Commit = firstCommit
         let lastFrame = Date.now()
         let numCommits = 0 | 0
-        while (true) {
+        for (;;) {
             const {status, error, value: nextCommit} = tryCatch(() => Commit.deserialize(input))
             numCommits++
             label.textContent = `${numCommits} commits unwrapped.`

@@ -45,6 +45,8 @@ export interface RegionBoxAdapter<CONTENT> extends BoxAdapter, Region, Selectabl
     consolidate(): void
     flatten(regions: ReadonlyArray<RegionBoxAdapter<unknown>>): void
     canFlatten(regions: ReadonlyArray<RegionBoxAdapter<unknown>>): boolean
+    // Preserve result inference for concrete visitor implementations.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     accept<VISITOR extends RegionBoxAdapterVisitor<any>>(visitor: VISITOR)
         : VISITOR extends RegionBoxAdapterVisitor<infer R> ? Maybe<R> : void
 }

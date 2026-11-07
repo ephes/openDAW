@@ -1,6 +1,6 @@
 import {Arrays, assert, int, panic, Procedure} from "@opendaw/lib-std"
 
-declare let document: any
+declare let document: unknown
 
 export namespace RingBuffer {
     export interface Config {

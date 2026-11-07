@@ -95,7 +95,7 @@ export class CloudAuthManager {
             cancel: () => reject("cancelled")
         })
         let handled = false
-        channel.onmessage = async (event: MessageEvent<any>) => {
+        channel.onmessage = async (event: MessageEvent<{type: string, code?: string, access_token?: string}>) => {
             const data = asDefined(event.data, "No data")
             console.debug("[CloudAuth] Received via BroadcastChannel")
             if (data.type === "auth-callback" && isDefined(data.code)) {
@@ -185,7 +185,7 @@ export class CloudAuthManager {
             message: "Please authorize access to app data...",
             cancel: () => reject("cancelled")
         })
-        channel.onmessage = async (event: MessageEvent<any>) => {
+        channel.onmessage = async (event: MessageEvent<{type: string, code?: string, access_token?: string}>) => {
             const data = asDefined(event.data, "No data")
             console.debug("[CloudAuth] Received via BroadcastChannel:", data)
             if (data.type === "auth-callback" && isDefined(data.access_token)) {

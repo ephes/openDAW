@@ -31,19 +31,16 @@ describe("TransferAudioUnits.transfer", () => {
         captureBox: CaptureAudioBox
     } => {
         const {boxGraph, mandatoryBoxes: {rootBox, primaryAudioBusBox}} = target
-        let audioUnitBox!: AudioUnitBox
-        let instrumentBox!: TapeDeviceBox
-        let captureBox!: CaptureAudioBox
         boxGraph.beginTransaction()
-        audioUnitBox = AudioUnitBox.create(boxGraph, UUID.generate(), box => {
+        const audioUnitBox: AudioUnitBox = AudioUnitBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(AudioUnitType.Instrument)
             box.collection.refer(rootBox.audioUnits)
             box.output.refer(primaryAudioBusBox.input)
             box.index.setValue(1)
         })
-        captureBox = CaptureAudioBox.create(boxGraph, UUID.generate())
+        const captureBox: CaptureAudioBox = CaptureAudioBox.create(boxGraph, UUID.generate())
         audioUnitBox.capture.refer(captureBox)
-        instrumentBox = TapeDeviceBox.create(boxGraph, UUID.generate(), box => {
+        const instrumentBox: TapeDeviceBox = TapeDeviceBox.create(boxGraph, UUID.generate(), box => {
             box.label.setValue("Test Tape")
             box.host.refer(audioUnitBox.input)
         })
@@ -57,22 +54,19 @@ describe("TransferAudioUnits.transfer", () => {
         audioFileBox: AudioFileBox
     } => {
         const {boxGraph} = target
-        let trackBox!: TrackBox
-        let regionBox!: AudioRegionBox
-        let audioFileBox!: AudioFileBox
         boxGraph.beginTransaction()
-        trackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
+        const trackBox: TrackBox = TrackBox.create(boxGraph, UUID.generate(), box => {
             box.type.setValue(TrackType.Audio)
             box.tracks.refer(audioUnitBox.tracks)
             box.target.refer(audioUnitBox)
             box.index.setValue(0)
         })
-        audioFileBox = AudioFileBox.create(boxGraph, UUID.generate(), box => {
+        const audioFileBox: AudioFileBox = AudioFileBox.create(boxGraph, UUID.generate(), box => {
             box.startInSeconds.setValue(0.0)
             box.endInSeconds.setValue(10.0)
             box.fileName.setValue("test-audio.wav")
         })
-        regionBox = AudioRegionBox.create(boxGraph, UUID.generate(), box => {
+        const regionBox: AudioRegionBox = AudioRegionBox.create(boxGraph, UUID.generate(), box => {
             box.regions.refer(trackBox.regions)
             box.file.refer(audioFileBox)
             box.position.setValue(0)

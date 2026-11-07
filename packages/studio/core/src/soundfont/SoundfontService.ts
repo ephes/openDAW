@@ -12,7 +12,7 @@ import {ExternalLib} from "../ExternalLib"
 export class SoundfontService extends AssetService<Soundfont, void> {
     protected readonly namePlural: string = "Soundfonts"
     protected readonly nameSingular: string = "Soundfont"
-    protected readonly boxType: Class<Box> = SoundfontFileBox
+    protected readonly boxType: Class<SoundfontFileBox> = SoundfontFileBox
     protected readonly filePickerOptions: FilePickerOptions = FilePickerAcceptTypes.SoundfontFiles
 
     #local: Option<Array<Soundfont>> = Option.None

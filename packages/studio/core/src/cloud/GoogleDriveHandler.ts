@@ -256,7 +256,7 @@ export class GoogleDriveHandler implements CloudHandler {
         return await res.json() as DriveFile
     }
 
-    #buildMultipartBody(metadata: any, content: ArrayBuffer): { boundary: string; body: Blob } {
+    #buildMultipartBody(metadata: unknown, content: ArrayBuffer): { boundary: string; body: Blob } {
         const boundary = `======opendaw_${Math.random().toString(36).slice(2)}`
         const delimiter = `--${boundary}`
         const close = `--${boundary}--`

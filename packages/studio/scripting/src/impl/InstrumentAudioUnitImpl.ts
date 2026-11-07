@@ -10,13 +10,13 @@ export class InstrumentAudioUnitImpl extends AudioUnitImpl implements Instrument
 
     instrument: InstrumentImpl
 
-    constructor(instrumentName: keyof Instruments, constructorFn?: Procedure<any>) {
+    constructor(instrumentName: keyof Instruments, constructorFn?: Procedure<never>) {
         super()
-        this.instrument = new InstrumentImpl(this, instrumentName, constructorFn)
+        this.instrument = new InstrumentImpl(this, instrumentName, constructorFn as Procedure<Instruments[keyof Instruments]> | undefined)
     }
 
-    setInstrument(instrumentName: keyof Instruments, constructorFn?: Procedure<any>): Instrument {
-        this.instrument = new InstrumentImpl(this, instrumentName, constructorFn)
+    setInstrument(instrumentName: keyof Instruments, constructorFn?: Procedure<never>): Instrument {
+        this.instrument = new InstrumentImpl(this, instrumentName, constructorFn as Procedure<Instruments[keyof Instruments]> | undefined)
         return this.instrument
     }
 

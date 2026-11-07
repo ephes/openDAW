@@ -78,7 +78,7 @@ export class ArpeggioDeviceProcessor extends EventProcessor implements MidiEffec
         }
         if (this.#source.nonEmpty()) {
             const source = this.#source.unwrap()
-            for (const _ of source.processNotes(from, to, flags)) {} // advance source
+            for (const _ of source.processNotes(from, to, flags)) {/* No work is needed in this branch. */} // advance source
             const onlyExternal = !Bits.every(flags, BlockFlag.transporting)
             for (const {position, index} of Fragmentor.iterateWithIndex(from, to, this.#rate)) {
                 const stack = Array.from(source.iterateActiveNotesAt(position, onlyExternal))

@@ -1,5 +1,5 @@
 export namespace Asserts {
-    const validateNoNaN = (obj: any, path: string = "root", visited: WeakSet<object>): void => {
+    const validateNoNaN = (obj: unknown, path: string = "root", visited: WeakSet<object>): void => {
         if (obj === null || obj === undefined) return
         if (typeof obj === "number" && isNaN(obj)) {
             throw new Error(`NaN found at: ${path}`)
@@ -19,10 +19,10 @@ export namespace Asserts {
                 proto = Object.getPrototypeOf(proto)
             }
             for (const key of allKeys) {
-                let value: any
+                let value: unknown
                 let accessible = true
                 try {
-                    value = obj[key]
+                    value = (obj as Record<string, unknown>)[key]
                 } catch {
                     accessible = false
                 }
@@ -38,7 +38,7 @@ export namespace Asserts {
         }
     }
 
-    export const assertNoNaN = (obj: any, label: string = "validateNoNaN"): void => {
+    export const assertNoNaN = (obj: unknown, label: string = "validateNoNaN"): void => {
         console.time(label)
         try {
             validateNoNaN(obj, "root", new WeakSet())

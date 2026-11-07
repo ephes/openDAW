@@ -50,7 +50,7 @@ export class DropboxHandler implements CloudHandler {
         const {
             status,
             error
-        } = await Promises.tryCatch(client.filesGetMetadata({path: fullPath})).catch(error => (error as any))
+        } = await Promises.tryCatch(client.filesGetMetadata({path: fullPath})).catch(error => error as {status: "rejected", error: unknown})
         if (status === "resolved") return true
         return this.#isNotFoundError(error) ? false : panic(error)
     }
@@ -89,9 +89,9 @@ export class DropboxHandler implements CloudHandler {
             typeof error === "object" &&
             error !== null &&
             "status" in error &&
-            (error as any).status === 409 &&
-            (error as any).error?.error?.[".tag"] === "path" &&
-            (error as any).error?.error?.path?.[".tag"] === "not_found"
+            error.status === 409 &&
+            (error as {error?: {error?: {".tag"?: string, path?: {".tag"?: string}}}}).error?.error?.[".tag"] === "path" &&
+            (error as {error?: {error?: {".tag"?: string, path?: {".tag"?: string}}}}).error?.error?.path?.[".tag"] === "not_found"
         )
     }
 }

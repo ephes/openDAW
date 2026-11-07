@@ -101,14 +101,14 @@ interface Scene {
     doc: Y.Doc
     boxes: Y.Map<unknown>
     graph: BoxGraph
-    sync: YSync<any>
+    sync: YSync<unknown>
 }
 
 const makeScene = async (): Promise<Scene> => {
     const doc = new Y.Doc()
     const boxes = doc.getMap("boxes")
-    const graph = new BoxGraph<any>(Option.wrap(factory as any))
-    const sync = await YSync.populateRoom<any>({boxGraph: graph, boxes})
+    const graph = new BoxGraph<Record<string, Box>>(Option.wrap(factory))
+    const sync = await YSync.populateRoom<Record<string, Box>>({boxGraph: graph, boxes})
     return {doc, boxes, graph, sync}
 }
 

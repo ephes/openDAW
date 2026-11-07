@@ -23,7 +23,7 @@ export class HRClockWorker {
                 const int32 = new Int32Array(e.data)
                 const float64 = new Float64Array(e.data)
                 let lastCounter = 0
-                while (true) {
+                for (;;) {
                     Atomics.wait(int32, 0, lastCounter)
                     lastCounter = Atomics.load(int32, 0)
                     const isStart = (lastCounter & 1) === 1

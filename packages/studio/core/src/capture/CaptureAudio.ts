@@ -150,7 +150,7 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
             const audio = new Audio()
             audio.srcObject = this.#monitorStreamDest.stream
             try {
-                await (audio as any).setSinkId(deviceId.unwrap())
+                await audio.setSinkId(deviceId.unwrap())
                 await audio.play()
                 this.#monitorAudioElement = audio
             } catch (reason) {
