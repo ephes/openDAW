@@ -23,3 +23,8 @@ Web-based audio workstation fusion utilities for TypeScript projects.
 ## Core Types
 
 * **types.ts** - Type definitions for fusion operations
+
+OPFS writes accept `Uint8Array` subviews and store only the supplied byte range, including empty views.
+Reads and writes complete short transfers using explicit offsets and reject zero progress; handles always close.
+`exists` treats empty files as absent. Missing entries normalize to `false`/an empty listing/a no-op deletion;
+permission, access-state and other operational errors reject through the protocol.

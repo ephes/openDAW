@@ -1,4 +1,4 @@
-import {Arrays, asDefined, isNotUndefined, panic} from "@opendaw/lib-std"
+import {Arrays, asDefined, Errors, isNotUndefined, panic} from "@opendaw/lib-std"
 import {Communicator, Messenger, Promises} from "@opendaw/lib-runtime"
 import {OpfsProtocol} from "./OpfsProtocol"
 
@@ -15,7 +15,13 @@ export namespace OpfsWorker {
                     const handle = await this.#resolveFile(path, {create: true})
                     try {
                         handle.truncate(data.length)
-                        handle.write(data.buffer as ArrayBuffer, {at: 0})
+                        for (let offset = 0; offset < data.byteLength;) {
+                            const count = handle.write(data.subarray(offset) as Uint8Array<ArrayBuffer>, {at: offset})
+                            if (!Number.isInteger(count) || count <= 0 || count > data.byteLength - offset) {
+                                throw new Error("Incomplete OPFS write")
+                            }
+                            offset += count
+                        }
                         handle.flush()
                     } catch (reason: unknown) {
                         const error = reason as {name?: string, message?: string, stack?: string} | null | undefined
@@ -35,7 +41,13 @@ export namespace OpfsWorker {
                     try {
                         const size = handle.getSize()
                         const buffer = new Uint8Array(size)
-                        handle.read(buffer)
+                        for (let offset = 0; offset < size;) {
+                            const count = handle.read(buffer.subarray(offset), {at: offset})
+                            if (!Number.isInteger(count) || count <= 0 || count > size - offset) {
+                                throw new Error("Incomplete OPFS read")
+                            }
+                            offset += count
+                        }
                         return buffer
                     } finally {
                         handle.close()
@@ -47,10 +59,21 @@ export namespace OpfsWorker {
                 return await this.#acquireLock(path, async () => {
                     if (DEBUG) {console.debug(`exists ${path}`)}
                     const segments = pathToSegments(path)
-                    const {status: folderStatus} = await Promises.tryCatch(this.#resolveFolder(segments))
-                    if (folderStatus === "resolved") {return true}
-                    const {status: fileStatus, value: handle} = await Promises.tryCatch(this.#resolveFile(path))
-                    if (fileStatus === "rejected") {return false}
+                    try {
+                        await this.#resolveFolder(segments)
+                        return true
+                    } catch (error) {
+                        // A file is not a directory; try the file lookup in that case.
+                        if (!isMissing(error) && !(Errors.isDOMException(error) && error.name === "TypeMismatchError")) {
+                            throw error
+                        }
+                    }
+                    const result = await Promises.tryCatch(this.#resolveFile(path))
+                    if (result.status === "rejected") {
+                        if (isMissing(result.error)) {return false}
+                        throw result.error
+                    }
+                    const handle = result.value
                     try {
                         return handle.getSize() > 0
                     } finally {
@@ -63,21 +86,25 @@ export namespace OpfsWorker {
                 await this.#acquireLock(path, async () => {
                     const segments = pathToSegments(path)
                     if (segments.length === 0) {return this.clear()}
-                    const {status} = await Promises.tryCatch(this.#resolveFolder(segments.slice(0, -1))
+                    const result = await Promises.tryCatch(this.#resolveFolder(segments.slice(0, -1))
                         .then(folder => folder.removeEntry(asDefined(segments.at(-1)), {recursive: true})))
-                    if (status === "rejected") {return}
+                    if (result.status === "rejected" && !isMissing(result.error)) {throw result.error}
                 })
             }
 
             async list(path: string): Promise<ReadonlyArray<OpfsProtocol.Entry>> {
                 const segments = pathToSegments(path)
-                const {status, value: folder} = await Promises.tryCatch(this.#resolveFolder(segments))
-                if (status === "rejected") {return Arrays.empty()}
-                const result: Array<OpfsProtocol.Entry> = []
-                for await (const {name, kind} of folder.values()) {
-                    result.push({name, kind})
+                const result = await Promises.tryCatch(this.#resolveFolder(segments))
+                if (result.status === "rejected") {
+                    if (isMissing(result.error)) {return Arrays.empty()}
+                    throw result.error
                 }
-                return result
+                const folder = result.value
+                const entries: Array<OpfsProtocol.Entry> = []
+                for await (const {name, kind} of folder.values()) {
+                    entries.push({name, kind})
+                }
+                return entries
             }
 
             async clear(): Promise<void> {
@@ -127,11 +154,10 @@ export namespace OpfsWorker {
             }
         })
 
-    const getOpfsRoot = async (): Promise<FileSystemDirectoryHandle> => {
-        const result = await Promises.tryCatch(navigator.storage.getDirectory())
-        if (result.status === "rejected") {throw new Error("Storage not available")}
-        return result.value
-    }
+    const isMissing = (error: unknown): boolean =>
+        Errors.isDOMException(error) && error.name === "NotFoundError"
+
+    const getOpfsRoot = (): Promise<FileSystemDirectoryHandle> => navigator.storage.getDirectory()
 
     const pathToSegments = (path: string): ReadonlyArray<string> => {
         const noSlashes = path.replace(/^\/+|\/+$/g, "")

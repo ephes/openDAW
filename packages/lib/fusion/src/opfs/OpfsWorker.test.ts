@@ -7,6 +7,11 @@ type EntryData = FileData | DirData
 
 const createMockFileSystem = () => {
     const root: Map<string, EntryData> = new Map()
+    const limits = {read: Infinity, write: Infinity}
+    const faults = new Map<string, Error>()
+    const fail = (operation: string) => {if (faults.has(operation)) {throw faults.get(operation)}}
+    const close = vi.fn()
+    const flush = vi.fn()
     const resolveDir = (segments: ReadonlyArray<string>, create: boolean): Map<string, EntryData> => {
         let current = root
         for (const segment of segments) {
@@ -26,12 +31,18 @@ const createMockFileSystem = () => {
     }
     const createSyncAccessHandle = (fileEntry: FileData): FileSystemSyncAccessHandle => ({
         getSize: () => fileEntry.data.length,
-        read: (buffer: Uint8Array) => {
-            buffer.set(fileEntry.data.subarray(0, buffer.length))
-            return Math.min(buffer.length, fileEntry.data.length)
+        read: (buffer: Uint8Array, options?: {at?: number}) => {
+            fail("read")
+            const at = options?.at ?? 0
+            const count = Math.min(buffer.length, fileEntry.data.length - at, limits.read)
+            buffer.set(fileEntry.data.subarray(at, at + count))
+            return count
         },
-        write: (buffer: ArrayBuffer, options?: {at?: number}) => {
-            const src = new Uint8Array(buffer)
+        write: (buffer: ArrayBuffer | ArrayBufferView, options?: {at?: number}) => {
+            fail("write")
+            const bytes = ArrayBuffer.isView(buffer)
+                ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) : new Uint8Array(buffer)
+            const src = bytes.subarray(0, limits.write)
             const at = options?.at ?? 0
             if (at + src.length > fileEntry.data.length) {
                 const newData = new Uint8Array(at + src.length)
@@ -42,8 +53,8 @@ const createMockFileSystem = () => {
             return src.length
         },
         truncate: (size: number) => {fileEntry.data = new Uint8Array(size)},
-        flush: () => {},
-        close: () => {}
+        flush,
+        close
     } as unknown as FileSystemSyncAccessHandle)
     const createFileHandle = (name: string, fileEntry: FileData): FileSystemFileHandle => ({
         kind: "file",
@@ -58,6 +69,7 @@ const createMockFileSystem = () => {
             name: dirName,
             isSameEntry: async (_other: FileSystemHandle) => false,
             async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions) {
+                fail("directory")
                 const entry = children.get(name)
                 if (entry === undefined) {
                     if (!options?.create) {throw new DOMException("Not found", "NotFoundError")}
@@ -69,6 +81,7 @@ const createMockFileSystem = () => {
                 return createDirectoryHandle(entry.children, name)
             },
             async getFileHandle(name: string, options?: FileSystemGetFileOptions) {
+                fail("file")
                 let entry = children.get(name)
                 if (entry === undefined) {
                     if (!options?.create) {throw new DOMException("Not found", "NotFoundError")}
@@ -79,7 +92,8 @@ const createMockFileSystem = () => {
                 return createFileHandle(name, entry)
             },
             async removeEntry(name: string, _options?: FileSystemRemoveOptions) {
-                children.delete(name)
+                fail("remove")
+                if (!children.delete(name)) {throw new DOMException("Not found", "NotFoundError")}
             },
             async *values() {
                 for (const [name, entry] of children) {
@@ -102,7 +116,7 @@ const createMockFileSystem = () => {
         } as unknown as FileSystemDirectoryHandle
         return handle
     }
-    return {root, createDirectoryHandle: () => createDirectoryHandle(root)}
+    return {root, limits, faults, close, flush, createDirectoryHandle: () => createDirectoryHandle(root)}
 }
 
 let protocol: OpfsProtocol
@@ -293,5 +307,80 @@ describe("OpfsWorker", () => {
             const result = await protocol.read("a/b/c/d/e/f.bin")
             expect(Array.from(result)).toEqual([99])
         })
+    })
+})
+
+
+describe("exact OPFS transfers", () => {
+    it.each([[1, 3], [0, 1], [2, 2]])("stores only the view [%i, %i)", async (start, end) => {
+        const bytes = new Uint8Array([90, 1, 2, 91])
+        await protocol.write("view.bin", bytes.subarray(start, end))
+        expect((mockFs.root.get("view.bin") as FileData).data).toEqual(bytes.slice(start, end))
+    })
+
+    it("completes short reads and writes at explicit offsets", async () => {
+        mockFs.limits.write = 2
+        mockFs.limits.read = 1
+        const bytes = new Uint8Array([90, 1, 2, 3, 4, 91]).subarray(1, 5)
+        await protocol.write("short.bin", bytes)
+        expect(await protocol.read("short.bin")).toEqual(bytes)
+        expect(mockFs.close).toHaveBeenCalledTimes(2)
+        expect(mockFs.flush).toHaveBeenCalledOnce()
+    })
+
+    it.each(["read", "write"] as const)("rejects a zero-progress %s and releases the handle/lock", async operation => {
+        await protocol.write("stalled.bin", new Uint8Array([1, 2]))
+        mockFs.close.mockClear()
+        mockFs.limits[operation] = 0
+        const transfer = () => operation === "read" ? protocol.read("stalled.bin")
+            : protocol.write("stalled.bin", new Uint8Array([3, 4]))
+        await expect(transfer()).rejects.toThrow("Incomplete OPFS")
+        expect(mockFs.close).toHaveBeenCalledOnce()
+        mockFs.limits[operation] = Infinity
+        await transfer()
+        expect(mockFs.close).toHaveBeenCalledTimes(2)
+    })
+
+    it.each(["read", "write"])("closes on a thrown %s error", async operation => {
+        await protocol.write("error.bin", new Uint8Array([1]))
+        mockFs.close.mockClear()
+        const error = new DOMException("Synthetic failure", "InvalidStateError")
+        mockFs.faults.set(operation, error)
+        await expect(operation === "read" ? protocol.read("error.bin")
+            : protocol.write("error.bin", new Uint8Array([2]))).rejects.toBe(error)
+        expect(mockFs.close).toHaveBeenCalledOnce()
+    })
+})
+
+describe("OPFS absence versus operational errors", () => {
+    it.each(["SecurityError", "InvalidStateError"])("propagates %s at directory resolution", async name => {
+        const error = new DOMException("Synthetic failure", name)
+        mockFs.faults.set("directory", error)
+        await expect(protocol.exists("folder/file")).rejects.toBe(error)
+        await expect(protocol.list("folder")).rejects.toBe(error)
+        await expect(protocol.delete("folder/file")).rejects.toBe(error)
+    })
+
+    it.each(["SecurityError", "InvalidStateError"])("propagates %s from file resolution and deletion", async name => {
+        const error = new DOMException("Synthetic failure", name)
+        mockFs.faults.set("file", error)
+        await expect(protocol.exists("file")).rejects.toBe(error)
+        mockFs.faults.set("remove", error)
+        await expect(protocol.delete("file")).rejects.toBe(error)
+    })
+
+    it("normalizes only missing entries", async () => {
+        expect(await protocol.exists("missing/file")).toBe(false)
+        expect(await protocol.list("missing")).toEqual([])
+        await expect(protocol.delete("missing/file")).resolves.toBeUndefined()
+        await expect(protocol.delete("missing")).resolves.toBeUndefined()
+    })
+
+    it("preserves a root storage error", async () => {
+        const error = new DOMException("Synthetic failure", "SecurityError")
+        vi.stubGlobal("navigator", {storage: {getDirectory: async () => {throw error}}})
+        await expect(protocol.exists("file")).rejects.toBe(error)
+        await expect(protocol.list("")).rejects.toBe(error)
+        await expect(protocol.delete("file")).rejects.toBe(error)
     })
 })
