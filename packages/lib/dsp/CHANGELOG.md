@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject truncated WAV fmt/data chunks and invalid channel geometry before allocating decoded audio, retaining complete frames and readable audio before truncated ancillary trailers.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.84](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-dsp@0.0.83...@opendaw/lib-dsp@0.0.84) (2026-05-22)
