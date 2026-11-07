@@ -13,8 +13,11 @@ export class MonitoringMixProcessor extends AbstractProcessor implements Process
     }
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const registration = Option.wrap(source)
+        this.#source = registration
+        return {terminate: () => {
+            if (this.#source === registration) {this.#source = Option.None}
+        }}
     }
 
     setChannels(channels: ReadonlyArray<int>): void {

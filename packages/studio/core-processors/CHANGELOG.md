@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Clear published meter RMS on reset, publish true RMS levels, and bind monitoring/output-registry teardown to its owned registration.
+
 - Clear compressor delay, lookahead, detection and smoothing histories on reset while preserving configuration.
 
 - Preserve current voices and all expiring tails when switching voicing strategies.

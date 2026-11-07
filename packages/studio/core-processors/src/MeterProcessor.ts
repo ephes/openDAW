@@ -53,7 +53,8 @@ export class MeterProcessor extends AudioWorkletProcessor {
                 for (let i: int = 0 | 0; i < RenderQuantum; ++i) {
                     const inp = inputChannel[i] // we pass the signal
                     peak = Math.max(peak, Math.abs(inp))
-                    squared = Math.max(squared, rms.pushPop(inp * inp))
+                    const rmsValue = rms.pushPop(inp)
+                    squared = Math.max(squared, rmsValue * rmsValue)
                 }
                 this.#maxPeak[channel] = peak
                 this.#maxSquared[channel] = squared

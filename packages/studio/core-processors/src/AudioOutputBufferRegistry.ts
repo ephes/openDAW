@@ -17,8 +17,11 @@ export class AudioOutputBufferRegistry {
     }
 
     register(address: Address, buffer: AudioBuffer, processor: Processor): Terminable {
-        this.#outputs.add({address, buffer, processor})
-        return {terminate: () => this.#outputs.removeByKey(address)}
+        const output = {address, buffer, processor}
+        if (!this.#outputs.add(output)) {return Terminable.Empty}
+        return {terminate: () => {
+            if (this.#outputs.opt(address).contains(output)) {this.#outputs.removeByKey(address)}
+        }}
     }
 
     resolve(address: Address): Option<AudioOutputBuffer> {

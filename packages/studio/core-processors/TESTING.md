@@ -25,3 +25,10 @@ The initial placeholder strategy has no tail and is never rendered after strateg
 
 Compressor reset preserves parameters and clears all stream histories; warm/reset processing must
 match a fresh instance for silence and new stereo signals, with lookahead and automatic modes.
+
+Peak broadcaster clear resets all four immediately published values. Meter processing takes raw
+amplitudes into the RMS window, retains squared RMS energy, and takes its square root on publication.
+The retained energy decays exponentially; its amplitude RMS therefore decays with the square root
+of that multiplier. Monitoring and output-buffer teardown owns a specific registration, including
+repeated registrations of the same source. Output registry duplicates retain the first entry and
+return an inert terminable; repeated/stale disposal cannot remove a newer entry.
