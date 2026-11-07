@@ -27,7 +27,7 @@ export class SmoothingFilter {
     }
 
     setAlphaWithTime(timeInSeconds: number): void {
-        this.#a1 = Math.exp(-1.0 / (this.#sampleRate * timeInSeconds))
+        this.#a1 = 1 - Math.exp(-1.0 / (this.#sampleRate * timeInSeconds))
         this.#b1 = 1 - this.#a1
     }
 

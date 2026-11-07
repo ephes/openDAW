@@ -21,9 +21,11 @@ export class CrestFactor {
     }
 
     process(src: Float32Array, fromIndex: int, toIndex: int): void {
-        // Init accumulators
-        if (this.#peakState === 0.0) {this.#peakState = src[0]}
-        if (this.#rmsState === 0.0) {this.#rmsState = src[0]}
+        if (toIndex <= fromIndex) {return}
+        // Both accumulators track energy, initialized from the selected span.
+        const firstSquared = src[fromIndex] * src[fromIndex]
+        if (this.#peakState === 0.0) {this.#peakState = firstSquared}
+        if (this.#rmsState === 0.0) {this.#rmsState = firstSquared}
 
         // Reset avg attack/release
         this.#avgAttackTime = 0.0
