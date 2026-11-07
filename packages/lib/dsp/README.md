@@ -56,3 +56,8 @@ value equals the current value. Glide completion commits the current pitch befor
 retargeting; zero-duration glides cancel movement immediately. ADSR gate-on
 recalculates a full attack from the current amplitude. Release phase is normalized
 to its entry amplitude (including zero sustain), and force-stop clears phase.
+
+Biquad coefficient caching includes cutoff and order-adjusted resonance; reset
+clears feedback history independently. Reference tests pin filter-mode limits,
+center gains and impulse-DFT magnitude/phase. Mono/cascade tests cover orders 1–4,
+frame/block equivalence, partition continuity, in-place processing and range guards.
