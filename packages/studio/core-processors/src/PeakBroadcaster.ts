@@ -38,6 +38,8 @@ export class PeakBroadcaster implements Terminable {
         this.#rms[1].clear()
         this.#peakL = 0.0
         this.#peakR = 0.0
+        this.#rmsL = 0.0
+        this.#rmsR = 0.0
     }
 
     process(outL: Float32Array, outR: Float32Array, fromIndex: int = 0, toIndex: int = RenderQuantum): void {
