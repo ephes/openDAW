@@ -61,3 +61,10 @@ Biquad coefficient caching includes cutoff and order-adjusted resonance; reset
 clears feedback history independently. Reference tests pin filter-mode limits,
 center gains and impulse-DFT magnitude/phase. Mono/cascade tests cover orders 1–4,
 frame/block equivalence, partition continuity, in-place processing and range guards.
+
+Routing tests exercise mono duplication, stereo separation, replace versus mix,
+half-open clear ranges and unsupported layouts. AudioData planes share a buffer
+at disjoint offsets, including coherent zero-frame allocation. StereoMatrix tests
+use independent basis signals for pan laws, width, inversion and swaps, and compare
+scalar/block/in-place subranges with untouched sentinels. Swapping exchanges input
+channels; inversion applies to the resulting left/right outputs.
