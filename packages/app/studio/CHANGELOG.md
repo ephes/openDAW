@@ -6,6 +6,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 ## Unreleased
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
+- Explain incomplete asset usage scans and close progress dialogs when deletion is blocked.
 
 ## [0.0.148](https://github.com/andremichelle/openDAW/compare/@opendaw/app-studio@0.0.147...@opendaw/app-studio@0.0.148) (2026-05-22)
 

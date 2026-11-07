@@ -30,11 +30,16 @@ export class SoundfontSelection implements ResourceSelection {
 
     async deleteSoundfonts(...soundfonts: ReadonlyArray<Soundfont>) {
         const dialog = RuntimeNotifier.progress({headline: "Checking Soundfont Usages"})
-        const [usedByProjects, usedByPresets, onlineList] = await Promise.all([
+        const usages = await Promise.all([
             ProjectStorage.listUsedAssets(SoundfontFileBox),
             PresetStorage.listUsedAssets(SoundfontFileBox),
             OpenSoundfontAPI.get().all()
-        ])
+        ]).finally(() => dialog.terminate()).catch(async error => {
+            await Dialogs.info({headline: "Cannot Delete Soundfont", message: String(error)})
+            return null
+        })
+        if (usages === null) {return}
+        const [usedByProjects, usedByPresets, onlineList] = usages
         this.#service.projectProfileService.getValue().ifSome(profile => {
             const projectName = profile.meta.name
             for (const box of this.#service.project.boxGraph.boxes()) {
@@ -46,7 +51,6 @@ export class SoundfontSelection implements ResourceSelection {
             }
         })
         const online = new Set<string>(onlineList.map(({uuid}) => uuid))
-        dialog.terminate()
         const deletable: Array<Soundfont> = []
         for (const soundfont of soundfonts) {
             const isOnline = online.has(soundfont.uuid)

@@ -384,3 +384,11 @@ describe("OPFS absence versus operational errors", () => {
         await expect(protocol.delete("file")).rejects.toBe(error)
     })
 })
+
+
+it("propagates root access failures from list and delete", async () => {
+    const error = new DOMException("denied", "NotAllowedError")
+    vi.stubGlobal("navigator", {storage: {getDirectory: async () => {throw error}}})
+    await expect(protocol.list("projects/v1")).rejects.toBe(error)
+    await expect(protocol.delete("projects/v1/project")).rejects.toBe(error)
+})

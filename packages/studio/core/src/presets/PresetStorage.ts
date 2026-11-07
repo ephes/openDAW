@@ -134,20 +134,25 @@ export namespace PresetStorage {
         type: Class<AudioFileBox | SoundfontFileBox>
     ): Promise<Map<UUID.String, Array<string>>> => {
         const result = new Map<UUID.String, Array<string>>()
-        const entries = await readIndex()
+        // Scan physical presets, including files omitted from a stale/rebuilt index.
+        // The index is a listing aid, never evidence that an asset is unused.
+        const files = await Workers.Opfs.list(FOLDER)
+        const entries = files.filter(file => file.kind === "file" && file.name.endsWith(".odp"))
+            .map(file => ({uuid: file.name.slice(0, -4) as UUID.String,
+                name: cache.getValue().find(entry => `${entry.uuid}.odp` === file.name)?.name ?? file.name}))
         for (const entry of entries) {
             const read = await Promises.tryCatch(Workers.Opfs.read(fileFor(UUID.parse(entry.uuid))))
-            if (read.status === "rejected") {continue}
+            if (read.status === "rejected") {throw new Error(`Cannot check asset usage: repair preset ${entry.uuid}`)}
             const bytes = read.value
-            if (bytes.byteLength < 8) {continue}
+            if (bytes.byteLength < 8) {throw new Error(`Invalid preset ${entry.uuid}`)}
             const headerBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + 8)
             const header = new ByteArrayInput(headerBuffer)
-            if (header.readInt() !== PresetHeader.MAGIC_HEADER_OPEN) {continue}
-            if (header.readInt() !== PresetHeader.FORMAT_VERSION) {continue}
+            if (header.readInt() !== PresetHeader.MAGIC_HEADER_OPEN) {throw new Error(`Invalid preset ${entry.uuid}`)}
+            if (header.readInt() !== PresetHeader.FORMAT_VERSION) {throw new Error(`Unsupported preset ${entry.uuid}`)}
             const graph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
             const decoded = tryCatch(() => graph.fromArrayBuffer(
                 bytes.buffer.slice(bytes.byteOffset + 8, bytes.byteOffset + bytes.byteLength), false))
-            if (decoded.status === "failure") {continue}
+            if (decoded.status === "failure") {throw new Error(`Cannot decode preset ${entry.uuid}`)}
             for (const box of graph.boxes() as Iterable<Box>) {
                 if (!(box instanceof type)) {continue}
                 const key = UUID.toString(box.address.uuid)
