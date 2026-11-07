@@ -44,8 +44,8 @@ export class MIDITransportClock extends AbstractProcessor {
             const relativeTimeInMs = box.delayInMs.getValue()
             this.#nextBlockDelivery.forEach(message =>
                 this.context.sendMIDIData(id, message, relativeTimeInMs))
-            this.#nextBlockDelivery.length = 0
         })
+        this.#nextBlockDelivery.length = 0
         blocks.forEach(({p0, p1, s0, bpm, flags}) => {
             const blockOffsetInSeconds = s0 / sampleRate
             if (!Bits.every(flags, BlockFlag.transporting)) {return}
