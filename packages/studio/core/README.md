@@ -41,3 +41,5 @@ Cached and fetched library-import failures publish a bounded retryable error.
 Invalidate starts a new generation; earlier storage/fetch/library continuations and
 progress cannot replace the new loader's state, font or metadata or start stale
 follow-up work. Project export handles synchronous terminal subscriptions safely.
+
+Soundfont storage reads return exactly the provider Uint8Array view, including nonzero-offset views; adjacent backing bytes are excluded before SF2 parsing.

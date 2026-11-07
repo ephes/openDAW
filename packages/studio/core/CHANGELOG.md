@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Load exactly the stored soundfont byte view, excluding neighboring backing-buffer data.
+
 - Replay soundfont terminal errors, report library-load failures, and fence invalidated loader generations.
 
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
