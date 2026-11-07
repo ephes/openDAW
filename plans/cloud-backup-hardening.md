@@ -16,3 +16,11 @@ including a completed delete followed by failed catalog publication and retry.
 
 Project generation tests inject failures at each upload and catalog publication,
 then restore afresh. Fake time/deferred transports test timeout, retry and lock ownership.
+
+Local revision tests interleave real ProjectProfile saves with backup snapshot reads
+and deferred network uploads. Preset tests compare newer/equal/older timestamps and
+assert that catalog replacement follows successful byte upload.
+
+Preset batch/catalog failure tests make the in-place partial-update limitation explicit
+and verify a later successful retry repairs metadata. Coherent preset-pair capture is
+deferred beyond timestamp resynchronization; documentation avoids claiming it.

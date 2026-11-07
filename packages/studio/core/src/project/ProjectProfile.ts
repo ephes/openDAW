@@ -1,4 +1,4 @@
-import {EmptyExec, Notifier, Observer, Option, Subscription, UUID} from "@opendaw/lib-std"
+import {Notifier, Observer, Option, Subscription, UUID} from "@opendaw/lib-std"
 import {ProjectMeta} from "./ProjectMeta"
 import {Project} from "./Project"
 import {Workers} from "../Workers"
@@ -101,13 +101,21 @@ export class ProjectProfile {
     }
 
     static async #writeFiles({uuid, project, meta, cover}: ProjectProfile): Promise<void> {
-        return Promise.all([
-            Workers.Opfs.write(ProjectPaths.projectFile(uuid), new Uint8Array(project.toArrayBuffer())),
-            Workers.Opfs.write(ProjectPaths.projectMeta(uuid), new TextEncoder().encode(JSON.stringify(meta))),
-            cover.match({
-                none: () => Promise.resolve(),
-                some: x => Workers.Opfs.write(ProjectPaths.projectCover(uuid), new Uint8Array(x))
-            })
-        ]).then(EmptyExec)
+        // Encode one revision before waiting for another storage owner.
+        const projectBytes = new Uint8Array(project.toArrayBuffer())
+        const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
+        const coverBytes = cover.map(bytes => new Uint8Array(bytes.slice(0)))
+        return navigator.locks.request(`opendaw:storage:${ProjectPaths.Folder}`, async () => {
+            const results = await Promise.allSettled([
+                Workers.Opfs.write(ProjectPaths.projectFile(uuid), projectBytes),
+                Workers.Opfs.write(ProjectPaths.projectMeta(uuid), metaBytes),
+                coverBytes.match({
+                    none: () => Promise.resolve(),
+                    some: bytes => Workers.Opfs.write(ProjectPaths.projectCover(uuid), bytes)
+                })
+            ])
+            const failed = results.find(result => result.status === "rejected")
+            if (failed?.status === "rejected") {throw failed.reason}
+        })
     }
 }

@@ -16,12 +16,17 @@ export namespace ProjectStorage {
 
     export type List = ReadonlyArray<ListEntry>
 
-    export const listProjects = async ({includeCover, includeProject, progress, strict = false}: {
+    type ListOptions = {
         strict?: boolean
         includeCover?: boolean
         includeProject?: boolean
         progress?: Progress.Handler
-    } = {}): Promise<List> => {
+    }
+    export const listProjects = async (options: ListOptions = {}): Promise<List> => options.strict
+        ? navigator.locks.request(`opendaw:storage:${ProjectPaths.Folder}`, () => listProjectsOwned(options))
+        : listProjectsOwned(options)
+
+    const listProjectsOwned = async ({includeCover, includeProject, progress, strict = false}: ListOptions): Promise<List> => {
         const files = await Workers.Opfs.list(ProjectPaths.Folder)
         const entries = await Promise.all(files.filter(file => file.kind === "directory")
             .map(async ({name}, index, {length}): Promise<ListEntry | null> => {
@@ -53,10 +58,21 @@ export namespace ProjectStorage {
         return Workers.Opfs.read(ProjectPaths.projectMeta(uuid)).then(array => array.buffer as ArrayBuffer)
     }
 
-    export const loadCover = async (uuid: UUID.Bytes): Promise<Option<ArrayBuffer>> => {
+    export const loadCover = async (uuid: UUID.Bytes, {strict = false}: {strict?: boolean} = {}): Promise<Option<ArrayBuffer>> => {
         return Workers.Opfs.read(ProjectPaths.projectCover(uuid))
-            .then(array => Option.wrap(array.buffer as ArrayBuffer), () => Option.None)
+            .then(array => Option.wrap(array.buffer as ArrayBuffer), error => {
+                if (strict && (!(error instanceof DOMException) || error.name !== "NotFoundError")) {throw error}
+                return Option.None
+            })
     }
+
+    export const readSnapshot = async (uuid: UUID.Bytes) =>
+        navigator.locks.request(`opendaw:storage:${ProjectPaths.Folder}`, async () => {
+            const meta = await loadMeta(uuid)
+            const project = await loadProject(uuid)
+            const cover = await loadCover(uuid, {strict: true})
+            return {meta, project, cover}
+        })
 
     export const listUsedAssets = async (
         type: Class<AudioFileBox | SoundfontFileBox>

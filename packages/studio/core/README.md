@@ -147,3 +147,25 @@ repairs or replaces existing files. Soundfont saves share the same storage lock.
 Metadata publishes last. Synchronous project construction shares the lock scope;
 later failure attempts cleanup only for newly owned folders and preserves its primary
 cause if cleanup fails. Cleanup failure can leave a partial new folder requiring repair.
+
+### Local revision capture and preset updates
+
+Project saves and complete backup snapshots share the project storage Web Lock.
+A save encodes one revision and retains ownership until all its started writes settle,
+even on failure. Backup captures metadata, project and optional cover under that lock,
+uses the captured metadata for catalog fields, then releases the lock before network
+uploads. Operational cover-read failures stop capture. This serializes saves/capture;
+it does not make a failed multi-file local save transactional.
+
+Preset backup is local-authoritative: missing presets and existing UUIDs with a newer
+validated local modification timestamp are selected for upload.
+Unchanged/older local entries do not overwrite newer cloud versions. Stock presets
+remain excluded; this adds no bidirectional conflict merging.
+
+Preset files are updated in place and the batch catalog is published afterward.
+If a later preset or catalog upload fails, some bytes can be newer than their catalog
+metadata; another device can restore that mismatched pair until retry succeeds. Keep
+the local edited presets and retry backup before restoring them elsewhere. A concurrent
+local save can also change bytes after the initial index scan; this slice does not
+capture a coherent preset pair or provide transactional preset generations. Successful
+project generation preservation does not extend to presets.

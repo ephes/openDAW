@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preset updates remain in place: partial batch/catalog failure can leave newer bytes with older metadata until a successful retry. Keep local edits and retry before restoring elsewhere.
+
+- Back up complete project revisions and upload edits to existing presets.
+
 - Generation backups require updated clients on every device: older clients can restore stale bytes or misidentify projects as corrupt. Full retained generations increase cloud quota usage; no automatic cleanup is performed.
 
 - Preserve the last complete cloud project when uploads fail and wait for owned uploads before retry/cancel.

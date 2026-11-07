@@ -80,13 +80,14 @@ export class CloudBackupProjects {
             return
         }
         const uploaded = await Promises.sequentialAll(unsyncedProjects
-            .map(([uuidAsString, meta]: [UUID.String, MetaFields], index, {length}) => async () => {
+            .map(([uuidAsString]: [UUID.String, MetaFields], index, {length}) => async () => {
                 progress((index + 1) / length)
-                this.#log(`Uploading project '${meta.name}'`)
                 const uuid = UUID.parse(uuidAsString)
-                const metaFile = await ProjectStorage.loadMeta(uuid)
-                const projectFile = await ProjectStorage.loadProject(uuid)
-                const optCoverFile = await ProjectStorage.loadCover(uuid)
+                const {meta: metaFile, project: projectFile, cover: optCoverFile} = await ProjectStorage.readSnapshot(uuid)
+                const captured = validateProjectsCatalog({[uuidAsString]: JSON.parse(new TextDecoder().decode(metaFile))})[uuidAsString]
+                const meta = Objects.include(captured, ...catalogFields)
+                if (!isUnsynced(meta, cloud[uuidAsString])) {return null}
+                this.#log(`Uploading project '${meta.name}'`)
                 const generation = await Promises.approvedRetry(async () => {
                     const generation = UUID.toString(UUID.generate())
                     const folder = `${CloudBackupProjects.RemotePath}/${uuidAsString}/generations/${generation}`
@@ -124,7 +125,9 @@ export class CloudBackupProjects {
                 }))
                 return {uuidAsString, meta: {...meta, generation}}
             }))
-        const catalog = uploaded
+        const complete = uploaded.filter(entry => entry !== null)
+        if (complete.length === 0) {progress(1.0); return}
+        const catalog = complete
             .reduce((projects, project) => {
                 projects[UUID.asString(project.uuidAsString)] = project.meta
                 return projects
