@@ -40,3 +40,16 @@ inference worker. Subsequent calls reuse both.
   serialises calls.
 - `src/workers/inference.worker.ts` — worker side, owns the ORT
   session per task.
+
+### Host failures and shutdown
+
+Each queued job settles independently, including synchronous callback failures. A
+worker error or messageerror rejects its pending calls, removes its listeners and
+invalidates session names; a later load may create a fresh worker. Startup failures
+release readiness ownership rather than caching rejection. Shutdown is terminal for
+that host: active/queued callers reject, new work rejects, and worker termination
+bounds cleanup without waiting for an acknowledgement. Reinstall creates a new host.
+
+The inference browser baseline requires the standard `AbortSignal.any` and
+`AbortSignal.throwIfAborted` APIs. Worker failures retain at most 300 characters of
+startup/runtime message detail alongside retry guidance.
