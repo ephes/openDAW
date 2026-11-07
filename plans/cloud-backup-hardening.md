@@ -10,3 +10,6 @@ side effects, while tolerant browsing preserves recovery bytes.
 
 Catalog/journal regressions use complete synthetic metadata and inject failures at
 the production backup entry points, asserting no domain mutations or asset restores.
+
+Provider deletion tests drive the actual handlers with synthetic SDK/fetch responses,
+including a completed delete followed by failed catalog publication and retry.

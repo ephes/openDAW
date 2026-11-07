@@ -117,7 +117,7 @@ export class GoogleDriveHandler implements CloudHandler {
     }
 
     async delete(path: string): Promise<void> {
-        const fileId = await this.#resolveFileIdByPath(path)
+        const fileId = await this.#resolveFileIdByPath(path, true)
         if (fileId.isEmpty()) {
             // deleting a non-existent file should be a no-op
             return
@@ -146,11 +146,11 @@ export class GoogleDriveHandler implements CloudHandler {
         return {dir: parts, base}
     }
 
-    async #resolveFileIdByPath(path: string): Promise<Option<string>> {
+    async #resolveFileIdByPath(path: string, includeFolders = false): Promise<Option<string>> {
         const {dir, base} = this.#splitPath(path)
         const parentId = await this.#resolveFolderPath(dir)
         if (parentId.isEmpty() || base.length === 0) return Option.None
-        const existing = await this.#findFileInFolder(base, parentId.unwrap())
+        const existing = await this.#findFileInFolder(base, parentId.unwrap(), includeFolders)
         return existing.map(f => f.id)
     }
 
@@ -216,11 +216,11 @@ export class GoogleDriveHandler implements CloudHandler {
         return Option.wrap(json.files[0])
     }
 
-    async #findFileInFolder(name: string, parentId: string): Promise<Option<DriveFile>> {
+    async #findFileInFolder(name: string, parentId: string, includeFolders = false): Promise<Option<DriveFile>> {
         const q = [
             `name = '${name.replace(/'/g, "\\'")}'`,
             `'${parentId}' in parents`,
-            `mimeType != '${FOLDER_MIME}'`,
+            ...(includeFolders ? [] : [`mimeType != '${FOLDER_MIME}'`]),
             `trashed = false`
         ].join(" and ")
         const params = new URLSearchParams({

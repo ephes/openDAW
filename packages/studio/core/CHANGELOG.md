@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retry Dropbox deletions idempotently for established path-not-found errors; delete Drive project folders as well as files.
+
 - Validate local candidates and whole cloud catalogs and refuse unreadable or malformed deletion journals before domain backup effects; preserve catalog extensions and persist preset tombstones before deletion.
 
 - Bind asset identities to physical directories and require complete readable sample/soundfont inventories before backup; scan under the storage lock and abort the whole run on incomplete inventory.

@@ -85,3 +85,9 @@ read failures and invalid UUID lists stop the domain to preserve deletion intent
 Preset save/remove/update operations share a storage lock. Save and remove validate
 deletion intent before changing files; remove persists its tombstone before deletion.
 A journal failure therefore cannot silently delete a preset without recording intent.
+
+Cloud deletion is retryable when a catalog upload fails after deleting an object.
+Dropbox ignores only its HTTP 409 path_lookup/not_found delete classification;
+authentication, permissions, write errors and transport failures still abort cleanup.
+Drive cleanup resolves both files and project folders, while downloads/uploads keep
+their file-only target lookup. Missing targets are no-ops; other errors propagate.
