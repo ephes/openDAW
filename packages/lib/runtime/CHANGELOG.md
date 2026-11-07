@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 - Isolate default retry attempts, keep policy exhaustion monotonic, and release promise-limit slots after synchronous failures.
 - Preserve replacement promises when expired memoized work rejects.
