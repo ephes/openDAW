@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## Unreleased
+
+- Isolate default retry attempts, keep policy exhaustion monotonic, and release promise-limit slots after synchronous failures.
+- Preserve replacement promises when expired memoized work rejects.
+- Respect download demand, forward cancellation and release progress-stream readers on every terminal path.
+
 ## [0.0.79](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-runtime@0.0.78...@opendaw/lib-runtime@0.0.79) (2026-05-22)
 
 **Note:** Version bump only for package @opendaw/lib-runtime
