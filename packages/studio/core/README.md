@@ -30,3 +30,19 @@ other MIDI or app output-device diagnostic sources have been sanitized. The stud
 at most 100,000 serialized UTF-16 code units (8,000 per entry), including metadata
 and JSON escaping. Recent bounded context survives; large arguments are truncated
 and structured serialization has a bounded traversal.
+
+### Cloud authentication
+
+Each authorization uses a random state tied to its provider and popup. Only matching
+callback, error and close messages can settle it; duplicate/late messages are ignored.
+A correlated callback-close message, cancellation or a five-minute deadline releases the popup,
+channel and timers. Cancellation aborts a pending Dropbox PKCE exchange. Closing the
+callback after a valid response does not interrupt handler creation. Callback errors
+are displayed as text; codes, tokens and raw provider/handler errors are omitted from
+authentication diagnostics. Retry authentication from the studio after a failure.
+
+The studio's strict COOP isolation severs a cross-origin provider popup's window
+proxy. Its `closed` flag is therefore not a reliable signal of user closure. A popup
+closed before returning to the callback currently settles via cancellation or the
+deadline. Immediate pre-callback closure detection requires a separate non-isolated
+popup broker/header design and remains outside these changes.

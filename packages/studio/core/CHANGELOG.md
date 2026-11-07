@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Correlate OAuth attempts, settle popup authentication once with cancellation/deadlines, and omit credentials from diagnostics.
+
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
 
 - Remove device identifiers, labels and raw media errors from core audio-capture diagnostics.

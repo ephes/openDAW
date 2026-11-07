@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Render OAuth provider and communication errors as text; forward correlated callback state.
+
 - Bound serialized crash diagnostics to 100,000 UTF-16 code units, with 8,000 per entry.
 
 - Fence sample preview loads and play failures; release owned Blob URLs on replacement/eject.
