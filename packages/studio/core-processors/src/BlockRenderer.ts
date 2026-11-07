@@ -40,8 +40,8 @@ export class BlockRenderer implements Terminable {
         const {timelineBoxAdapter} = context
         const {box: {bpm}, markerTrack} = timelineBoxAdapter
         this.#bpm = bpm.getValue()
-        markerTrack.subscribe(() => this.#someMarkersChanged = true)
         this.#terminator.ownAll(
+            markerTrack.subscribe(() => this.#someMarkersChanged = true),
             bpm.subscribe((owner) => {
                 if (this.#optTempoAutomation.isEmpty()) {
                     this.#bpm = owner.getValue()
@@ -76,6 +76,7 @@ export class BlockRenderer implements Terminable {
 
     process(procedure: Procedure<ProcessInfo>): void {
         let markerChanged = false
+        const handledCallbackPositions = new Set<ppqn>()
 
         const {timeInfo, timelineBoxAdapter: {box: timelineBox, markerTrack}, preferences: {settings}} = this.#context
         const pauseOnLoopDisabled = settings.playback.pauseOnLoopDisabled
@@ -150,7 +151,8 @@ export class BlockRenderer implements Terminable {
                 // --- ARM PLAYING ---
                 if (this.#callbacks.keyCount() > 0) {
                     for (const position of this.#callbacks.keys()) {
-                        if (p0 < position && p1 > position && position < actionPosition) {
+                        if (p0 <= position && p1 > position && position < actionPosition
+                            && !handledCallbackPositions.has(position)) {
                             action = {type: "callback", position, callbacks: this.#callbacks.get(position)}
                             actionPosition = position
                         }
@@ -215,6 +217,7 @@ export class BlockRenderer implements Terminable {
                                 releaseBlock()
                             } else {
                                 p0 = action.target
+                                handledCallbackPositions.clear()
                                 discontinuous = true
                             }
                             break
@@ -227,6 +230,7 @@ export class BlockRenderer implements Terminable {
                                 if (++this.#currentMarker[1] < prev.plays || prev.plays === 0) {
                                     advanceToEvent()
                                     p0 = prev.position
+                                    handledCallbackPositions.clear()
                                     discontinuous = true
                                 } else {
                                     this.#currentMarker = [next, 0]
@@ -237,7 +241,11 @@ export class BlockRenderer implements Terminable {
                         }
                         case "callback": {
                             advanceToEvent()
-                            action.callbacks.forEach(callback => callback())
+                            handledCallbackPositions.add(action.position)
+                            const {position, callbacks} = action
+                            Array.from(callbacks).forEach(callback => {
+                                if (this.#callbacks.containsEntry(position, callback)) {callback()}
+                            })
                             break
                         }
                         case "tempo": {

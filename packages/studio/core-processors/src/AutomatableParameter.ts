@@ -71,5 +71,9 @@ export class AutomatableParameter<T extends PrimitiveValues = any> implements Te
     own<T extends Terminable>(terminable: T): T {return this.#terminator.own<T>(terminable)}
     ownAll<T extends Terminable>(...terminables: T[]): void {this.#terminator.ownAll<T>(...terminables)}
     spawn(): Terminator {return this.#terminator.spawn()}
-    terminate(): void {this.#terminator.terminate()}
+    terminate(): void {
+        this.#broadcasting.ifSome(broadcasting => broadcasting.terminate())
+        this.#broadcasting = Option.None
+        this.#terminator.terminate()
+    }
 }
