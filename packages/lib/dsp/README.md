@@ -110,3 +110,8 @@ Fade buffers sample the half-open interval `[start,end)` at `start+i*(end-start)
 matching `gainAt` for curved and overlapping fades, and leave samples beyond the count untouched.
 Spectral tests use deterministic bin-centered stereo sines and real FFT/window dependencies;
 RMS tests compare scalar/block calls to an independent FIFO energy oracle.
+
+Pulse tests cover finite positive sample rates, frequencies from zero through Nyquist (higher
+positive values are capped), and duty widths clamped to [0,1]. One-harmonic cases have analytical
+expectations; reset and pitch-change tests check deterministic state. C64Noise tests cover finite
+nonnegative clocks, including fractional and multiple wraps, against an integer LFSR reference.
