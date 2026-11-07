@@ -15,6 +15,7 @@ export class ProjectProfile {
 
     #saved: boolean
     #hasChanges: boolean = false
+    #metaGeneration: number = 0
 
     constructor(uuid: UUID.Bytes,
                 project: Project,
@@ -36,37 +37,40 @@ export class ProjectProfile {
     get cover(): Option<ArrayBuffer> {return this.#cover}
 
     async save(): Promise<void> {
+        if (!this.#saved) {throw new Error("Project has not been saved")}
         this.updateModifyDate()
         this.#project.editing.mark()
-        return this.#saved
-            ? ProjectProfile.#writeFiles(this).then(() => {
-                this.#hasChanges = false
-                this.#project.editing.markSaved()
-            })
-            : Promise.reject("Project has not been saved")
+        this.#hasChanges = true
+        const generation = this.#metaGeneration
+        const bytes = await ProjectProfile.#writeFiles(this)
+        this.#finishSave(bytes, generation)
     }
 
     async saveAs(meta: ProjectMeta): Promise<Option<ProjectProfile>> {
-        Object.assign(this.meta, meta)
-        this.updateModifyDate()
+        const nextMeta = structuredClone(Object.assign({}, this.meta, meta, {modified: new Date().toISOString()}))
         if (this.#saved) {
-            // Copy project
-            const uuid = UUID.generate()
-            const project = this.project.copy()
-            const meta = ProjectMeta.copy(this.meta)
-            const profile = new ProjectProfile(uuid, project, meta, Option.None, true)
-            await ProjectProfile.#writeFiles(profile)
+            const profile = new ProjectProfile(UUID.generate(), this.project.copy(), nextMeta,
+                this.cover.map(bytes => bytes.slice(0)), true)
+            await profile.save()
             return Option.wrap(profile)
-        } else {
-            this.#project.editing.mark()
-            return ProjectProfile.#writeFiles(this).then(() => {
-                this.#saved = true
-                this.#hasChanges = false
-                this.#project.editing.markSaved()
-                this.#metaUpdated.notify(this.meta)
-                return Option.None
-            })
         }
+        this.#project.editing.mark()
+        this.#hasChanges = true
+        const generation = this.#metaGeneration
+        const bytes = await ProjectProfile.#writeFiles(this, nextMeta)
+        this.#saved = true
+        if (this.#metaGeneration === generation) {Object.assign(this.meta, nextMeta)}
+        this.#finishSave(bytes, generation)
+        this.#metaUpdated.notify(this.meta)
+        return Option.None
+    }
+
+    #finishSave(bytes: Uint8Array, generation: number): void {
+        // Only mark the live graph saved if it still equals the persisted revision.
+        const current = new Uint8Array(this.project.toArrayBuffer())
+        const sameGraph = current.length === bytes.length && current.every((value, index) => value === bytes[index])
+        this.#hasChanges = !sameGraph || this.#metaGeneration !== generation
+        if (sameGraph) {this.#project.editing.markSaved()}
     }
 
     saved(): boolean {return this.#saved}
@@ -78,12 +82,14 @@ export class ProjectProfile {
 
     updateCover(cover: Option<ArrayBuffer>): void {
         this.#cover = cover
+        this.#metaGeneration++
         this.#hasChanges = true
     }
 
     updateMetaData<KEY extends keyof ProjectMeta>(key: KEY, value: ProjectMeta[KEY]): void {
         if (this.meta[key] === value) {return}
         this.meta[key] = value
+        this.#metaGeneration++
         this.#hasChanges = true
         this.#metaUpdated.notify(this.meta)
     }
@@ -100,22 +106,23 @@ export class ProjectProfile {
         return `{uuid: ${UUID.toString(this.uuid)}, meta: ${JSON.stringify(this.meta)}}`
     }
 
-    static async #writeFiles({uuid, project, meta, cover}: ProjectProfile): Promise<void> {
+    static async #writeFiles({uuid, project, meta, cover}: ProjectProfile, snapshotMeta: ProjectMeta = meta): Promise<Uint8Array> {
         // Encode one revision before waiting for another storage owner.
         const projectBytes = new Uint8Array(project.toArrayBuffer())
-        const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
+        const metaBytes = new TextEncoder().encode(JSON.stringify(snapshotMeta))
         const coverBytes = cover.map(bytes => new Uint8Array(bytes.slice(0)))
         return navigator.locks.request(`opendaw:storage:${ProjectPaths.Folder}`, async () => {
             const results = await Promise.allSettled([
                 Workers.Opfs.write(ProjectPaths.projectFile(uuid), projectBytes),
                 Workers.Opfs.write(ProjectPaths.projectMeta(uuid), metaBytes),
                 coverBytes.match({
-                    none: () => Promise.resolve(),
+                    none: () => Workers.Opfs.delete(ProjectPaths.projectCover(uuid)),
                     some: bytes => Workers.Opfs.write(ProjectPaths.projectCover(uuid), bytes)
                 })
             ])
             const failed = results.find(result => result.status === "rejected")
             if (failed?.status === "rejected") {throw failed.reason}
+            return projectBytes
         })
     }
 }

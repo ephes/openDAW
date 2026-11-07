@@ -195,3 +195,16 @@ Provider and communication errors render as text. Authentication diagnostics omi
 codes, bearer tokens and raw provider/handler errors. Dropbox retains PKCE.
 Cancel in the studio if a provider popup closes before redirect: strict COOP isolation
 severs its cross-origin window proxy, preventing reliable opener-side close observation.
+
+## Local project saves
+
+Saves serialize graph, metadata and owned cover bytes before waiting for the shared
+project-storage Web Lock. Completion marks the graph saved only if its current
+serialized bytes still match that snapshot; metadata/cover generation changes stay
+dirty. A graph that differs on completion stays conservatively dirty until a later
+successful save, including subsequent undo. Initial Save As publishes its requested
+metadata only after a successful write and only if metadata was not edited meanwhile.
+Save As of an existing project deep-copies metadata and cover bytes; it never edits
+the original profile. Saving an absent cover deletes its owned image file. Deletion
+is idempotent in OPFS; other errors reject the save and retain dirty state. Ordinary
+project files are still written in place; this does not promise crash-atomic saves.
