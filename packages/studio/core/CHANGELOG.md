@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Replay soundfont terminal errors, report library-load failures, and fence invalidated loader generations.
+
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
 
 - Remove device identifiers, labels and raw media errors from core audio-capture diagnostics.

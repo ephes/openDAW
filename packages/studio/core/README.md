@@ -30,3 +30,14 @@ other MIDI or app output-device diagnostic sources have been sanitized. The stud
 at most 100,000 serialized UTF-16 code units (8,000 per entry), including metadata
 and JSON escaping. Recent bounded context survives; large arguments are truncated
 and structured serialization has a bounded traversal.
+
+### Soundfont loader completion
+
+Late subscribers synchronously receive loaded or error state. Loaded subscriptions
+are empty; error subscriptions stay registered so device/UI observers can see an
+invalidate retry. One-shot export waiters terminate their returned subscription,
+including when a terminal callback fires synchronously.
+Cached and fetched library-import failures publish a bounded retryable error.
+Invalidate starts a new generation; earlier storage/fetch/library continuations and
+progress cannot replace the new loader's state, font or metadata or start stale
+follow-up work. Project export handles synchronous terminal subscriptions safely.

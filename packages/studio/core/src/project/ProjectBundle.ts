@@ -1,4 +1,4 @@
-import {asDefined, Exec, isDefined, Option, panic, Progress, RuntimeNotifier, UUID} from "@opendaw/lib-std"
+import {asDefined, Exec, isDefined, Option, panic, Progress, RuntimeNotifier, Terminable, UUID} from "@opendaw/lib-std"
 import {AudioFileBox, SoundfontFileBox} from "@opendaw/studio-boxes"
 import {SampleLoader, SoundfontLoader} from "@opendaw/studio-adapters"
 import {Project} from "./Project"
@@ -118,15 +118,20 @@ export namespace ProjectBundle {
             return exec()
         } else {
             return new Promise<void>((resolve, reject) => {
-                const subscription = loader.subscribe(state => {
+                let subscription = Terminable.Empty
+                let settled = false
+                subscription = loader.subscribe(state => {
                     if (state.type === "loaded") {
+                        settled = true
                         resolve()
                         subscription.terminate()
                     } else if (state.type === "error") {
+                        settled = true
                         reject(new Error(state.reason))
                         subscription.terminate()
                     }
                 })
+                if (settled) {subscription.terminate()}
             }).then(() => exec())
         }
     }
@@ -141,15 +146,20 @@ export namespace ProjectBundle {
             return exec()
         } else {
             return new Promise<void>((resolve, reject) => {
-                const subscription = loader.subscribe(state => {
+                let subscription = Terminable.Empty
+                let settled = false
+                subscription = loader.subscribe(state => {
                     if (state.type === "loaded") {
+                        settled = true
                         resolve()
                         subscription.terminate()
                     } else if (state.type === "error") {
+                        settled = true
                         reject(new Error(state.reason))
                         subscription.terminate()
                     }
                 })
+                if (settled) {subscription.terminate()}
             }).then(() => exec())
         }
     }
