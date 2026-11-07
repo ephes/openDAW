@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preflight BPM scan domains/counts and representable progress before allocation, with bounded synthetic scan regressions.
+
 - Cover transient marker invariants, position-aware musical durations and adjacent half-open Fragmentor windows.
 
 - Add oscillator API/partition parity, LFO phase/reset and Tidal periodicity/boundary reference tests.

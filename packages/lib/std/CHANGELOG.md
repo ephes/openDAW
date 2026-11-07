@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add isolated RuntimeSignal lifetime/nested-dispatch and deterministic TimeSpan estimate/unit-boundary tests.
+
 - Reject empty/collapsed mapping domains, define singleton coordinates, and validate continuous inverses and pool ownership.
 
 - Correct shared-stream ownership, recover from callback/serialization failures, and enforce fixed schema array shapes.
