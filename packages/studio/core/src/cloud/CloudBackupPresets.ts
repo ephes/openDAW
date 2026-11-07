@@ -1,3 +1,4 @@
+import {parsePresetsCatalog, validatePresetsCatalog} from "./catalogs"
 import {Arrays, Errors, panic, Procedure, Progress, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {network, Promises} from "@opendaw/lib-runtime"
 import {CloudHandler} from "./CloudHandler"
@@ -18,10 +19,10 @@ export class CloudBackupPresets {
         log("Collecting all preset domains...")
         const [stock, local, cloud] = await Promise.all([
             OpenPresetAPI.get().list(),
-            PresetStorage.readIndex(),
+            PresetStorage.readIndex().then(value => validatePresetsCatalog(value)),
             cloudHandler.download(CloudBackupPresets.RemoteCatalogPath)
-                .then(json => JSON.parse(new TextDecoder().decode(json)))
-                .catch(reason => reason instanceof Errors.FileNotFound ? Arrays.empty() : panic(reason))
+                .then(json => parsePresetsCatalog(json))
+                .catch(reason => reason instanceof Errors.FileNotFound ? [] : panic(reason))
         ])
         return new CloudBackupPresets(cloudHandler, {stock, local, cloud}, log).#start(progress)
     }

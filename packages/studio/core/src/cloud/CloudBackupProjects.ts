@@ -1,3 +1,4 @@
+import {parseProjectsCatalog, validateProjectsCatalog} from "./catalogs"
 import {
     Arrays,
     Errors,
@@ -41,10 +42,10 @@ export class CloudBackupProjects {
                 .then(list => list.reduce((record: Projects, entry: ProjectStorage.ListEntry) => {
                     record[UUID.toString(entry.uuid)] = Objects.include(entry.meta, ...catalogFields)
                     return record
-                }, {})),
+                }, {})).then(value => validateProjectsCatalog(value)),
             cloudHandler.download(CloudBackupProjects.RemoteCatalogPath)
-                .then(json => JSON.parse(new TextDecoder().decode(json)))
-                .catch(reason => reason instanceof Errors.FileNotFound ? Arrays.empty() : panic(reason))
+                .then(json => parseProjectsCatalog(json))
+                .catch(reason => reason instanceof Errors.FileNotFound ? {} : panic(reason))
         ])
         return new CloudBackupProjects(cloudHandler, {local, cloud}, log).#start(progress)
     }

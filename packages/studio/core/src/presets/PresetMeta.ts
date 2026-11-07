@@ -58,7 +58,7 @@ const CommonPresetSchema = z.object({
     uuid: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
     name: z.string(), description: z.string(), created: z.number().finite(), modified: z.number().finite(),
     hasTimeline: z.boolean().optional()
-})
+}).passthrough()
 const instrumentKey = z.string().refine(key => Object.hasOwn(InstrumentFactories.Named, key))
 export const PresetMetaSchema = z.discriminatedUnion("category", [
     CommonPresetSchema.extend({category: z.literal("instrument"), device: instrumentKey}),

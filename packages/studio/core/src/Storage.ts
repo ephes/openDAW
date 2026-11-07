@@ -1,7 +1,6 @@
 import {UUID} from "@opendaw/lib-std"
 import {Workers} from "./Workers"
-import {Promises} from "@opendaw/lib-runtime"
-import {deleteWithJournal} from "./deletionJournal"
+import {deleteWithJournal, readTrashedIds} from "./deletionJournal"
 
 export abstract class Storage<ITEM extends { uuid: UUID.String } & META, META, NEW, PARTS> {
     protected constructor(readonly folder: string) {}
@@ -16,8 +15,7 @@ export abstract class Storage<ITEM extends { uuid: UUID.String } & META, META, N
     }
 
     async loadTrashedIds(): Promise<Array<UUID.String>> {
-        const {status, value} = await Promises.tryCatch(Workers.Opfs.read(`${this.folder}/trash.json`))
-        return status === "rejected" ? [] : JSON.parse(new TextDecoder().decode(value))
+        return readTrashedIds(this.folder)
     }
 
     async saveTrashedIds(ids: ReadonlyArray<UUID.String>): Promise<void> {

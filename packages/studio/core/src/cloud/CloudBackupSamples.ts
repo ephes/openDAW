@@ -1,3 +1,4 @@
+import {parseSamplesCatalog, validateSamplesCatalog} from "./catalogs"
 import {Arrays, Errors, panic, Procedure, Progress, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {network, Promises} from "@opendaw/lib-runtime"
 import {SamplePeaks} from "@opendaw/lib-fusion"
@@ -22,10 +23,10 @@ export class CloudBackupSamples {
         log("Collecting all sample domains...")
         const [stock, local, cloud] = await Promise.all([
             OpenSampleAPI.get().all(),
-            SampleStorage.get().list({strict: true}),
+            SampleStorage.get().list({strict: true}).then(value => validateSamplesCatalog(value)),
             cloudHandler.download(CloudBackupSamples.RemoteCatalogPath)
-                .then(json => JSON.parse(new TextDecoder().decode(json)))
-                .catch(reason => reason instanceof Errors.FileNotFound ? Arrays.empty() : panic(reason))
+                .then(json => parseSamplesCatalog(json))
+                .catch(reason => reason instanceof Errors.FileNotFound ? [] : panic(reason))
         ])
         return new CloudBackupSamples(cloudHandler, {stock, local, cloud}, log).#start(progress)
     }
