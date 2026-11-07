@@ -3,8 +3,8 @@
 import {isDefined, UUID} from "@opendaw/lib-std"
 
 export namespace Browser {
-    const hasLocation = typeof self !== "undefined" && "location" in self && typeof self.location !== undefined
-    const hasNavigator = typeof self !== "undefined" && "navigator" in self && typeof self.navigator !== undefined
+    const hasLocation = typeof self !== "undefined" && "location" in self && typeof self.location !== "undefined"
+    const hasNavigator = typeof self !== "undefined" && "navigator" in self && typeof self.navigator !== "undefined"
     export const isLocalHost = () => hasLocation && location.host.includes("localhost")
     export const isMacOS = () => hasNavigator && navigator.userAgent.includes("Mac OS X")
     export const isWindows = () => hasNavigator && navigator.userAgent.includes("Windows")
@@ -12,7 +12,7 @@ export namespace Browser {
     export const isFirefox = () => hasNavigator && navigator.userAgent.toLowerCase().includes("firefox")
     export const isMobile = (): boolean => {
         if (!hasNavigator) {return false}
-        if ((navigator as any).userAgentData?.mobile === true) {return true}
+        if ((navigator as Navigator & {userAgentData?: {mobile?: boolean}}).userAgentData?.mobile === true) {return true}
         return /iPhone|iPod|Android.*Mobile|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent)
     }
     export const isWeb = () => !isTauriApp()

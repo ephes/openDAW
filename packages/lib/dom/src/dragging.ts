@@ -29,6 +29,8 @@ export namespace Dragging {
         pointerLockThreshold?: number
     }
 
+    // Mutated by the studio preference subscriber in another package.
+    // eslint-disable-next-line prefer-const
     export let usePointerLock = false
 
     export const attach = <T extends PointerCaptureTarget>(target: T,

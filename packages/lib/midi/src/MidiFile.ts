@@ -9,7 +9,7 @@ export namespace MidiFile {
 
     class MidiFileEncoder {
         static writeVarLen(output: ByteArrayOutput, value: number): void {
-            let bytes: Array<byte> = []
+            const bytes: Array<byte> = []
             while (value > 0x7F) {
                 bytes.push((value & 0x7F) | 0x80)
                 value >>= 7

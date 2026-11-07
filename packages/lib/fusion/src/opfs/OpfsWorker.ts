@@ -17,9 +17,10 @@ export namespace OpfsWorker {
                         handle.truncate(data.length)
                         handle.write(data.buffer as ArrayBuffer, {at: 0})
                         handle.flush()
-                    } catch (reason: any) {
+                    } catch (reason: unknown) {
+                        const error = reason as {name?: string, message?: string, stack?: string} | null | undefined
                         console.error("OPFS write failed:",
-                            reason?.name, reason?.message, reason?.stack ?? "(no stack trace)")
+                            error?.name, error?.message, error?.stack ?? "(no stack trace)")
                         throw reason
                     } finally {
                         handle.close()
@@ -91,7 +92,7 @@ export namespace OpfsWorker {
             }
 
             async #acquireLock<T>(path: string, operation: () => Promise<T>): Promise<T> {
-                while (true) {
+                for (;;) {
                     const existingLock = this.#locks.get(path)
                     if (isNotUndefined(existingLock)) {
                         await existingLock

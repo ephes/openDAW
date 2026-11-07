@@ -152,9 +152,7 @@ export class LiveStreamBroadcaster {
 
     #updateAvailable(): Option<ArrayBufferLike> {
         if (this.#invalid) {
-            try {
-                this.#availableUpdate = Option.wrap(this.#compileStructure())
-            } catch (reason: unknown) {throw reason}
+            this.#availableUpdate = Option.wrap(this.#compileStructure())
             this.#invalid = false
         }
         if (this.#availableUpdate.nonEmpty()) {

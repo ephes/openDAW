@@ -53,7 +53,7 @@ export namespace Preferences {
         // Full parse failed (schema changed). Parse each section independently to preserve valid user settings.
         const merged: Record<string, unknown> = {}
         for (const sectionKey of Object.keys(defaults as Record<string, unknown>)) {
-            const sectionSchema = (zod as z.ZodObject<any>).shape?.[sectionKey]
+            const sectionSchema = (zod as z.ZodObject<Record<string, z.ZodType>>).shape?.[sectionKey]
             if (isDefined(sectionSchema) && isDefined((value as Record<string, unknown>)[sectionKey])) {
                 const sectionResult = sectionSchema.safeParse((value as Record<string, unknown>)[sectionKey])
                 merged[sectionKey] = sectionResult.success

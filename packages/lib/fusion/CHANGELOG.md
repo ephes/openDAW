@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## Unreleased
+
+- Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
+
 ## [0.0.94](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-fusion@0.0.93...@opendaw/lib-fusion@0.0.94) (2026-05-22)
 
 **Note:** Version bump only for package @opendaw/lib-fusion

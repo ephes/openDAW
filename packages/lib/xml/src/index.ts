@@ -2,14 +2,14 @@ import {asDefined, assert, Class, int, isDefined, Maybe, panic, WeakMaps} from "
 
 export namespace Xml {
     type Meta =
-        | { type: "class", name: string, clazz: Class }
-        | { type: "element", name: string, clazz: Class }
-        | { type: "element-ref", clazz: Class, name: string | null }
+        | { type: "class", name: string, clazz: Class<unknown> }
+        | { type: "element", name: string, clazz: Class<unknown> }
+        | { type: "element-ref", clazz: Class<unknown>, name: string | null }
         | { type: "attribute", name: string, validator?: AttributeValidator<unknown> }
     type MetaMap = Map<PropertyKey, Meta>
 
-    const ClassMap = new Map<string, Class>()
-    const MetaClassMap = new WeakMap<Function, MetaMap>()
+    const ClassMap = new Map<string, Class<unknown>>()
+    const MetaClassMap = new WeakMap<Class<unknown>, MetaMap>()
 
     export const Declaration = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
 
@@ -39,22 +39,22 @@ export namespace Xml {
     export const NumberOptional: AttributeValidator<number> = {required: false, parse: value => Number(value)}
 
     export const Attribute = (name: string, validator?: AttributeValidator<unknown>): PropertyDecorator =>
-        (target: Object, propertyKey: PropertyKey) =>
+        (target: object, propertyKey: PropertyKey) =>
             WeakMaps.createIfAbsent(MetaClassMap, target.constructor, () => new Map<PropertyKey, Meta>())
                 .set(propertyKey, {type: "attribute", name, validator})
 
-    export const Element = (name: string, clazz: Class): PropertyDecorator =>
-        (target: Object, propertyKey: PropertyKey) =>
+    export const Element = (name: string, clazz: Class<unknown>): PropertyDecorator =>
+        (target: object, propertyKey: PropertyKey) =>
             WeakMaps.createIfAbsent(MetaClassMap, target.constructor, () => new Map<PropertyKey, Meta>())
                 .set(propertyKey, {type: "element", name, clazz})
 
-    export const ElementRef = (clazz: Class, nodeName?: string): PropertyDecorator =>
-        (target: Object, propertyKey: PropertyKey) =>
+    export const ElementRef = (clazz: Class<unknown>, nodeName?: string): PropertyDecorator =>
+        (target: object, propertyKey: PropertyKey) =>
             WeakMaps.createIfAbsent(MetaClassMap, target.constructor, () => new Map<PropertyKey, Meta>())
                 .set(propertyKey, {type: "element-ref", clazz, name: nodeName ?? null})
 
     export const Class = (tagName: string): ClassDecorator => {
-        return (constructor: Function): void => {
+        return (constructor: Class<unknown>): void => {
             assert(!ClassMap.has(tagName), `${tagName} is already registered as a class.`)
             ClassMap.set(tagName, constructor)
             WeakMaps.createIfAbsent(MetaClassMap, constructor, () => new Map<PropertyKey, Meta>())
@@ -62,15 +62,15 @@ export namespace Xml {
         }
     }
 
-    export const element = <T extends {}>(object: T, clazz: Class<T>): T => {
+    export const element = <T extends NonNullable<unknown>>(object: T, clazz: Class<T>): T => {
         assert(clazz.length === 0, "constructor cannot have arguments")
         return Object.freeze(Object.create(clazz.prototype, Object.fromEntries(
             Object.entries(object).map(([key, value]) => [key, {value, enumerable: true}]))))
     }
 
-    export const toElement = (tagName: string, object: Record<string, any>): Element => {
+    export const toElement = (tagName: string, object: object): Element => {
         const doc = document.implementation.createDocument(null, null)
-        const getClassTagName = (constructor: Function): string => {
+        const getClassTagName = (constructor: Class<unknown>): string => {
             const tagMeta = MetaClassMap.get(constructor)?.get("class")
             if (tagMeta?.type === "class") {
                 return tagMeta.name
@@ -78,7 +78,7 @@ export namespace Xml {
             return panic(`Missing @Xml.Class decorator on ${constructor.name}`)
         }
 
-        const visit = (tagName: string, object: Record<string, any>): Element => {
+        const visit = (tagName: string, object: object): Element => {
             const element = doc.createElement(tagName)
             Object.entries(object).forEach(([key, value]) => {
                 if (!isDefined(value)) return
@@ -104,7 +104,7 @@ export namespace Xml {
                         child.textContent = value
                         element.appendChild(child)
                     } else {
-                        element.appendChild(visit(meta.name, value))
+                        element.appendChild(visit(meta.name, value as Record<string, unknown>))
                     }
                 } else if (meta.type === "element-ref") {
                     if (!Array.isArray(value)) return panic("ElementRef must be an array of items.")
@@ -148,7 +148,7 @@ export namespace Xml {
                 indent = 0
             } else if (line.match(/^<\/\w/) && pad > 0) {
                 pad -= 1
-            } else if (line.match(/^<\w[^>]*[^\/]>.*$/)) {
+            } else if (line.match(/^<\w[^>]*[^/]>.*$/)) {
                 indent = 1
             } else {
                 indent = 0
@@ -159,10 +159,10 @@ export namespace Xml {
         }).join("\n")
     }
 
-    export const resolveMeta = (target: Function, propertyKey: PropertyKey): Maybe<Meta> =>
+    export const resolveMeta = (target: Class<unknown>, propertyKey: PropertyKey): Maybe<Meta> =>
         collectMeta(target)?.get(propertyKey)
 
-    export const collectMeta = (target: Function): Maybe<MetaMap> => {
+    export const collectMeta = (target: Class<unknown>): Maybe<MetaMap> => {
         const metaMap: MetaMap = new Map<PropertyKey, Meta>()
         while (isDefined(target)) {
             const meta = MetaClassMap.get(target)
@@ -195,14 +195,14 @@ export namespace Xml {
         return result
     }
 
-    export const parse = <T extends {}>(xml: string, clazz: Class<T>): T => {
-        const deserialize = <T extends {}>(element: Element, clazz: Class<unknown>): T => {
-            const instance = Object.create(clazz.prototype) as T
+    export const parse = <T extends NonNullable<unknown>>(xml: string, clazz: Class<T>): T => {
+        const deserialize = <T extends NonNullable<unknown>>(element: Element, clazz: Class<unknown>): T => {
+            const instance = Object.create(clazz.prototype as object) as T
             const classMeta = asDefined(Xml.collectMeta(clazz))
-            const classMetaDict: Record<keyof T, Meta> = Array.from(classMeta).reduce((acc: any, [key, metaInfo]) => {
+            const classMetaDict = Array.from(classMeta).reduce((acc: Record<PropertyKey, Meta>, [key, metaInfo]) => {
                 acc[key] = metaInfo
                 return acc
-            }, {})
+            }, {}) as Record<keyof T, Meta>
             const keys = [...classMeta.keys()].filter(key => key !== "class") as Array<keyof T>
 
             for (const key of keys) {

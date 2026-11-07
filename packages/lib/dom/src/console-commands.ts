@@ -16,7 +16,7 @@ export namespace ConsoleCommands {
         return observableValue
     }
 
-    export const exportAccessor = (path: DotPath, getter: Provider<unknown>, setter: Procedure<any> = EmptyProcedure): void =>
+    export const exportAccessor = <T>(path: DotPath, getter: Provider<T>, setter: Procedure<T> = EmptyProcedure): void =>
         store(path, {
             get: () => {
                 try {
@@ -40,14 +40,14 @@ export namespace ConsoleCommands {
             configurable: false
         })
 
-    const global: any = (() => {try {return self} catch (_: unknown) {return {}}})()
-    const scope = (global["opendaw"] ??= {}) as any
-    const store = (path: string, attributes: PropertyDescriptor & ThisType<any>) => {
+    const global: Record<string, unknown> = (() => {try {return self as unknown as Record<string, unknown>} catch (_: unknown) {return {}}})()
+    const scope = (global["opendaw"] ??= {}) as Record<string, unknown>
+    const store = (path: string, attributes: PropertyDescriptor & ThisType<unknown>) => {
         const levels = path.split(".")
         const name = levels.splice(-1)[0]
         let current = scope
         for (const level of levels) {
-            current = (current[level] ??= {})
+            current = (current[level] ??= {}) as Record<string, unknown>
         }
         Object.defineProperty(current, name, attributes)
         console.debug(`Console command 'opendaw.${path}' exported`)

@@ -4,7 +4,7 @@ import {SupportedSvgTags} from "./supported-svg-tags"
 import {Inject} from "./inject"
 import {DomElement, JsxValue} from "./types"
 
-type Factory = (attributes: Readonly<Record<string, any>>, children?: ReadonlyArray<JsxValue>) => JsxValue
+type Factory = (attributes: Readonly<Record<string, unknown>>, children?: ReadonlyArray<JsxValue>) => JsxValue
 type TagOrFactoryOrElement = string | Factory | DomElement
 
 const EmptyAttributes = Object.freeze({})
@@ -17,7 +17,7 @@ const EmptyChildren: ReadonlyArray<JsxValue> = Object.freeze([])
  * Most magic happens here, but we try to keep it civil.
  */
 export function createElement(tagOrFactoryOrElement: TagOrFactoryOrElement,
-                              attributes: Readonly<Record<string, any>> | null,
+                              attributes: Readonly<Record<string, unknown>> | null,
                               ...children: ReadonlyArray<JsxValue>): JsxValue {
     if (tagOrFactoryOrElement instanceof HTMLElement || tagOrFactoryOrElement instanceof SVGElement) {
         // already an element > early out
@@ -82,7 +82,7 @@ export const appendChildren = (element: DomElement, ...children: ReadonlyArray<J
     })
 }
 
-const transferAttributes = (element: DomElement, attributes: Readonly<Record<string, any>>) => {
+const transferAttributes = (element: DomElement, attributes: Readonly<Record<string, unknown>>) => {
     Object.entries(attributes).forEach(([key, value]: [string, unknown]) => {
         if (value === undefined) {return}
         if (key === "class" || key === "className") {

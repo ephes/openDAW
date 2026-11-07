@@ -34,8 +34,8 @@ describe("Task type plumbing", () => {
 
     it("type-level: registry derivation produces typed TaskInput and TaskOutput", () => {
         type LocalRegistry = {readonly "fake-task": typeof FakeTask}
-        type DerivedInput = LocalRegistry["fake-task"] extends TaskDefinition<infer I, unknown> ? I : never
-        type DerivedOutput = LocalRegistry["fake-task"] extends TaskDefinition<unknown, infer O> ? O : never
+        type DerivedInput = LocalRegistry["fake-task"] extends TaskDefinition<infer I, infer _O> ? I : never
+        type DerivedOutput = LocalRegistry["fake-task"] extends TaskDefinition<infer _I, infer O> ? O : never
         const inputCheck: DerivedInput = {audio: new Float32Array(0), sampleRate: 44100}
         const outputCheck: DerivedOutput = {drums: new Float32Array(0)}
         expect(inputCheck.sampleRate).toBe(44100)
