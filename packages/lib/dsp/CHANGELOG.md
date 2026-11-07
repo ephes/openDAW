@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Clear compressor delay, lookahead, detection and smoothing histories on reset while preserving configuration.
+
 - Initialize compressor crest analysis from selected squared samples, preserve empty-span state, and correct smoothing time constants to input weights.
 
 - Preflight BPM scan domains/counts and representable progress before allocation, with bounded synthetic scan regressions.

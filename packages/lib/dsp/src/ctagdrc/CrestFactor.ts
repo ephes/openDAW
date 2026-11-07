@@ -70,4 +70,14 @@ export class CrestFactor {
     getAvgRelease(): number {
         return this.#avgReleaseTime
     }
+
+    reset(): void {
+        this.#attackTimeInSeconds = 0.0
+        this.#releaseTimeInSeconds = 0.14
+        this.#avgAttackTime = 0.0
+        this.#avgReleaseTime = 0.14
+        this.#peakState = 0.0
+        this.#rmsState = 0.0
+        this.#cFactor = 0.0
+    }
 }

@@ -79,4 +79,12 @@ export class LevelDetector {
             if (this.#autoRelease) this.setRelease(this.#releaseSmoothingFilter.getState())
         }
     }
+
+    reset(): void {
+        this.#state01 = 0.0
+        this.#state02 = 0.0
+        this.#crestFactor.reset()
+        this.#attackSmoothingFilter.reset()
+        this.#releaseSmoothingFilter.reset()
+    }
 }

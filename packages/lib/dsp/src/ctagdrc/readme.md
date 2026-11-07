@@ -99,3 +99,7 @@ soft-knee derivative continuity and independent negative-attenuation one-pole re
 
 - Original CTAGDRC Project: https://github.com/p-hlp/CTAGDRC
 - Original Demo Video: https://www.youtube.com/watch?v=ZFKPXIpGRq8
+
+Stateful compressor components expose `reset()` to discard stream history while retaining settings.
+LookAhead requires positive delay with at least one sample (`floor(sampleRate*delay) >= 1`); DelayLine
+supports zero-delay bypass. Synthetic stream tests use independent FIFO and negative-pulse ramp references.

@@ -22,3 +22,6 @@ Strategies clear only their requested output span; Voicing renders tails into a 
 before summing them into the current strategy output. Retirement waits for the last sounding voice.
 Unison preserves parent gain in the sum of squared child gains and centers spreads on the parent.
 The initial placeholder strategy has no tail and is never rendered after strategy selection.
+
+Compressor reset preserves parameters and clears all stream histories; warm/reset processing must
+match a fresh instance for silence and new stereo signals, with lookahead and automatic modes.

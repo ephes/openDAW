@@ -72,4 +72,10 @@ export class LookAhead {
             if (index < 0) index += this.#bufferSize
         }
     }
+
+    reset(): void {
+        this.#buffer.fill(0.0)
+        this.#writePosition = 0
+        this.#numLastPushed = 0
+    }
 }
