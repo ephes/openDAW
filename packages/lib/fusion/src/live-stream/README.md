@@ -222,3 +222,18 @@ subscription.terminate()
 3. **Conditional computation**: Skip expensive operations when no subscribers
 4. **Animation frame timing**: Receiver runs at display refresh rate, not audio rate
 5. **Shared memory**: Zero-copy data transfer between threads
+
+## Decoder validation and subscriber lifetime
+
+Structure updates are fully validated before installation. Invalid counts, addresses
+or package types retain the previous decoder/version. Each payload is checked for
+complete scalar/array bytes and the end marker before allocating or dispatching.
+Array subscribers share a cached array while its length stays the same; a changed
+length replaces it. Copy data when retaining a snapshot across frames.
+
+Decoder/subscriber exceptions propagate and stop the current dispatch; later
+subscribers may miss that frame. The cursor and shared lock always reset, discarding
+the failed frame so that the next valid update can proceed.
+
+Run real receiver regression tests with `npm test --workspace=@opendaw/lib-fusion`
+after the root build. Fixtures use synthetic messages/shared buffers.
