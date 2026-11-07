@@ -9,16 +9,14 @@ import * as map from 'lib0/map'
 import * as eventloop from 'lib0/eventloop'
 
 import {callbackHandler, isCallbackSet} from './callback.js'
+import {isAllowedOrigin, sendBounded} from './policy.js'
 
 export const ROOM_CLEANUP_DELAY_MS = 60_000
 
 const CALLBACK_DEBOUNCE_WAIT = parseInt(process.env.CALLBACK_DEBOUNCE_WAIT || '2000')
 const CALLBACK_DEBOUNCE_MAXWAIT = parseInt(process.env.CALLBACK_DEBOUNCE_MAXWAIT || '10000')
 
-const debouncer = eventloop.createDebouncer(CALLBACK_DEBOUNCE_WAIT, CALLBACK_DEBOUNCE_MAXWAIT)
 
-const wsReadyStateConnecting = 0
-const wsReadyStateOpen = 1
 const wsReadyStateClosing = 2 // eslint-disable-line
 const wsReadyStateClosed = 3 // eslint-disable-line
 
@@ -133,6 +131,8 @@ export class WSSharedDoc extends Y.Doc {
         this.awareness.on('update', awarenessChangeHandler)
         this.on('update', /** @type {any} */ (updateHandler))
         if (isCallbackSet) {
+            const debouncer = eventloop.createDebouncer(CALLBACK_DEBOUNCE_WAIT, CALLBACK_DEBOUNCE_MAXWAIT)
+            this.on('destroy', () => debouncer(null))
             this.on('update', (_update, _origin, doc) => {
                 debouncer(() => callbackHandler(/** @type {WSSharedDoc} */ (doc)))
             })
@@ -187,7 +187,6 @@ const messageListener = (conn, doc, message) => {
         }
     } catch (err) {
         console.error(err)
-        // @ts-ignore
         doc.emit('error', [err])
     }
 }
@@ -201,7 +200,6 @@ const closeConn = (doc, conn) => {
         /**
          * @type {Set<number>}
          */
-            // @ts-ignore
         const controlledIds = doc.conns.get(conn)
         doc.conns.delete(conn)
         awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
@@ -233,16 +231,7 @@ const closeConn = (doc, conn) => {
  * @param {Uint8Array} m
  */
 const send = (doc, conn, m) => {
-    if (conn.readyState !== wsReadyStateConnecting && conn.readyState !== wsReadyStateOpen) {
-        closeConn(doc, conn)
-    }
-    try {
-        conn.send(m, {}, err => {
-            err != null && closeConn(doc, conn)
-        })
-    } catch (e) {
-        closeConn(doc, conn)
-    }
+    sendBounded(conn, m, () => closeConn(doc, conn))
 }
 
 const pingTimeout = 30000
@@ -255,17 +244,7 @@ const pingTimeout = 30000
 export const setupWSConnection = (conn, req, {docName = (req.url || '').slice(1).split('?')[0], gc = true} = {}) => {
     console.log("Incoming WS from origin:", req.headers.origin)
 
-    // ✅ Allow only specific origins
-    const allowedOrigins = [
-        'https://opendaw.studio',
-        'https://dev.opendaw.studio',
-        'https://live.opendaw.studio',
-        'https://localhost:8080',
-        'https://inspector.yjs.dev'
-    ]
-    const origin = req.headers.origin
-    if (origin && !allowedOrigins.includes(origin)) {
-        console.warn('Rejected WS connection from origin:', origin)
+    if (!isAllowedOrigin(req.headers.origin)) {
         conn.close()
         return
     }
