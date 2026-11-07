@@ -170,6 +170,7 @@ const htdemucsRun = async (
     input: StemSeparationInput,
     env: TaskEnvironment
 ): Promise<StemSeparationOutput> => {
+    env.signal.ifSome(signal => signal.throwIfAborted())
     if (input.sampleRate !== HTDEMUCS_SAMPLE_RATE) {
         return panic(`htdemucs requires ${HTDEMUCS_SAMPLE_RATE} Hz; got ${input.sampleRate}`)
     }
@@ -215,6 +216,7 @@ const htdemucsRun = async (
             [inputName]: tensor("float32", chunk, [1, channels, window])
         }
         const output = await env.session(feeds)
+        env.signal.ifSome(signal => signal.throwIfAborted())
         const perStem = extractStems(output, env.outputNames, channels, window)
         for (const stem of STEM_ORDER) {
             stemWindows[stem].push(perStem[stem])
@@ -222,6 +224,7 @@ const htdemucsRun = async (
         env.progress(clampUnit((chunkIndex + 1) / plan.starts.length))
     }
 
+    env.signal.ifSome(signal => signal.throwIfAborted())
     // Stitch each stem PER CHANNEL (using the original sample-frame
     // starts), then re-pack the channels into the planar output buffer.
     // Treating the planar window as one stream and scaling starts by

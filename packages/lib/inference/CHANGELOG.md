@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cancellation contract: preserve AbortSignal.reason (including default AbortError); deprecate InferenceCancelledError. Abort shared downloads when their last waiter cancels; release after a failed load is a no-op.
+
+- Share task loads, serialize disposal with session work, and fence cancelled inference results/progress.
+
 - Settle synchronous queue failures, retire failed worker generations, permit startup retries, and make shutdown terminal for owned work.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
