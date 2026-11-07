@@ -78,7 +78,16 @@ This TypeScript port includes the following adaptations:
 - Integration with a web-based audio processing architecture
 - Use of TypeScript private fields (#) and readonly keywords
 
-The core DSP algorithms remain faithful to the original implementation.
+- Crest-factor initialization uses selected squared samples and preserves state for empty spans
+- Time-constant smoothing uses the input-weight convention of this port
+
+## Streaming contracts
+
+Crest analysis uses squared samples from the selected half-open span; empty spans preserve prior averages.
+SmoothingFilter initializes to its first sample. `setAlpha` is the new-input weight;
+`setAlphaWithTime(t)` uses `1-exp(-1/(sampleRate*t))`. Zero time follows input immediately,
+and changing coefficients does not reinitialize history. Tests use analytic transfer curves,
+soft-knee derivative continuity and independent negative-attenuation one-pole references.
 
 ## Credits
 
