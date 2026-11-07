@@ -42,23 +42,38 @@ export class SamplePeaks implements Peaks {
     static from(input: ByteArrayInput): Peaks {
         assert(input.readString() === "PEAKS", "Wrong header")
         const numStages = input.readInt()
+        assert(numStages >= 0 && numStages <= 31 && input.available(numStages * 16 + 12), "Invalid peak stage count")
+        let expectedLength = 0
+        let previousShift = -1
         const stages: Array<Peaks.Stage> = []
         for (let i = 0; i < numStages; i++) {
             const dataOffset = input.readInt()
             const numPeaks = input.readInt()
             const shift = input.readInt()
             input.readInt() // deprecated (was mask)
+            assert(shift >= 0 && shift <= 30 && shift > previousShift && numPeaks >= 0 && dataOffset === expectedLength, "Invalid peak stage layout")
+            previousShift = shift
+            expectedLength += numPeaks
             stages[i] = new Peaks.Stage(shift, numPeaks, dataOffset)
         }
         const numData = input.readInt()
+        assert(numData >= 0 && input.available(numData * 4 + 8), "Invalid peak channel count")
         const data: Array<Int32Array> = []
         for (let i = 0; i < numData; i++) {
-            const array = new Int8Array(input.readInt())
+            const length = input.readInt()
+            assert(length >= 0 && length % 4 === 0 && length / 4 === expectedLength &&
+                input.available(length + (numData - i - 1) * 4 + 8), "Invalid peak data length")
+            const array = new Int8Array(length)
             input.readBytes(array)
             data[i] = new Int32Array(array.buffer)
         }
         const numFrames = input.readInt()
         const numChannels = input.readInt()
+        assert(numFrames >= 0 && numChannels === numData &&
+            (numChannels > 0 || (numFrames === 0 && numStages === 0)), "Invalid peak frame/channel shape")
+        for (const stage of stages) {
+            assert(stage.numPeaks === Math.ceil(numFrames / (2 ** stage.shift)), "Invalid peak frame/stage shape")
+        }
         return new SamplePeaks(stages, data, numFrames, numChannels)
     }
 
@@ -105,7 +120,8 @@ export class SamplePeaks implements Peaks {
         }
         output.writeInt(this.data.length)
         for (let i = 0; i < this.data.length; i++) {
-            const array = new Int8Array(this.data[i].buffer)
+            const view = this.data[i]
+            const array = new Int8Array(view.buffer, view.byteOffset, view.byteLength)
             output.writeInt(array.length)
             output.writeBytes(array)
         }

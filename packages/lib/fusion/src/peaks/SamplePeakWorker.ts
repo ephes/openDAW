@@ -34,6 +34,10 @@ export namespace SamplePeakWorker {
         const numShifts = shifts.length
         const [stages, dataOffset] = initStages(shifts, numFrames)
         const data: Int32Array[] = Arrays.create(() => new Int32Array(dataOffset), numChannels)
+        if (numShifts === 0) {
+            progress(1.0)
+            return new SamplePeaks(stages, data, numFrames, numChannels)
+        }
         const minMask = (1 << stages[0].shift) - 1
         const total = numChannels * numFrames
         let count = 0
@@ -65,6 +69,14 @@ export namespace SamplePeakWorker {
                 }
                 if ((++count & 0xFFFF) === 0) {
                     progress(count / total)
+                }
+            }
+            for (let j = 0; j < numShifts; j++) {
+                const state = states[j]
+                state.min = Math.min(state.min, min)
+                state.max = Math.max(state.max, max)
+                if (state.index < stages[j].numPeaks && state.min !== Number.POSITIVE_INFINITY) {
+                    channelData[stages[j].dataOffset + state.index] = pack(state.min, state.max)
                 }
             }
         }

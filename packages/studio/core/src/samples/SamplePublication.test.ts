@@ -12,7 +12,7 @@ const frames = new Float32Array(new SharedArrayBuffer(8))
 const sample = {
     uuid: UUID.parse(id),
     audio: {frames: [frames], sampleRate: 44100, numberOfFrames: 2, numberOfChannels: 1},
-    peaks: new SamplePeaks([], [], 2, 1).toArrayBuffer() as ArrayBuffer,
+    peaks: new SamplePeaks([], [new Int32Array(0)], 2, 1).toArrayBuffer() as ArrayBuffer,
     meta: {name: "Synthetic", duration: 2 / 44100, sample_rate: 44100, bpm: 0, origin: "import"}
 } as SampleStorage.NewSample
 
