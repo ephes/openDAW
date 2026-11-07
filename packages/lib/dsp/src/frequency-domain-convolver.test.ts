@@ -96,7 +96,8 @@ describe("FrequencyDomainConvolver", () => {
             convolver.process(buffer1, output1, 0, blockSize)
             convolver.process(buffer2, output2, 0, blockSize)
 
-            expect(output1[blockSize - 1]).toBeCloseTo(output2[0], 1)
+            expect(output1[blockSize - 1]).toBeCloseTo(0, 5)
+            expect(output2[0]).toBeCloseTo(1, 5)
         })
     })
 

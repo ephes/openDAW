@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Interpolate stationary fractional delays, align frequency convolution to declared latency, and release tempo-map source subscriptions.
+
 - Reject truncated WAV fmt/data chunks and invalid channel geometry before allocating decoded audio, retaining complete frames and readable audio before truncated ancillary trailers.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.

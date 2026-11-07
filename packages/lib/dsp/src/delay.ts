@@ -74,14 +74,17 @@ export class Delay {
         const delayBuffer = this.#delayBuffer
         const delayMask = this.#delayMask
         let writePosition = this.#writePosition
-        let readPosition = writePosition - Math.floor(this.#currentOffset)
+        const integerOffset = Math.floor(this.#currentOffset)
+        const fraction = this.#currentOffset - integerOffset
+        let readPosition = writePosition - integerOffset
         if (readPosition < 0) {
             readPosition += this.#delaySize
         }
 
         for (let i = fromIndex; i < toIndex; ++i) {
             delayBuffer[writePosition] = source[i]
-            target[i] = delayBuffer[readPosition]
+            const read = delayBuffer[readPosition]
+            target[i] = fraction === 0 ? read : read + fraction * (delayBuffer[(readPosition - 1) & delayMask] - read)
             readPosition = (readPosition + 1) & delayMask
             writePosition = (writePosition + 1) & delayMask
         }

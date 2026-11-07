@@ -43,5 +43,5 @@ export class ConstantTempoMap implements TempoMap, Terminable {
         return PPQN.secondsToPulses(toSeconds - fromSeconds, this.#tempo)
     }
 
-    terminate(): void {this.#notifier.terminate()}
+    terminate(): void {this.#terminator.terminate()}
 }

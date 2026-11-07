@@ -46,3 +46,13 @@ Digital Signal Processing utilities and audio processing functions for TypeScrip
 
 * **utils.ts** - General DSP utility functions
 * **global-console.d.ts** - Global console type definitions
+## Delay, convolution and tempo-map lifetime
+
+Delay uses the same linear fractional-sample read interpolation for moving and
+stationary offsets, with an integer fast path. Ring wrapping, in-place buffers
+and clear retain their integer-delay behavior. FrequencyDomainConvolver emits
+its first computed sample exactly `latency` (= blockSize) samples after input;
+it supports arbitrary processing splits and in-place buffers. No production
+latency-compensation callers of that exported class are present in this tree.
+ConstantTempoMap termination releases both its notifier and tempo-source
+subscription; repeated termination is safe.

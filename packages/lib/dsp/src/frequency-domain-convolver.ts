@@ -54,13 +54,14 @@ export class FrequencyDomainConvolver {
             return
         }
         for (let i = fromIndex; i < toIndex; i++) {
-            this.#inputBuffer[this.#position] = source[i]
+            const sample = source[i]
+            target[i] = this.#overlapBuffer[this.#position]
+            this.#inputBuffer[this.#position] = sample
             this.#position++
             if (this.#position === this.#blockSize) {
                 this.#processBlock()
                 this.#position = 0
             }
-            target[i] = this.#overlapBuffer[this.#position]
         }
     }
 
