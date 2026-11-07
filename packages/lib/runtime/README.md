@@ -34,3 +34,15 @@ promise on rejection; an expired predecessor cannot evict its replacement.
 the reader on completion, cancellation or failure. Read and progress-handler errors fail the
 wrapped body. Byte progress, status and headers are preserved; responses without a body or
 with a zero content length are returned unchanged.
+
+## RPC and channel ingress
+
+Executors expose own data-function properties and immediate class-prototype
+methods. Accessors, constructors, Object methods and deeper inherited methods are
+excluded. Request type, method and argument envelopes are validated inside the reply
+error boundary. Unknown methods or malformed arguments with a nonnegative safe
+integer return ID receive a rejection; malformed fire-and-forget calls are ignored.
+Valid callbacks and ordinary fire-and-forget calls retain their wire format.
+Channels admit only non-null, non-array object envelopes with own `__id__`,
+`channel` and `message` fields, magic ID "42" and a matching string channel.
+Malformed unrelated messages cannot interrupt sibling-channel delivery.

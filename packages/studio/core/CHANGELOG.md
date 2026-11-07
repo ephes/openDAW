@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound shared worker initialization and clean failed attempts so explicit retries can succeed.
+
 - Write version-2 sync-log payload digests, validate before graph mutation, and reject malformed/truncated lengths; legacy reads require explicit opt-in.
 
 - Preserve failed recovery reads and publish complete locked backup generations with explicit consumption markers.

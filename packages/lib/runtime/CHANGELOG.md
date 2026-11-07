@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject unknown/malformed RPC requests through their reply boundary and isolate invalid channel envelopes.
+
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.

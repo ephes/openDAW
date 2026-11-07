@@ -1,4 +1,4 @@
-import {asDefined, assert, int, isDefined, Iterables, Maybe, panic, Subscription, Terminable} from "@opendaw/lib-std"
+import {int, isDefined, Iterables, Maybe, panic, Subscription, Terminable} from "@opendaw/lib-std"
 import {Messenger} from "./messenger"
 import {ExecutorTuple} from "./promises"
 
@@ -112,41 +112,59 @@ export namespace Communicator {
     export class Executor<PROTOCOL> implements Terminable {
         readonly #messenger: Messenger
         readonly #protocol: PROTOCOL
+        readonly #methods = new Map<string, (...args: unknown[]) => unknown>()
         readonly #subscription: Subscription
 
         constructor(messenger: Messenger, protocol: PROTOCOL) {
             this.#messenger = messenger
             this.#protocol = protocol
+            // Public surface: own data methods and immediate class-prototype
+            // methods, excluding Object's ambient methods and all accessors.
+            const reserved = new Set(Object.getOwnPropertyNames(Object.prototype))
+            for (const object of [Object.getPrototypeOf(protocol), protocol]) {
+                if (object === null || object === Object.prototype) {continue}
+                for (const [name, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(object))) {
+                    if (!reserved.has(name) && typeof descriptor.value === "function") {
+                        this.#methods.set(name, descriptor.value)
+                    }
+                }
+            }
             this.#subscription = messenger.subscribe(this.#messageHandler)
         }
 
         terminate(): void {this.#subscription.terminate()}
 
-        readonly #messageHandler = (message: Send<PROTOCOL>) => {
-            assert(message.type === "send", () => "Message type must be 'send'")
-            const object = Object.getPrototypeOf(this.#protocol) === Object.getPrototypeOf({})
-                ? this.#protocol : Object.getPrototypeOf(this.#protocol)
-            const func = asDefined(
-                object[message.func] as (...args: unknown[]) => Promise<unknown>,
-                `${message.func.toString()} does not exists on ${this.#protocol}`)
-            const returnId: number | false = message.returnId
-            if (returnId === false) {
-                func.apply(this.#protocol, message.args.map((arg: Arg) => "value" in arg
-                    ? arg.value : panic(`${message.func.toString()} has no promise.`)))
-            } else {
-                try {
-                    const promise: Promise<unknown> = func.apply(this.#protocol, message.args
-                        .map(arg => "callback" in arg ? (...args: unknown[]) =>
-                            this.#sendCallback(returnId, arg.callback, args) : arg.value))
-                    promise.then(value => {
-                            try {
-                                this.#sendResolve(returnId, value)
-                            } catch (reason) {
-                                this.#sendReject(returnId, reason)
-                            }
-                        },
-                        reason => this.#sendReject(returnId, reason))
-                } catch (reason) {this.#sendReject(returnId, reason)}
+        readonly #messageHandler = (message: unknown) => {
+            if (message === null || typeof message !== "object" || Array.isArray(message)) {return}
+            const request = message as Record<string, unknown>
+            const returnId = request.returnId
+            const reply = typeof returnId === "number" && Number.isSafeInteger(returnId) && returnId >= 0
+            if (returnId !== false && !reply) {return}
+            try {
+                if (request.type !== "send") {throw new Error("Invalid RPC request type")}
+                if (typeof request.func !== "string") {throw new Error("Invalid RPC method")}
+                const func = this.#methods.get(request.func)
+                if (func === undefined) {throw new Error("Unknown protocol method")}
+                if (!Array.isArray(request.args)) {throw new Error("Invalid RPC arguments")}
+                const args = request.args.map((arg: unknown) => {
+                    if (arg === null || typeof arg !== "object" || Array.isArray(arg)) {throw new Error("Invalid RPC argument")}
+                    const item = arg as Record<string, unknown>
+                    if (Object.hasOwn(item, "value") && !Object.hasOwn(item, "callback")) {return item.value}
+                    if (!reply || !Object.hasOwn(item, "callback") || Object.hasOwn(item, "value")
+                        || typeof item.callback !== "number" || !Number.isSafeInteger(item.callback) || item.callback < 0) {
+                        throw new Error("Invalid RPC callback")
+                    }
+                    const callback = item.callback
+                    return (...values: unknown[]) => this.#sendCallback(returnId as number, callback, values)
+                })
+                const result = func.apply(this.#protocol, args)
+                if (reply) {
+                    Promise.resolve(result).then(value => {
+                        try {this.#sendResolve(returnId, value)} catch (reason) {this.#sendReject(returnId, reason)}
+                    }, reason => this.#sendReject(returnId, reason))
+                }
+            } catch (reason) {
+                if (reply) {this.#sendReject(returnId, reason)}
             }
         }
 

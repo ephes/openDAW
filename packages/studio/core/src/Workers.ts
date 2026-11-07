@@ -4,20 +4,42 @@ import type {OpfsProtocol, SamplePeakProtocol} from "@opendaw/lib-fusion"
 import type {AudioData, TransientProtocol} from "@opendaw/lib-dsp"
 
 export class Workers {
+    static #initializing: boolean = false
+
     static async install(url: string): Promise<void> {
-        console.debug("install Workers")
-        assert(this.messenger.isEmpty(), "Workers are already installed")
-        const message = Messenger.for(new Worker(url, {type: "module"}))
-        this.messenger = Option.wrap(message)
-        const {resolve, promise} = Promise.withResolvers<void>()
-        const subscription = message.channel("initialize").subscribe(data => {
-            if (data === "ready") {
-                console.debug("Workers ready")
-                resolve()
-                subscription.terminate()
-            }
-        })
-        return promise
+        assert(this.messenger.isEmpty() && !this.#initializing, "Workers are already installed or initializing")
+        this.#initializing = true
+        let worker: Worker | undefined
+        let message: Messenger | undefined
+        try {
+            worker = new Worker(url, {type: "module"})
+            message = Messenger.for(worker)
+            const attempt = worker
+            const initialize = message.channel("initialize")
+            await new Promise<void>((resolve, reject) => {
+                let settled = false
+                const finish = (error?: Error) => {
+                    if (settled) {return}
+                    settled = true
+                    clearTimeout(timer)
+                    attempt.onerror = null
+                    attempt.onmessageerror = null
+                    initialize.terminate()
+                    if (error === undefined) {resolve()} else {reject(error)}
+                }
+                const timer = setTimeout(() => finish(new Error("Workers initialization timed out")), 10000)
+                attempt.onerror = () => finish(new Error("Workers initialization failed"))
+                attempt.onmessageerror = () => finish(new Error("Workers initialization message error"))
+                initialize.subscribe(data => {if (data === "ready") {finish()}})
+            })
+            this.messenger = Option.wrap(message)
+        } catch (error) {
+            message?.terminate()
+            worker?.terminate()
+            throw error
+        } finally {
+            this.#initializing = false
+        }
     }
 
     static messenger: Option<Messenger> = Option.None

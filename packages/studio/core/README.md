@@ -236,3 +236,11 @@ integrity; existing UI calls keep the safe default. Appending uses version 2 and
 does not retroactively protect legacy records. Payload lengths must fit the input
 including the timestamp before allocation. Only exact record-boundary EOF succeeds;
 truncated/malformed records reject instead of silently returning a partial project.
+
+## Shared worker startup
+
+Workers.install publishes its messenger only after the ready handshake. Constructor
+errors, worker errors, message decoding errors and a 10-second startup deadline
+reject the attempt. Failure terminates that worker/messenger and clears startup
+ownership so an explicit retry can succeed. Handshake channel subscriptions and
+timers are released on every terminal outcome. Concurrent installation is refused.

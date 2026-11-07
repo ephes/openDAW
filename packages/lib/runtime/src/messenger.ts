@@ -63,9 +63,13 @@ class Channel implements Messenger {
     constructor(messages: Messenger, name: string) {
         this.#messages = messages
         this.#name = name
-        this.#subscription = messages.subscribe<{__id__?: string, message?: unknown, channel?: string}>(data => {
-            if ("__id__" in data && data.__id__ === "42" && "message" in data && "channel" in data && data.channel === name) {
-                this.#notifier.notify(data.message)
+        this.#subscription = messages.subscribe<unknown>(data => {
+            if (data === null || typeof data !== "object" || Array.isArray(data)) {return}
+            const envelope = data as Record<string, unknown>
+            if (Object.hasOwn(envelope, "__id__") && envelope.__id__ === "42"
+                && Object.hasOwn(envelope, "message") && Object.hasOwn(envelope, "channel")
+                && typeof envelope.channel === "string" && envelope.channel === name) {
+                this.#notifier.notify(envelope.message)
             }
         })
     }
