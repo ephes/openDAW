@@ -177,18 +177,21 @@ export class GoogleDriveHandler implements CloudHandler {
         // Unless somebody knows how to use Google Drive's API correctly, we are stuck with that 'solution'.
         assert(!this.#ensureFolderInProgress, "Google Drive can get confused when multiple uploads are in progress")
         this.#ensureFolderInProgress = true
-        let currentId: string = ROOT_ID
-        for (const part of parts) {
-            const found = await this.#findFolderInFolder(part, currentId)
-            if (found.nonEmpty()) {
-                currentId = found.unwrap().id
-                continue
+        try {
+            let currentId: string = ROOT_ID
+            for (const part of parts) {
+                const found = await this.#findFolderInFolder(part, currentId)
+                if (found.nonEmpty()) {
+                    currentId = found.unwrap().id
+                    continue
+                }
+                const created = await this.#createFolder(part, currentId)
+                currentId = created.id
             }
-            const created = await this.#createFolder(part, currentId)
-            currentId = created.id
+            return currentId
+        } finally {
+            this.#ensureFolderInProgress = false
         }
-        this.#ensureFolderInProgress = false
-        return currentId
     }
 
     async #findFolderInFolder(name: string, parentId: string): Promise<Option<DriveFile>> {

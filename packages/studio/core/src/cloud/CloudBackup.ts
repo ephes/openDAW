@@ -53,7 +53,10 @@ export namespace CloudBackup {
         }
     }
 
-    export const backupWithHandler = async (cloudHandler: CloudHandler, service: CloudService) => {
+    export const backupWithHandler = (cloudHandler: CloudHandler, service: CloudService) =>
+        navigator.locks.request(`opendaw-cloud-backup-${service}`, () => backupOwned(cloudHandler, service))
+
+    const backupOwned = async (cloudHandler: CloudHandler, service: CloudService) => {
         const progressValue = new DefaultObservableValue<unitValue>(0.0)
         const notification = RuntimeNotifier.progress({headline: `Backup with ${service}`, progress: progressValue})
         const log = (text: string) => notification.message = text
@@ -62,6 +65,15 @@ export namespace CloudBackup {
         const lockPath = "lock.json"
         type Lock = { id: string, created: string }
         let canReleaseLock = false
+        let failed = false
+        const releaseLock = async () => {
+            try {
+                if (canReleaseLock) {await cloudHandler.delete(lockPath)}
+            } catch (error) {
+                if (!failed) {throw error}
+                console.warn("Cloud backup lock release failed; a stale lock may need recovery")
+            }
+        }
         try {
             const {status, error, value} = await Promises.tryCatch(cloudHandler.download(lockPath))
             console.debug("LOCK", status)
@@ -89,19 +101,23 @@ export namespace CloudBackup {
                 })
                 throw error
             }
-            canReleaseLock = true
             const json: Lock = {id: Browser.id(), created: new Date().toISOString()}
             await cloudHandler.upload(lockPath, new TextEncoder().encode(JSON.stringify(json)).buffer)
+            canReleaseLock = true
             await CloudBackupSamples.start(cloudHandler, progressSamples, log)
             await CloudBackupProjects.start(cloudHandler, progressProjects, log)
             await CloudBackupSoundfonts.start(cloudHandler, progressSoundfonts, log)
             await CloudBackupPresets.start(cloudHandler, progressPresets, log)
+        } catch (error) {
+            failed = true
+            throw error
         } finally {
-            if (canReleaseLock) {
-                await cloudHandler.delete(lockPath)
+            try {
+                await releaseLock()
+            } finally {
+                progressValue.terminate()
+                notification.terminate()
             }
-            progressValue.terminate()
-            notification.terminate()
         }
     }
 }

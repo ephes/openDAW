@@ -58,8 +58,13 @@ export class DropboxHandler implements CloudHandler {
     async list(path?: string): Promise<Array<string>> {
         const client = await this.#ensureClient()
         const fullPath = path ? this.#getFullPath(path) : ""
-        const response = await client.filesListFolder({path: fullPath})
-        return response.result.entries.map(entry => entry.name).filter(isDefined)
+        let response = await client.filesListFolder({path: fullPath})
+        const names = response.result.entries.map(entry => entry.name).filter(isDefined)
+        while (response.result.has_more) {
+            response = await client.filesListFolderContinue({cursor: response.result.cursor})
+            names.push(...response.result.entries.map(entry => entry.name).filter(isDefined))
+        }
+        return names
     }
 
     async delete(path: string): Promise<void> {

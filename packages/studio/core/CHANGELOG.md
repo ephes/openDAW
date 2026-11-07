@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve cloud backup failure/cleanup ownership and serialize browser backups; retry Drive folder failures and read complete Dropbox listings.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 - Carry successful cloud catalogs across backup phases; restore complete project sets with metadata last; preserve existing samples and serialize sample publication; finish approved corrupt-cloud-project deletion without falling through to restore.
 - Serialize project, sample and soundfont deletion journals across tabs; isolate corrupt project listings; regenerate missing sample peaks; block asset deletion when project or preset usage cannot be checked.
