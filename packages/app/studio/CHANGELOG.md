@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Patch Monaco sanitization and Nx HTTP, ONNX protobuf and Sass transitive dependencies to scoped security versions.
+
 - Render OAuth errors as text and forward correlated callback, error and close messages.
 
 - Keep failed soundfont imports invisible and prevent stale sample editors from recreating deleted samples.

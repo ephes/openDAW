@@ -40,5 +40,10 @@
   "packageManager": "npm@11.4.2",
   "workspaces": [
     "packages/**/*"
-  ]
+  ],
+  "overrides": {
+    "monaco-editor": {
+      "dompurify": "3.4.17"
+    }
+  }
 }

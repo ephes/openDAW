@@ -282,3 +282,15 @@ Dependency-floor assertions and synthetic unclosed-reference/help/table smoke te
 `npm test --workspace=@opendaw/app-studio`. This targeted patch does not resolve
 unrelated audit findings. Snapshot on 2026-11-07: the full locked graph reports 60 affected packages
 (31 moderate, 25 high, 4 critical); no markdown-it findings remain.
+
+### Scoped dependency security patches
+
+Monaco 0.54 retains its API with a parent-scoped override for DOMPurify 3.4.17.
+Monaco's renderer supplies its own sanitizer options; this patch does not enable
+optional DOMPurify settings globally. Synthetic sanitizer/help fixtures cover
+ordinary markup and script/event/URL removal; the Studio production build checks
+the editor integration. Nx's build-tool HTTP stack locks axios 1.20.0,
+follow-redirects 1.16.2 and form-data 4.0.6. ONNX's protobufjs locks 7.6.5
+without changing runtime APIs or model assets. Sass's build-only immutable locks
+5.1.8. All resolved copies are checked by the Studio dependency tests.
+Run `npm audit --package-lock-only` to inspect remaining unrelated graph debt.
