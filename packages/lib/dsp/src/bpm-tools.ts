@@ -1,4 +1,4 @@
-import {int} from "@opendaw/lib-std"
+import {assert, int} from "@opendaw/lib-std"
 
 /**
  * BPM detector (90-180 BPM) for a mono Float32Array.
@@ -14,7 +14,6 @@ export namespace BPMTools {
     }>
 
     export function detect(buf: Float32Array, sampleRate: number, options: Options = {}): number {
-        console.time("bpm detection")
         const {
             interval = 64,      // samples between energy taps
             scanSteps = 1_024,   // coarse grid
@@ -22,6 +21,16 @@ export namespace BPMTools {
             minBPM = 90,
             maxBPM = 180
         } = options
+        assert([sampleRate, minBPM, maxBPM].every(value => Number.isFinite(value) && value > 0)
+            && minBPM < maxBPM
+            && [interval, scanSteps, scanSamples].every(value => Number.isSafeInteger(value) && value > 0),
+            "Invalid BPM scan options")
+        const slow = (sampleRate / (minBPM / 60.0)) / interval
+        const fast = (sampleRate / (maxBPM / 60.0)) / interval
+        const step = (slow - fast) / scanSteps
+        // Require a full-ULP step so round-to-even ties cannot stall inside the scan.
+        assert(Number.isFinite(slow) && Number.isFinite(step) && fast > 0 && slow + step / 2 > slow,
+            "Invalid BPM scan options: unrepresentable interval")
         const env = new Float32Array(Math.floor(buf.length / interval))
         let v = 0.0, k = 0.0, i = 0
         for (const x of buf) {
@@ -33,8 +42,8 @@ export namespace BPMTools {
             }
         }
         if (!env.length) return NaN
+        console.time("bpm detection")
         const sample = (frames: Float32Array, index: int) => frames[Math.floor(index)] ?? 0.0
-        const bpmToIv = (b: number) => (sampleRate / (b / 60.0)) / interval
         const ivToBpm = (iv: number) => (sampleRate / (iv * interval)) * 60.0
         const BEATS = [-32, -16, -8, -4, -2, -1, 1, 2, 4, 8, 16, 32] as const
         const NO_BEATS = [-0.5, -0.25, 0.25, 0.5] as const
@@ -59,9 +68,6 @@ export namespace BPMTools {
             for (let i = 0; i < scanSamples; ++i) s += autodiff(iv)
             return s / scanSamples
         }
-        const slow = bpmToIv(minBPM)
-        const fast = bpmToIv(maxBPM)
-        const step = (slow - fast) / scanSteps
         let bestBpm = minBPM, bestScore = Infinity
         for (let iv = fast; iv <= slow; iv += step) {
             const bpm = ivToBpm(iv)

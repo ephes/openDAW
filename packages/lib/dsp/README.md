@@ -89,3 +89,15 @@ position-aware duration conversion from absolute-position conversion, including
 live owners, preview immutability and sample-rate scaling. Fragmentor tests pin
 half-open grid intersections, negative/fractional windows, indexes and adjacent
 partition equivalence for positive finite step sizes.
+
+BPMTools.detect requires finite positive sample rate/BPM bounds, minBPM < maxBPM,
+and positive safe-integer interval/scanSteps/scanSamples counts. The derived
+interval must be finite and advance in floating point. Invalid options fail before
+envelope allocation or scanning; defaults and valid empty-audio NaN are preserved.
+The seeded synthetic 120 BPM click regression uses interval=8, scanSteps=64 and
+scanSamples=128, with a 2 BPM tolerance.
+
+The progress guard also rejects half-ULP tie cases that can stall at an even
+mantissa. Preflight does not impose a wall-clock deadline or practical work ceiling:
+callers choose the budget through scanSteps and scanSamples, whose product
+determines scan work.
