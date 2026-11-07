@@ -221,7 +221,7 @@ export class ErrorHandler {
             Events.subscribe(owner, "error", handler),
             Events.subscribe(owner, "unhandledrejection", handler),
             Events.subscribe(owner, "messageerror", handler),
-            Events.subscribe(owner, "processorerror" as any, handler),
+            Events.subscribe(owner, "processorerror" as "error", handler),
             Events.subscribe(owner, "securitypolicyviolation", handler)
         )
         return lifetime

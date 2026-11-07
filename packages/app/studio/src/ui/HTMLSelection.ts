@@ -18,7 +18,7 @@ export class HTMLSelection implements Terminable {
                 } else if (event.shiftKey) {
                     const nodes = Array.from<Element>(this.#container.children)
                     if (nodes.length === 0) {return}
-                    let lastSelection = this.#lastSelection ?? nodes[0]
+                    const lastSelection = this.#lastSelection ?? nodes[0]
                     const i0 = nodes.indexOf(target)
                     const i1 = nodes.indexOf(lastSelection)
                     const n = Math.max(i0, i1)

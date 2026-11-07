@@ -94,7 +94,7 @@ export const ProjectProfileInfo = ({lifecycle, service}: Construct) => {
                 <div style={{display: "flex", flexDirection: "column", rowGap: "1em"}}>
                     <div>
                         Publish your music to <a href="https://music.opendaw.studio"
-                                                 style={{color: Colors.purple}}
+                                                 style={{color: Colors.purple.toString()}}
                                                  target="music.opendaw.studio">our music
                         page</a>
                     </div>

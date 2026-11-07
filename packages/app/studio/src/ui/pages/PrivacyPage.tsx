@@ -21,7 +21,7 @@ export const PrivacyPage: PageFactory<StudioService> = ({}: PageContext<StudioSe
         <p>openDAW does not process, analyze, or share any personal data. Files remain under your control in your chosen
             storage location.</p>
         <h3>Contact</h3>
-        <p>For questions about this policy, contact: <a style={{color: Colors.blue}}
+        <p>For questions about this policy, contact: <a style={{color: Colors.blue.toString()}}
                                                         href="mailto:hello@opendaw.org">hello@opendaw.org</a>
         </p>
     </div>

@@ -90,7 +90,7 @@ export class ShadertoyRunner implements Terminable {
             gl.deleteProgram(this.#program)
             this.#program = null
         }
-        while (gl.getError() !== gl.NO_ERROR) {}
+        while (gl.getError() !== gl.NO_ERROR) {/* No work is needed in this branch. */}
         const vertexShader = this.#compileShader(gl.VERTEX_SHADER, ShadertoyRunner.#VERTEX_SHADER)
         const fullFragmentSource = ShadertoyRunner.#FRAGMENT_PREFIX + fragmentSource + ShadertoyRunner.#FRAGMENT_SUFFIX
         const fragmentShader = this.#compileShader(gl.FRAGMENT_SHADER, fullFragmentSource)

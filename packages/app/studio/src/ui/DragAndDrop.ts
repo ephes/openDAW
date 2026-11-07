@@ -145,7 +145,7 @@ export namespace DragAndDrop {
         const elements = Array.from(parent.querySelectorAll("[data-drag]"))
         const [minIndex, maxIndex] = limit ?? [0, elements.length]
         let index: int = minIndex
-        while (true) {
+        for (;;) {
             const child = elements[index] ?? null
             if (index >= maxIndex) {return [index, child]}
             const rect = child.getBoundingClientRect()

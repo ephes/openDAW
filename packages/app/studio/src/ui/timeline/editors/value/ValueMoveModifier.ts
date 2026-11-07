@@ -223,7 +223,7 @@ export class ValueMoveModifier implements ValueModifier {
             // Collect obsolete events (those not paired with any target)
             // These must be deleted FIRST to avoid collisions with events being moved
             const obsoleteEvents: Array<ValueEventBoxAdapter> = []
-            while (true) {
+            for (;;) {
                 const event = pull()
                 if (event === null) {break}
                 obsoleteEvents.push(event)

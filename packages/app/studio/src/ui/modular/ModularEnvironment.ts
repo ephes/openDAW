@@ -35,17 +35,17 @@ export type ModuleViewAdapter = {
 }
 
 export class ConnectorViewAdapter {
-    readonly #adapter: ModuleConnectorAdapter<any, any>
+    readonly #adapter: ModuleConnectorAdapter<Pointers, unknown>
     readonly #element: Element
     readonly #pinLocator: Provider<Point>
 
-    constructor(adapter: ModuleConnectorAdapter<any, any>, element: Element, pinLocator: Provider<Point>) {
+    constructor(adapter: ModuleConnectorAdapter<Pointers, unknown>, element: Element, pinLocator: Provider<Point>) {
         this.#adapter = adapter
         this.#element = element
         this.#pinLocator = pinLocator
     }
 
-    get adapter(): ModuleConnectorAdapter<any, any> {return this.#adapter}
+    get adapter(): ModuleConnectorAdapter<Pointers, unknown> {return this.#adapter}
     get element(): Element {return this.#element}
     get pinPoint(): Point {return this.#pinLocator()}
 
@@ -129,13 +129,13 @@ export class ModularEnvironment implements Terminable {
         return this.#connectors.values().find(view => view.element === target) ?? null
     }
 
-    findMatchingConnectorViews(adapter: ModuleConnectorAdapter<Pointers, any>): ReadonlyArray<ConnectorViewAdapter> {
+    findMatchingConnectorViews(adapter: ModuleConnectorAdapter<Pointers, unknown>): ReadonlyArray<ConnectorViewAdapter> {
         return this.#connectors
             .values()
             .filter(view => view.adapter.matches(adapter))
     }
 
-    beginWiring(adapter: ModuleConnectorAdapter<any, any>, pointer: Point): void {
+    beginWiring(adapter: ModuleConnectorAdapter<Pointers, unknown>, pointer: Point): void {
         const runtime = new Terminator()
         this.#isWiring = true
         runtime.own({terminate: () => this.#isWiring = false})
@@ -170,11 +170,11 @@ export class ModularEnvironment implements Terminable {
         }, {capture: true}))
     }
 
-    beginRewiring(connection: ModuleConnectionAdapter, connectorAdapter: ModuleConnectorAdapter<any, any>, pointer: Point) {
+    beginRewiring(connection: ModuleConnectionAdapter, connectorAdapter: ModuleConnectorAdapter<Pointers, unknown>, pointer: Point) {
         const vertex: Vertex = connection.source.address.equals(connectorAdapter.address)
             ? connection.target
             : connection.source
-        const connector: ModuleConnectorAdapter<any, any> = this.findConnectorByViewAddress(vertex.address).adapter
+        const connector: ModuleConnectorAdapter<Pointers, unknown> = this.findConnectorByViewAddress(vertex.address).adapter
         this.#service.project.editing.modify(() => connection.box.delete())
         this.beginWiring(connector, pointer)
     }
@@ -199,7 +199,7 @@ export class ModularEnvironment implements Terminable {
         this.#terminator.terminate()
     }
 
-    #connect(adapter: ModuleConnectorAdapter<any, any>, other: ModuleConnectorAdapter<any, any>): void {
+    #connect(adapter: ModuleConnectorAdapter<Pointers, unknown>, other: ModuleConnectorAdapter<Pointers, unknown>): void {
         if (adapter === other) {
             console.debug("Cannot connect same connector")
             return

@@ -33,7 +33,7 @@ export const createGraphPanel: CreateGraphPanel = (canvas, data, opts = {}) => {
     const nodes = data.nodes
     const links = data.edges
 
-    let hovered: any = null
+    let hovered: Node | null = null
 
     const graph = new ForceGraph<Node, Edge>(canvas)
         .graphData({nodes, links})
@@ -53,11 +53,11 @@ export const createGraphPanel: CreateGraphPanel = (canvas, data, opts = {}) => {
         })
         // draw labels ourselves on top:
         .nodeCanvasObjectMode(() => "after")
-        .nodeCanvasObject((_node: any, _ctx: CanvasRenderingContext2D) => {
+        .nodeCanvasObject((_node: Node | null, _ctx: CanvasRenderingContext2D) => {
             /* labels drawn in onRenderFramePost */
         })
         // update hover state
-        .onNodeHover((node: any) => hovered = node || null)
+        .onNodeHover((node: Node | null) => hovered = node || null)
 
     graph.onRenderFramePost((ctx: CanvasRenderingContext2D) => {
         const zoom: number = graph.zoom?.()
@@ -129,8 +129,8 @@ export const createGraphPanel: CreateGraphPanel = (canvas, data, opts = {}) => {
     applySize()
     return {
         terminate(): void {
-            try { resizeObserver.disconnect() } catch {}
-            try { graph.graphData({nodes: [], links: []}) } catch {}
+            try { resizeObserver.disconnect() } catch {/* No work is needed in this branch. */}
+            try { graph.graphData({nodes: [], links: []}) } catch {/* No work is needed in this branch. */}
             graph._destructor()
         },
         resize(): void {

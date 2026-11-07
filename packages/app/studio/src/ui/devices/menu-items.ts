@@ -48,7 +48,7 @@ export namespace MenuItems {
 
     export const createForValue = <V extends PrimitiveValues>(editing: Editing,
                                                               label: string,
-                                                              primitive: PrimitiveField<V, any>,
+                                                              primitive: PrimitiveField<V, import("@opendaw/lib-box").PointerTypes>,
                                                               value: V) =>
         MenuItem.default({label, checked: primitive.getValue() === value})
             .setTriggerProcedure(() => editing.modify(() => primitive.setValue(value)))

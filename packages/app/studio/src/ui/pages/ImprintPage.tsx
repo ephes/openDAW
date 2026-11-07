@@ -14,7 +14,7 @@ export const ImprintPage: PageFactory<StudioService> = ({}: PageContext<StudioSe
         <p>
             <span style={{color: Colors.cream.toString()}}>André Michelle</span><br/>
             <span style={{color: Colors.dark.toString()}}>Cologne, Germany</span><br/>
-            Email: <a style={{color: Colors.blue}} href="mailto:hello@opendaw.org">hello@opendaw.org</a>
+            Email: <a style={{color: Colors.blue.toString()}} href="mailto:hello@opendaw.org">hello@opendaw.org</a>
         </p>
         <p>
             This website is a personal, non-commercial project.<br/>
@@ -24,7 +24,7 @@ export const ImprintPage: PageFactory<StudioService> = ({}: PageContext<StudioSe
             This imprint is provided to comply with German law.<br/>
         </p>
         <p>
-            For inquiries regarding openDAW, please use the contact above or visit <a style={{color: Colors.blue}}
+            For inquiries regarding openDAW, please use the contact above or visit <a style={{color: Colors.blue.toString()}}
                                                                                       href="https://opendaw.org">opendaw.org</a>
         </p>
     </div>

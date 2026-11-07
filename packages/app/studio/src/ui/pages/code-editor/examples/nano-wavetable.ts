@@ -121,7 +121,7 @@ const chords = [
 
 const events = []
 for (let bar = 0; bar < 4; bar++) {
-    for (let note of chords[bar]) {
+    for (const note of chords[bar]) {
         events.push({
             position: PPQN.Bar * bar,
             pitch: note,

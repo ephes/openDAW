@@ -123,12 +123,11 @@ export class Snapping implements Observable<Snapping> {
 
     #initUnits() {
         const range: TimelineRange = this.#range
-        const scope = this
         return [
             {
                 name: "Smart",
                 ppqn: (position: ppqn): int => {
-                    const [nominator, denominator] = scope.#signatureAt(position)
+                    const [nominator, denominator] = this.#signatureAt(position)
                     const barPulses = PPQN.fromSignature(nominator, denominator)
                     const beatPulses = PPQN.fromSignature(1, denominator)
                     const minUnits = SMART_MIN_PIXEL * range.unitsPerPixel
@@ -169,7 +168,7 @@ export class Snapping implements Observable<Snapping> {
             {
                 name: "Bar",
                 ppqn: (position: ppqn): int => {
-                    const [nominator, denominator] = scope.#signatureAt(position)
+                    const [nominator, denominator] = this.#signatureAt(position)
                     return PPQN.fromSignature(nominator, denominator)
                 }
             },

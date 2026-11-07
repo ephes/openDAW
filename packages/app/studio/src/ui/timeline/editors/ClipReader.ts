@@ -63,7 +63,7 @@ export class ClipReader<CONTENT> implements EventOwnerReader<CONTENT> {
         return clip.box.subscribe(Propagation.Children, update => {
                 if (update.type === "primitive") {
                     switch (true) {
-                        case update.matches(clip.box.duration):
+                        case update.matches(clip.box.duration): {
                             let unit = range.unitMin
                             if (clip.duration > range.unitMax) {
                                 const paddingRight = range.unitPadding * 2
@@ -74,6 +74,7 @@ export class ClipReader<CONTENT> implements EventOwnerReader<CONTENT> {
                             }
                             range.moveToUnit(unit)
                             return
+                        }
                     }
                 }
             }
