@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add limiter/waveshaper/Crusher state tests and fix Crusher filter/hold ramps depending on block partitions.
+
 - Add direct synthetic audio-buffer mixing, shared planar isolation and stereo matrix routing tests.
 
 - Refresh modulated biquad coefficients for Q/order changes and validate filter response/cascade history against independent references.

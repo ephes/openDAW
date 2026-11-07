@@ -3,7 +3,6 @@ import {dbToGain} from "./utils"
 import {StereoMatrix} from "./stereo"
 import {BiquadCoeff} from "./biquad-coeff"
 import {BiquadMono, BiquadProcessor} from "./biquad-processor"
-import {RenderQuantum} from "./constants"
 
 const DEFAULT_RAMP_DURATION_SECONDS = 0.020
 const MIN_CUTOFF_FREQ = 1000.0
@@ -14,7 +13,6 @@ export class Crusher {
 
     readonly #filterCoeff: BiquadCoeff
     readonly #filters: [BiquadProcessor, BiquadProcessor]
-    readonly #filteredBuffer: StereoMatrix.Channels
     readonly #heldSample: Float32Array
 
     #crushedSampleRate: number = NaN
@@ -36,19 +34,14 @@ export class Crusher {
         this.#filterCoeff = new BiquadCoeff()
         this.#filterCoeff.setLowpassParams(0.5) // nyquist
         this.#filters = [new BiquadMono(), new BiquadMono()]
-        this.#filteredBuffer = [new Float32Array(RenderQuantum), new Float32Array(RenderQuantum)]
         this.#heldSample = new Float32Array(2)
     }
 
     process(input: StereoMatrix.Channels, output: StereoMatrix.Channels, from: int, to: int): void {
         const [inpL, inpR] = input
         const [outL, outR] = output
-        const [fltL, fltR] = this.#filteredBuffer
-        this.#filters[0].process(this.#filterCoeff, inpL, fltL, from, to)
-        this.#filters[1].process(this.#filterCoeff, inpR, fltR, from, to)
         const preGain = dbToGain(this.#boostDb)
         const postGain = dbToGain(-this.#boostDb / 2.0) // half is more balanced for some reason
-        const crushRatio = this.#sampleRate / this.#crushedSampleRate
         const steps = Math.pow(2.0, this.#bitDepth) - 1.0
         const stepInv = 1.0 / steps
         for (let i = from; i < to; i++) {
@@ -60,11 +53,14 @@ export class Crusher {
                 }
                 this.#filterCoeff.setLowpassParams(Math.max(this.#crushedSampleRate, MIN_CUTOFF_FREQ) / this.#sampleRate)
             }
+            const fltL = Math.fround(this.#filters[0].processFrame(this.#filterCoeff, inpL[i]))
+            const fltR = Math.fround(this.#filters[1].processFrame(this.#filterCoeff, inpR[i]))
+            const crushRatio = this.#sampleRate / this.#crushedSampleRate
             this.#phase += 1.0
             if (this.#phase >= crushRatio) {
                 this.#phase -= crushRatio
-                this.#heldSample[0] = clamp(Math.round(fltL[i] * preGain * steps) * stepInv, -1.0, 1.0)
-                this.#heldSample[1] = clamp(Math.round(fltR[i] * preGain * steps) * stepInv, -1.0, 1.0)
+                this.#heldSample[0] = clamp(Math.round(fltL * preGain * steps) * stepInv, -1.0, 1.0)
+                this.#heldSample[1] = clamp(Math.round(fltR * preGain * steps) * stepInv, -1.0, 1.0)
             }
             outL[i] = (inpL[i] * (1.0 - this.#mix) + this.#heldSample[0] * this.#mix) * postGain
             outR[i] = (inpR[i] * (1.0 - this.#mix) + this.#heldSample[1] * this.#mix) * postGain
