@@ -2,6 +2,7 @@ module.exports = {
     env: {
         node: true,
     },
+    ignorePatterns: ["**/dist/**", "**/node_modules/**"],
     parser: "@typescript-eslint/parser",
     extends: [
         "eslint:recommended",
@@ -14,6 +15,8 @@ module.exports = {
         ecmaVersion: 2020,
     },
     rules: {
+        // Public APIs deliberately merge namespaces with types/classes (e.g. Option).
+        "@typescript-eslint/no-namespace": "off",
         "@typescript-eslint/no-non-null-assertion": "off",
         "@typescript-eslint/no-unused-vars": ["warn", {"argsIgnorePattern": "^_"}],
         "no-unused-vars": "warn",

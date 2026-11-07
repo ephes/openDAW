@@ -5,5 +5,8 @@
   "main": "index.js",
   "publishConfig": {
     "access": "public"
+  },
+  "scripts": {
+    "test": "node --test config.test.cjs"
   }
 }
