@@ -43,3 +43,15 @@ progress cannot replace the new loader's state, font or metadata or start stale
 follow-up work. Project export handles synchronous terminal subscriptions safely.
 
 Soundfont storage reads return exactly the provider Uint8Array view, including nonzero-offset views; adjacent backing bytes are excluded before SF2 parsing.
+
+### Local inventory and backup
+
+Browsing skips invalid asset directories or metadata and retains their bytes for
+recovery. Directory UUIDs own asset identity: metadata cannot redirect that identity.
+Sample and soundfont backup use strict inventories. Listing, metadata read/parse or
+identity failures stop the domain before uploads, restores or deletion. A genuinely
+missing first-run directory is empty; inaccessible existing storage is an error.
+Strict scans hold the same domain Web Lock as saves/deletes, so they wait for
+in-progress publication. A failure aborts the entire backup run, including later
+domains; earlier completed domains remain complete. The diagnostic identifies the
+folder/entry to repair before retrying backup.

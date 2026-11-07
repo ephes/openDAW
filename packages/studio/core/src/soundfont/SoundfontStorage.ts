@@ -23,10 +23,10 @@ export class SoundfontStorage extends Storage<Soundfont, SoundfontMetaData, Soun
     async save({uuid, file, meta}: SoundfontStorage.NewSoundfont): Promise<void> {
         const path = `${this.folder}/${UUID.toString(uuid)}`
         console.debug(`save soundfont '${path}'`)
-        return Promise.all([
+        return navigator.locks.request(`opendaw:storage:${this.folder}`, () => Promise.all([
             Workers.Opfs.write(`${path}/soundfont.sf2`, new Uint8Array(file)),
             Workers.Opfs.write(`${path}/meta.json`, new TextEncoder().encode(JSON.stringify(meta)))
-        ]).then(EmptyExec)
+        ]).then(EmptyExec))
     }
 
     async load(uuid: UUID.Bytes): Promise<[ArrayBuffer, SoundfontMetaData]> {

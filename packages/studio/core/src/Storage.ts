@@ -25,20 +25,40 @@ export abstract class Storage<ITEM extends { uuid: UUID.String } & META, META, N
         await Workers.Opfs.write(`${this.folder}/trash.json`, trash)
     }
 
-    async list(): Promise<ReadonlyArray<ITEM>> {
-        return Workers.Opfs.list(this.folder)
-            .then(async files => {
-                const results = await Promise.all(files.filter(file => file.kind === "directory")
-                    .map(async ({name}) => {
-                        try {
-                            const array = await Workers.Opfs.read(`${this.folder}/${name}/meta.json`)
-                            return {uuid: name as UUID.String, ...JSON.parse(new TextDecoder().decode(array))}
-                        } catch (e) {
-                            console.warn(`Skipping corrupted entry: ${this.folder}/${name}`, e)
-                            return null
-                        }
-                    }))
-                return results.filter((item): item is ITEM => item !== null)
-            }, () => [])
+    async list({strict = false}: {strict?: boolean} = {}): Promise<ReadonlyArray<ITEM>> {
+        return strict
+            ? navigator.locks.request(`opendaw:storage:${this.folder}`, () => this.#list(true))
+            : this.#list(false)
+    }
+
+    async #list(strict: boolean): Promise<ReadonlyArray<ITEM>> {
+        let files: Awaited<ReturnType<typeof Workers.Opfs.list>>
+        try {
+            files = await Workers.Opfs.list(this.folder)
+        } catch (error) {
+            if (!strict || (error instanceof DOMException && error.name === "NotFoundError")) {return []}
+            throw error
+        }
+        const results = await Promise.all(files.filter(file => file.kind === "directory")
+            .map(async ({name}) => {
+                try {
+                    if (!UUID.validateString(name)) {throw new Error("Invalid storage directory UUID")}
+                    const array = await Workers.Opfs.read(`${this.folder}/${name}/meta.json`)
+                    const meta = JSON.parse(new TextDecoder().decode(array))
+                    if (meta === null || typeof meta !== "object" || Array.isArray(meta)) {
+                        throw new Error("Invalid storage metadata object")
+                    }
+                    if (Object.hasOwn(meta, "uuid") && (typeof meta.uuid !== "string"
+                        || !UUID.validateString(meta.uuid) || meta.uuid.toLowerCase() !== name.toLowerCase())) {
+                        throw new Error("Metadata UUID does not match its directory")
+                    }
+                    return {...meta, uuid: name} as ITEM
+                } catch (cause) {
+                    if (strict) {throw new Error(`Cannot scan local asset '${this.folder}/${name.slice(0, 80)}'; repair its directory/metadata before backup.`, {cause})}
+                    console.warn(`Skipping unreadable local asset '${this.folder}/${name.slice(0, 80)}'; retained for recovery.`, cause)
+                    return null
+                }
+            }))
+        return results.filter(item => item !== null) as ReadonlyArray<ITEM>
     }
 }

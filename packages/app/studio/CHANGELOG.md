@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Stop backup on unreadable local asset inventories and identify the directory that needs repair.
+
 - Require markdown-it 14.3.3 or newer in 14.x to fix quadratic multiline-reference parsing (GHSA-gfr2-rv44-r23c).
 
 - Bound serialized crash diagnostics to 100,000 UTF-16 code units, with 8,000 per entry.

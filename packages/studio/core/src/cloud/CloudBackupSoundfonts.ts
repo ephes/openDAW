@@ -19,7 +19,7 @@ export class CloudBackupSoundfonts {
         log("Collecting all soundfont domains...")
         const [stock, local, cloud] = await Promise.all([
             OpenSoundfontAPI.get().all(),
-            SoundfontStorage.get().list(),
+            SoundfontStorage.get().list({strict: true}),
             cloudHandler.download(CloudBackupSoundfonts.RemoteCatalogPath)
                 .then(json => JSON.parse(new TextDecoder().decode(json)))
                 .catch(reason => reason instanceof Errors.FileNotFound ? Arrays.empty() : panic(reason))
