@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Clean up cloud project folders and permit retry after a completed Dropbox deletion.
+
 - Refuse invalid cloud catalogs or unreadable deletion journals before synchronizing a domain.
 
 - Stop backup on unreadable local asset inventories and identify the directory that needs repair.

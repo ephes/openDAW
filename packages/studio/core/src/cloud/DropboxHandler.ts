@@ -70,7 +70,11 @@ export class DropboxHandler implements CloudHandler {
     async delete(path: string): Promise<void> {
         const client = await this.#ensureClient()
         const fullPath = this.#getFullPath(path)
-        await client.filesDeleteV2({path: fullPath})
+        try {
+            await client.filesDeleteV2({path: fullPath})
+        } catch (error) {
+            if (!this.#isNotFoundError(error, "path_lookup")) {throw error}
+        }
     }
 
     async #ensureClient(): Promise<Dropbox> {
@@ -89,14 +93,11 @@ export class DropboxHandler implements CloudHandler {
         return path.startsWith("/") ? path : `/${path}`
     }
 
-    #isNotFoundError(error: unknown): boolean {
-        return (
-            typeof error === "object" &&
-            error !== null &&
-            "status" in error &&
-            error.status === 409 &&
-            (error as {error?: {error?: {".tag"?: string, path?: {".tag"?: string}}}}).error?.error?.[".tag"] === "path" &&
-            (error as {error?: {error?: {".tag"?: string, path?: {".tag"?: string}}}}).error?.error?.path?.[".tag"] === "not_found"
-        )
+    #isNotFoundError(error: unknown, tag: "path" | "path_lookup" = "path"): boolean {
+        if (typeof error !== "object" || error === null || !("status" in error) || error.status !== 409) {return false}
+        const detail = (error as {error?: {error?: {
+            ".tag"?: string, path?: {".tag"?: string}, path_lookup?: {".tag"?: string}
+        }}}).error?.error
+        return detail?.[".tag"] === tag && detail[tag]?.[".tag"] === "not_found"
     }
 }
