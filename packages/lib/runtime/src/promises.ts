@@ -28,7 +28,7 @@ export class IntervalRetryOption implements RetryOption {
     #count: int = 0 | 0
     constructor(readonly maxRetry: int, readonly timeSpan: TimeSpan) {}
     retry(reason: unknown, exec: Exec): boolean {
-        if (++this.#count === this.maxRetry) {return false}
+        if (++this.#count >= this.maxRetry) {return false}
         console.debug(`${reason} > will retry in ${this.timeSpan.toString()}`)
         setTimeout(exec, this.timeSpan.millis())
         return true
@@ -58,10 +58,8 @@ export namespace Promises {
     export const tryCatch = <T>(promise: Promise<T>): Promise<ResolveResult<T> | RejectedResult> =>
         promise.then(value => new ResolveResult(value), error => new RejectedResult(error))
 
-    const DefaultRetryOption = new IntervalRetryOption(3, TimeSpan.seconds(3))
-
     export const retry = <T>(factory: Provider<Promise<T>>,
-                             retryOption: RetryOption = DefaultRetryOption): Promise<T> =>
+                             retryOption: RetryOption = new IntervalRetryOption(3, TimeSpan.seconds(3))): Promise<T> =>
         factory().catch(reason => new Promise<T>((resolve, reject) => {
             const onFailure = (reason: unknown) => {
                 if (!retryOption.retry(reason, () => factory().then((value: T) => resolve(value), onFailure))) {
@@ -143,9 +141,9 @@ export namespace Promises {
             const now = Date.now()
             if (isNull(resolving) || (isDefined(timeout) && now - lastCall > timeout.millis())) {
                 lastCall = now
-                resolving = factory()
-                resolving.catch(error => {
-                    resolving = null
+                const current = resolving = factory()
+                current.catch(error => {
+                    if (resolving === current) {resolving = null}
                     return error
                 })
             }
@@ -208,7 +206,7 @@ export namespace Promises {
         async add(provider: Provider<Promise<T>>): Promise<T> {
             if (this.#running < this.max) {
                 this.#running++
-                return provider().finally(() => this.#continue())
+                return Promise.resolve().then(provider).finally(() => this.#continue())
             } else {
                 const resolvers: PromiseWithResolvers<T> = Promise.withResolvers<T>()
                 this.#waiting.push([provider, resolvers])
@@ -222,7 +220,7 @@ export namespace Promises {
                 if (this.#waiting.length > 0) {
                     const [provider, {resolve, reject}] = this.#waiting.shift()!
                     this.#running++
-                    provider().then(resolve, reject)
+                    Promise.resolve().then(provider).then(resolve, reject)
                 }
             }
         }

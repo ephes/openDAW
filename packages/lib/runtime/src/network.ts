@@ -59,20 +59,31 @@ export namespace network {
         if (total === 0) {return response}
         let loaded = 0
         const reader = body.getReader()
+        let cancelled = false
         const stream = new ReadableStream({
-            async start(controller) {
-                for (;;) {
-                    const {done, value} = await reader.read()
+            pull(controller) {
+                return reader.read().then(({done, value}) => {
+                    if (cancelled) {return}
                     if (done) {
                         controller.close()
-                        break
+                        reader.releaseLock()
+                        return
                     }
                     loaded += value.byteLength
                     progress(loaded / total)
                     controller.enqueue(value)
-                }
+                }).catch(async reason => {
+                    if (cancelled) {return}
+                    await reader.cancel(reason).catch(() => {})
+                    reader.releaseLock()
+                    controller.error(reason)
+                })
+            },
+            async cancel(reason) {
+                cancelled = true
+                return reader.cancel(reason).finally(() => reader.releaseLock())
             }
-        })
+        }, {highWaterMark: 0})
         return new Response(stream, {
             headers: response.headers,
             status: response.status,
