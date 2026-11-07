@@ -52,7 +52,7 @@ describe("Schema IO implementation", () => {
         })
 
         // an object should be non-extensible because of Object.seal
-        expect(() => { (io.object as any).newProp = 123 }).toThrow()
+        expect(() => { (io.object as unknown as Record<string, unknown>).newProp = 123 }).toThrow()
     })
 
     it("performs a full write → read round-trip", () => {

@@ -21,10 +21,10 @@ export namespace UUID {
     }
 
     export const validateBytes = (uuid: UUID.Bytes): UUID.Bytes => UUID.parse(UUID.toString(uuid))
-    export const validateString = (uuid: string): uuid is String =>
+    export const validateString = (uuid: string): uuid is UUID.String =>
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)
 
-    export const asString = (uuid: string): String =>
+    export const asString = (uuid: string): UUID.String =>
         validateString(uuid) ? uuid : panic(`Invalid UUID format: ${uuid}`)
 
     export const fromDataInput = (input: DataInput): Bytes => {

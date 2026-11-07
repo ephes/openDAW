@@ -76,7 +76,7 @@ export class SortedSet<K, V> implements Iterable<V> {
                 return delta
             })
             return true
-        } catch (reason: any) {
+        } catch (reason: unknown) {
             if (reason === "cancel") {
                 const uniqueKeys: Map<K, V> = new Map<K, V>(this.entries())
                 this.#array.splice(0, this.#array.length, ...uniqueKeys.values())

@@ -3,7 +3,7 @@ import {Observer} from "./observers"
 import {Observable} from "./observables"
 
 export class Notifier<T> implements Observable<T>, Terminable {
-    static subscribeMany<T extends Observable<any>>(observer: Observer<T>,
+    static subscribeMany<T extends Observable<unknown>>(observer: Observer<T>,
                                                     ...observables: ReadonlyArray<T>): Subscription {
         return Terminable.many(...observables
             .map(observable => observable.subscribe(() => observer(observable))))

@@ -5,9 +5,9 @@ describe("objects", () => {
     it("merge", () => {
         expect(Objects.mergeNoOverlap({a: 1}, {b: 2, c: 3})).toEqual({a: 1, b: 2, c: 3})
         expect(Objects.mergeNoOverlap({}, {b: 2, c: 3})).toEqual({b: 2, c: 3})
-        // @ts-expect-error
+        // @ts-expect-error Deliberately exercise a rejected input.
         expect(() => Objects.mergeNoOverlap({a: 1}, {a: 2, c: 3})).toThrow()
-        // @ts-expect-error
+        // @ts-expect-error Deliberately exercise a rejected input.
         expect(() => Objects.mergeNoOverlap({c: 1}, {b: 2, c: 3})).toThrow()
     })
 

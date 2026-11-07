@@ -29,7 +29,9 @@ export namespace Strings {
         } else {
             return desiredName
         }
-        while (existingSet.has(test = `${desiredName} ${counter++}`)) {}
+        while (existingSet.has(test = `${desiredName} ${counter++}`)) {
+            // Advance until the candidate is unused.
+        }
         return test
     }
 }

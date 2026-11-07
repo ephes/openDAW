@@ -149,7 +149,7 @@ export interface ValueGuard<T> {guard(value: T): T}
 export class DefaultObservableValue<T> implements MutableObservableValue<T>, Terminable {
     readonly #notifier: Notifier<ObservableValue<T>>
 
-    readonly #guard: Option<ValueGuard<any>> = Option.None
+    readonly #guard: Option<ValueGuard<T>> = Option.None
 
     #value: T
 

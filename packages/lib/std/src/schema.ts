@@ -15,12 +15,12 @@ export namespace Schema {
 
     export const createBuilder = <T>(schema: Readonly<Schema<T>>): () => IO<T> => {
         const replace = <T>(schema: Schema<T>): T => {
-            const clone: any = schema instanceof Array ? [] : {}
-            Object.entries(schema).forEach(([key, value]: [string, any]): void => {
+            const clone = (schema instanceof Array ? [] : {}) as Record<string, unknown>
+            Object.entries(schema).forEach(([key, value]: [string, unknown]): void => {
                 if (value instanceof Serializer) {
                     clone[key] = value.initialValue()
                 } else if (typeof value === "object") {
-                    clone[key] = replace(value)
+                    clone[key] = replace(value as Schema<unknown>)
                 }
             })
             return clone as T
@@ -116,12 +116,12 @@ export namespace Schema {
 
         read(input: DataInput): void {
             const collector = <T>(schema: Schema<T>, object: T) => {
-                Object.entries(schema).forEach(([key, value]: [string, any]): void => {
-                    const data = object as any
+                Object.entries(schema).forEach(([key, value]: [string, unknown]): void => {
+                    const data = object as Record<string, unknown>
                     if (value instanceof Serializer) {
                         data[key] = value.read(input, data[key])
                     } else if (typeof value === "object") {
-                        collector(value, data[key])
+                        collector(value as Schema<unknown>, data[key])
                     }
                 })
             }
@@ -130,12 +130,12 @@ export namespace Schema {
 
         write(output: DataOutput): void {
             const collector = <T>(schema: Schema<T>, object: T) => {
-                Object.entries(schema).forEach(([key, value]: [string, any]): void => {
-                    const data = object as any
+                Object.entries(schema).forEach(([key, value]: [string, unknown]): void => {
+                    const data = object as Record<string, unknown>
                     if (value instanceof Serializer) {
                         value.write(output, data[key])
                     } else if (typeof value === "object") {
-                        collector(value, data[key])
+                        collector(value as Schema<unknown>, data[key])
                     }
                 })
             }

@@ -48,12 +48,12 @@ export type StructuredCloneable =
 export type JSONValue = string | number | boolean | null | JSONArray | JSONObject
 export type JSONArray = Array<JSONValue>
 export type JSONObject = { [key: string]: Optional<JSONValue> }
-export type Id<T extends unknown> = T & { id: int }
+export type Id<T> = T & { id: int }
 export type Sign = -1 | 0 | 1
 export type Optional<T> = T | undefined
 export type Nullable<T> = T | null
 export type Maybe<T> = T | undefined | null
-export type Class<T = object> = Function & { prototype: T }
+export type Class<T = object> = { readonly name: string, readonly length: number, prototype: T, [Symbol.hasInstance](value: unknown): boolean }
 export type Exec = () => void
 export type Provider<T> = () => T
 export type ValueOrProvider<T> = T | Provider<T>
@@ -63,6 +63,8 @@ export type Func<U, T> = (value: U) => T
 export type Comparator<T> = (a: T, b: T) => number
 export type Comparable<T> = { compareTo: (other: T) => number }
 export type Equality<T> = { equals: (other: T) => boolean }
+// This public alias intentionally erases both parameters and results of arbitrary callbacks.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyFunc = (...args: any[]) => any
 export type Stringifiable = { toString(): string }
 export type MakeMutable<T> = { -readonly [P in keyof T]: T[P] }
@@ -98,10 +100,11 @@ export const tryProvide = <T>(provider: Provider<T>): T => {
     try {return provider()} catch (reason) {return panic(String(reason))}
 }
 export const getOrProvide = <T>(value: ValueOrProvider<T>): T => value instanceof Function ? value() : value
-export const safeWrite = (object: any, property: string, value: any): void =>
-    property in object ? object[property] = value : undefined
+export const safeWrite = (object: object, property: string, value: unknown): void => {
+    if (property in object) {(object as Record<string, unknown>)[property] = value}
+}
 export const safeExecute = <F extends AnyFunc>(func: Maybe<F>, ...args: Parameters<F>): Maybe<ReturnType<F>> =>
-    func?.apply(null, args)
+    func == null ? undefined : Reflect.apply(func, null, args) as ReturnType<F>
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
     isDefined(value) && typeof value === "object"
 export const hasField = (record: Record<string, unknown>, key: string, type: JsType): boolean => {
@@ -127,7 +130,7 @@ export const checkIndex = (index: int, array: { length: int }): int =>
     index >= 0 && index < array.length ? index : panic(`Index ${index} is out of bounds`)
 export const InaccessibleProperty = <T>(failMessage: string): T =>
     new Proxy({}, {get() { return panic(failMessage) }}) as T
-export const canWrite = <T>(obj: T, key: keyof any): obj is T & Record<typeof key, unknown> => {
+export const canWrite = <T>(obj: T, key: PropertyKey): obj is T & Record<typeof key, unknown> => {
     while (isDefined(obj)) {
         const descriptor = Object.getOwnPropertyDescriptor(obj, key)
         if (isDefined(descriptor)) {return typeof descriptor.set === "function"}
@@ -135,7 +138,7 @@ export const canWrite = <T>(obj: T, key: keyof any): obj is T & Record<typeof ke
     }
     return false
 }
-export const requireProperty = <T extends {}>(object: T, key: keyof T): void => {
+export const requireProperty = <T extends NonNullable<unknown>>(object: T, key: keyof T): void => {
     const {status, value} = tryCatch(() => object instanceof Function ? object.name : object.constructor.name)
     const feature = status === "failure" ? `${object}.${String(key)}` : `${value}.${String(key)}`
     if (!(key in object)) {throw `${feature} not available`}
@@ -172,8 +175,10 @@ export const asEnumValue = <
     const values = Object.keys(enm)
         .filter(k => isNaN(Number(k)))
         .map(k => enm[k as keyof typeof enm])
-    return values.includes(value as any) ? value as E[keyof E] : panic(`Invalid enum value: ${String(value)}`)
+    return values.includes(value as E[keyof E]) ? value as E[keyof E] : panic(`Invalid enum value: ${String(value)}`)
 }
 export const EmptyExec: Exec = (): void => {}
-export const EmptyProvider: Provider<any> = (): any => {}
-export const EmptyProcedure: Procedure<any> = (_: any): void => {}
+// Placeholder providers deliberately erase their eventual value type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const EmptyProvider: Provider<any> = () => undefined
+export const EmptyProcedure: Procedure<unknown> = (_: unknown): void => {}

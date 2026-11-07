@@ -164,7 +164,7 @@ export class Arrays {
         return true
     }
 
-    static toRecord<T, U extends keyof any>(array: ReadonlyArray<T>,
+    static toRecord<T, U extends PropertyKey>(array: ReadonlyArray<T>,
                                             toKey: Func<T, U>): Record<U, T> {
         return array.reduce((record, value) => {
             record[toKey(value)] = value
