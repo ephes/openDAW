@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Write version-2 sync-log payload digests, validate before graph mutation, and reject malformed/truncated lengths; legacy reads require explicit opt-in.
+
 - Preserve failed recovery reads and publish complete locked backup generations with explicit consumption markers.
 
 - Retain edits during project writes, isolate Save As metadata/cover ownership, and persist cover removal.

@@ -5,7 +5,7 @@ import {Project} from "../project/Project"
 export const enum CommitType { Init, Open, Updates, NewVersion }
 
 export class Commit {
-    static readonly VERSION = 1 // For devs: walk your way to dynamic versioning from here
+    static readonly VERSION = 2
 
     static readonly #NO_PAYLOAD = new Uint8Array(1).buffer
     static readonly #EMPTY_HASH = new Uint8Array(32).buffer
@@ -28,13 +28,36 @@ export class Commit {
 
     static async #create(type: CommitType, prevHash: ArrayBuffer, payload: ArrayBuffer): Promise<Commit> {
         const date = Date.now()
+        // Own the bytes before yielding to WebCrypto.
+        prevHash = prevHash.slice(0)
+        payload = payload.slice(0)
+        const thisHash = await this.#digest(type, Commit.VERSION, prevHash, payload, date)
+        return new Commit(type, prevHash, thisHash, payload, date, Commit.VERSION)
+    }
+
+    static #digest(type: CommitType, version: number, prevHash: ArrayBuffer, payload: ArrayBuffer, date: number): Promise<ArrayBuffer> {
         const output = ByteArrayOutput.create()
-        const data = output.toArrayBuffer() as ArrayBuffer
-        const thisHash = await Hash.fromBuffers(data, prevHash, new Float64Array([date]).buffer)
-        return new Commit(type, prevHash, thisHash, payload, date)
+        output.writeString("openDAW-sync-log")
+        output.writeInt(type)
+        output.writeInt(version)
+        output.writeBytes(new Int8Array(prevHash))
+        output.writeInt(payload.byteLength)
+        output.writeBytes(new Int8Array(payload))
+        output.writeDouble(date)
+        return Hash.fromBuffers(output.toArrayBuffer())
+    }
+
+    async verify(allowLegacy: boolean = false): Promise<void> {
+        if (this.version === 1) {
+            assert(allowLegacy, "Legacy sync logs have no payload integrity; explicit opt-in required")
+            return
+        }
+        const digest = await Commit.#digest(this.type, this.version, this.prevHash, this.payload, this.date)
+        assert(Hash.equals(digest, this.thisHash), "Sync-log digest mismatch")
     }
 
     static deserialize(input: ByteArrayInput): Commit {
+        assert(input.available(84), "Truncated sync-log record")
         const type = input.readInt() as CommitType
         assert(type === CommitType.Init
             || type === CommitType.Open
@@ -42,27 +65,30 @@ export class Commit {
             || type === CommitType.NewVersion,
             `Unknown commit type "${type}"`)
         const version = input.readInt()
-        assert(version === Commit.VERSION, "version mismatch")
+        assert(version === 1 || version === Commit.VERSION, "Unsupported sync-log version")
         const prevHash = new Int8Array(32)
         input.readBytes(prevHash)
         const thisHash = new Int8Array(32)
         input.readBytes(thisHash)
-        const data = new Int8Array(input.readInt())
+        const length = input.readInt()
+        assert(length >= 0 && length <= input.remaining() - 8, "Invalid sync-log payload length")
+        const data = new Int8Array(length)
         input.readBytes(data)
         const date = input.readDouble()
-        return new Commit(type, prevHash.buffer, thisHash.buffer, data.buffer, date)
+        return new Commit(type, prevHash.buffer, thisHash.buffer, data.buffer, date, version)
     }
 
     private constructor(readonly type: CommitType,
                         readonly prevHash: ArrayBuffer,
                         readonly thisHash: ArrayBuffer,
                         readonly payload: ArrayBuffer,
-                        readonly date: number) {}
+                        readonly date: number,
+                        readonly version: number) {}
 
     serialize(): ArrayBuffer {
         const output = ByteArrayOutput.create()
         output.writeInt(this.type)
-        output.writeInt(Commit.VERSION)
+        output.writeInt(this.version)
         output.writeBytes(new Int8Array(this.prevHash))
         output.writeBytes(new Int8Array(this.thisHash))
         output.writeInt(this.payload.byteLength)

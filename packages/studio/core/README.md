@@ -222,3 +222,17 @@ cleanup removes only the accepted generation. Legacy four-file backups remain
 readable and are removed only after successful construction. Old clients do not
 understand generations: use updated clients together. Retained older and orphaned
 generations are not garbage-collected automatically; recovery still excludes covers.
+
+## Sync-log integrity and legacy policy
+
+New records use format version 2. SHA-256 covers a fixed domain string, type,
+version, previous hash, payload length/bytes and timestamp in ByteArrayOutput's
+canonical byte order. The reader validates every digest and chain link before
+loading/mutating the project. This detects corruption relative to the stored chain;
+it is not a signature or authentication against an attacker who rewrites all hashes.
+Legacy version-1 logs are refused by default. Trusted callers can explicitly pass
+`{allowLegacy: true}` to `SyncLogReader.unwrap` to read them without payload
+integrity; existing UI calls keep the safe default. Appending uses version 2 and
+does not retroactively protect legacy records. Payload lengths must fit the input
+including the timestamp before allocation. Only exact record-boundary EOF succeeds;
+truncated/malformed records reject instead of silently returning a partial project.
