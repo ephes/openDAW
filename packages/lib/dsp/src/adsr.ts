@@ -15,6 +15,7 @@ export class Adsr {
     #attackInc = 0.0
     #decayDec = 0.0
     #releaseDec = 0.0
+    #releaseStartValue = 0.0
 
     constructor(sampleRate: number) {this.#invSampleRate = 1.0 / sampleRate}
 
@@ -58,16 +59,18 @@ export class Adsr {
         }
     }
 
-    gateOn(): void {this.#state = State.Attack}
+    gateOn(): void {this.#state = State.Attack; this.#updateRates()}
 
     gateOff(): void {
         if (this.#state !== State.Idle) {
             this.#state = State.Release
+            this.#releaseStartValue = this.#value
             this.#updateRates()
         }
     }
 
     forceStop(): void {
+        this.#phase = 0.0
         this.#state = State.Idle
         this.#value = 0.0
     }
@@ -121,7 +124,7 @@ export class Adsr {
                             this.#updateRates()
                             break
                         }
-                        this.#phase = 3.0 + (1.0 - (this.#value / this.#sustain))
+                        this.#phase = 3.0 + (1.0 - (this.#value / this.#releaseStartValue))
                         output[i++] = this.#value
                     }
                     break

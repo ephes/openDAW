@@ -1,0 +1,58 @@
+import {describe, expect, it} from "vitest"
+import {Adsr} from "./adsr"
+
+describe("Adsr lifecycle", () => {
+    it("uses a full attack duration when retriggered from release", () => {
+        const envelope = new Adsr(1000)
+        envelope.set(0.01, 0.01, 0.5, 0.01)
+        const output = new Float32Array(32)
+        envelope.gateOn()
+        envelope.process(output, 0, 30)
+        envelope.gateOff()
+        envelope.process(output, 0, 5)
+        expect(envelope.value).toBeCloseTo(0.25, 8)
+        envelope.gateOn()
+        envelope.process(output, 1, 11)
+        expect(output[1]).toBeCloseTo(0.325, 6)
+        expect(output[9]).toBeCloseTo(0.925, 6)
+        expect(output[10]).toBeCloseTo(1, 6)
+    })
+    it.each([0, 0.5, 1])("handles early release, split blocks and force stop at sustain %s", sustain => {
+        const create = () => {const envelope = new Adsr(1000); envelope.set(0.004, 0.003, sustain, 0.008); return envelope}
+        const whole = create()
+        const split = create()
+        for (const envelope of [whole, split]) {envelope.gateOn()}
+        const actual = new Float32Array(14).fill(77)
+        const expected = actual.slice()
+        whole.process(actual, 1, 4)
+        split.process(expected, 1, 2)
+        split.process(expected, 2, 4)
+        for (const envelope of [whole, split]) {envelope.gateOff()}
+        whole.process(actual, 4, 13)
+        split.process(expected, 4, 7)
+        expect(Number.isFinite(split.phase)).toBe(true)
+        split.process(expected, 7, 13)
+        expect(actual).toEqual(expected)
+        expect(actual[0]).toBe(77)
+        expect(actual[13]).toBe(77)
+        expect(whole.complete).toBe(true)
+        whole.gateOn()
+        whole.process(actual, 0, 2)
+        whole.forceStop()
+        expect(whole.value).toBe(0)
+        expect(whole.phase).toBe(0)
+        expect(whole.gate).toBe(false)
+    })
+    it.each([0, 1])("zero duration stages remain finite for sustain %s", sustain => {
+        const envelope = new Adsr(1000)
+        envelope.set(0, 0, sustain, 0)
+        const output = new Float32Array(8)
+        envelope.gateOn()
+        envelope.process(output, 0, 4)
+        expect(envelope.value).toBe(sustain)
+        envelope.gateOff()
+        envelope.process(output, 4, 8)
+        expect(output.every(Number.isFinite)).toBe(true)
+        expect(envelope.complete).toBe(true)
+    })
+})

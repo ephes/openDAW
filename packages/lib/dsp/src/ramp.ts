@@ -32,7 +32,7 @@ export namespace Ramp {
         constructor(length: int) {this.#length = length}
 
         set(target: number, smooth?: boolean): void {
-            if (this.#value === target) {return}
+            if (smooth === true && this.#remaining === 0 && this.#value === target) {return}
             if (smooth === true) {
                 this.#target = target
                 this.#delta = (target - this.#value) / this.#length
@@ -116,7 +116,7 @@ export namespace Ramp {
         }
 
         set(target: Readonly<StereoMatrix.Matrix>, smooth?: boolean): void {
-            if (this.#equals(target)) {return}
+            if (smooth === true && this.#remaining === 0 && this.#equals(target)) {return}
             if (smooth === true) {
                 this.#target.ll = target.ll
                 this.#target.lr = target.lr

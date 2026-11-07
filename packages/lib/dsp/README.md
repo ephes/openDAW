@@ -46,3 +46,13 @@ Digital Signal Processing utilities and audio processing functions for TypeScrip
 
 * **utils.ts** - General DSP utility functions
 * **global-console.d.ts** - Global console type definitions
+
+## Deterministic DSP validation
+
+After the root build, run `npm test --workspace=@opendaw/lib-dsp`. Tests use
+synthetic signals and controlled worklet globals; no audio hardware is required.
+Immediate scalar/matrix ramp sets cancel pending interpolation even when the new
+value equals the current value. Glide completion commits the current pitch before
+retargeting; zero-duration glides cancel movement immediately. ADSR gate-on
+recalculates a full attack from the current amplitude. Release phase is normalized
+to its entry amplitude (including zero sustain), and force-stop clears phase.
