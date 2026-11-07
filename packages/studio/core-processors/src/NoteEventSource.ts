@@ -13,6 +13,7 @@ export namespace NoteLifecycleEvent {
     export const Comparator = (a: NoteLifecycleEvent, b: NoteLifecycleEvent): number => {
         const delta = a.position - b.position
         if (delta !== 0) {return delta}
+        if (a.type === b.type) {return 0}
         if (a.type === "note-complete-event") {return -1}
         if (b.type === "note-complete-event") {return 1}
         return 0

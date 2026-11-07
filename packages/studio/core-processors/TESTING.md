@@ -10,3 +10,9 @@ Clip queries own half-open ranges and visit every intersected cycle. With region
 each repeated subnote is capped at the same boundary as an ordinary note; disabling it preserves tails.
 Pending MIDI transport messages are delivered in order to every enabled nonempty destination, with
 its configured delay, then discarded (also when no destination exists).
+
+Lifecycle sorting returns equality for simultaneous peers, with completions before starts.
+MIDI ring tests decode real shared memory, observing registration before publication, two-word
+messages, wrap/full behavior and the 64-device limit. Explicit position assignment raises one
+consumable leap; ordinary advance does not. Pause preserves position/metronome preference and
+clears transport, recording and count-in.
