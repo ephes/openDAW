@@ -9,6 +9,8 @@ import {TrafficMeter} from "./TrafficMeter"
 
 export const STALL_TIMEOUT_MS = 10_000
 export const MAX_RETRIES = 3
+export const MAX_TRANSFER_BYTES = 512 * 1024 * 1024
+export const MAX_TRANSFER_CHUNKS = Math.ceil(MAX_TRANSFER_BYTES / ChunkProtocol.CHUNK_SIZE)
 
 type PendingRequest = {
     readonly uuid: UUID.Bytes
@@ -28,7 +30,7 @@ export class PeerAssetProvider {
     readonly #connections: Map<string, AssetPeerConnection> = new Map()
     readonly #pendingRequests: Map<string, PendingRequest> = new Map()
     readonly #incomingChunks: Map<string, Map<number, Uint8Array>> = new Map()
-    readonly #transferMeta: Map<string, {totalChunks: number}> = new Map()
+    readonly #transferMeta: Map<string, {totalChunks: number, zipSize: number, received: number}> = new Map()
     readonly #knownPeers: Set<string> = new Set()
     readonly #transferringAssets: Map<string, string> = new Map()
     readonly #activePeerTransfers: Map<string, string> = new Map()
@@ -112,8 +114,8 @@ export class PeerAssetProvider {
             this.#activePeerTransfers.delete(remotePeerId)
             const connection = this.#connections.get(remotePeerId)
             if (connection !== undefined) {
-                connection.terminate()
                 this.#connections.delete(remotePeerId)
+                connection.terminate()
             }
             this.#drainPeerQueue(remotePeerId)
         }
@@ -192,22 +194,27 @@ export class PeerAssetProvider {
         this.#connections.set(remotePeerId, connection)
         console.debug("[P2P:Provider] creating WebRTC offer to", remotePeerId)
         const channel = await connection.createOffer()
+        const current = () => this.#connections.get(remotePeerId) === connection
+        if (!current()) {return}
         console.debug("[P2P:Provider] offer created, waiting for data channel open")
         this.#resetStallTimer(pending)
         channel.onmessage = (event: MessageEvent) => {
-            this.#onDataChannelMessage(pending, event.data as ArrayBuffer)
+            if (current()) {this.#onDataChannelMessage(pending, event.data as ArrayBuffer)}
         }
         channel.onerror = () => {
+            if (!current()) {return}
             console.warn("[P2P:Provider] data channel error for", pending.uuidString)
             this.#retryTransfer(pending.uuidString, "data channel error")
         }
         channel.onclose = () => {
+            if (!current()) {return}
             console.debug("[P2P:Provider] data channel closed for", pending.uuidString)
             if (this.#transferringAssets.has(pending.uuidString)) {
                 this.#retryTransfer(pending.uuidString, "data channel closed")
             }
         }
         channel.onopen = () => {
+            if (!current()) {return}
             console.debug("[P2P:Provider] data channel open, sending transfer-request for", pending.uuidString)
             channel.send(JSON.stringify({
                 type: "transfer-request",
@@ -217,70 +224,70 @@ export class PeerAssetProvider {
         }
     }
 
+    #failTransfer(pending: PendingRequest): void {
+        if (this.#pendingRequests.get(pending.uuidString) !== pending) {return}
+        this.#retryTransfer(pending.uuidString, "invalid or incomplete asset transfer")
+    }
+
     #onDataChannelMessage(pending: PendingRequest, buffer: ArrayBuffer): void {
-        this.#resetStallTimer(pending)
-        this.#trafficMeter.recordDownload(buffer.byteLength)
-        const message = ChunkProtocol.decode(buffer)
-        switch (message.msgType) {
-            case ChunkProtocol.MsgType.TransferStart: {
-                const meta = JSON.parse(new TextDecoder().decode(message.payload))
-                console.debug("[P2P:Provider] transfer-start for", pending.uuidString, "totalChunks:", meta.totalChunks, "zipSize:", meta.zipSize)
-                this.#transferMeta.set(pending.uuidString, {totalChunks: meta.totalChunks})
-                this.#incomingChunks.set(pending.uuidString, new Map())
-                break
-            }
-            case ChunkProtocol.MsgType.ChunkData: {
-                const chunks = this.#incomingChunks.get(pending.uuidString)
-                if (chunks === undefined) {break}
-                chunks.set(message.chunkNum, message.payload)
-                const meta = this.#transferMeta.get(pending.uuidString)
-                if (meta !== undefined) {
-                    const progress = chunks.size / meta.totalChunks
-                    if (chunks.size % 10 === 0 || chunks.size === meta.totalChunks) {
-                        console.debug("[P2P:Provider] chunk", chunks.size, "/", meta.totalChunks, `(${(progress * 100).toFixed(0)}%)`)
+        if (this.#pendingRequests.get(pending.uuidString) !== pending) {return}
+        try {
+            const message = ChunkProtocol.decode(buffer)
+            if (!UUID.equals(message.assetId, pending.uuid) || ![
+                ChunkProtocol.MsgType.TransferStart, ChunkProtocol.MsgType.ChunkData,
+                ChunkProtocol.MsgType.TransferComplete
+            ].includes(message.msgType)) {throw new Error("Invalid frame identity/type")}
+            this.#trafficMeter.recordDownload(buffer.byteLength)
+            const key = pending.uuidString
+            switch (message.msgType) {
+                case ChunkProtocol.MsgType.TransferStart: {
+                    if (this.#transferMeta.has(key) || message.payload.byteLength > 4096) {throw new Error("Invalid start")}
+                    const meta = JSON.parse(new TextDecoder().decode(message.payload))
+                    if (meta === null || typeof meta !== "object" ||
+                        !Number.isSafeInteger(meta.totalChunks) || meta.totalChunks < 1 || meta.totalChunks > MAX_TRANSFER_CHUNKS ||
+                        !Number.isSafeInteger(meta.zipSize) || meta.zipSize < meta.totalChunks || meta.zipSize > MAX_TRANSFER_BYTES ||
+                        meta.zipSize > meta.totalChunks * ChunkProtocol.CHUNK_SIZE) {throw new Error("Invalid metadata")}
+                    this.#transferMeta.set(key, {totalChunks: meta.totalChunks, zipSize: meta.zipSize, received: 0})
+                    this.#incomingChunks.set(key, new Map())
+                    break
+                }
+                case ChunkProtocol.MsgType.ChunkData: {
+                    const chunks = this.#incomingChunks.get(key)
+                    const meta = this.#transferMeta.get(key)
+                    if (!chunks || !meta || message.chunkNum >= meta.totalChunks || message.payload.byteLength < 1 ||
+                        message.payload.byteLength > ChunkProtocol.CHUNK_SIZE) {throw new Error("Invalid chunk")}
+                    const old = chunks.get(message.chunkNum)
+                    if (old) {
+                        if (old.length !== message.payload.length || old.some((byte, i) => byte !== message.payload[i])) {throw new Error("Conflicting chunk")}
+                        break
                     }
-                    pending.progress(progress)
+                    if (message.payload.byteLength > meta.zipSize - meta.received) {throw new Error("Transfer byte limit")}
+                    meta.received += message.payload.byteLength
+                    chunks.set(message.chunkNum, message.payload)
+                    pending.progress(chunks.size / meta.totalChunks)
+                    break
                 }
-                break
-            }
-            case ChunkProtocol.MsgType.TransferComplete: {
-                console.debug("[P2P:Provider] transfer-complete for", pending.uuidString)
-                const chunks = this.#incomingChunks.get(pending.uuidString)
-                const meta = this.#transferMeta.get(pending.uuidString)
-                if (chunks === undefined || meta === undefined) {break}
-                const ordered: Array<Uint8Array> = []
-                for (let index = 0; index < meta.totalChunks; index++) {
-                    const chunk = chunks.get(index)
-                    if (chunk === undefined) {
-                        pending.reject(new Error(`Missing chunk ${index} for asset ${pending.uuidString}`))
-                        return
+                case ChunkProtocol.MsgType.TransferComplete: {
+                    const chunks = this.#incomingChunks.get(key)
+                    const meta = this.#transferMeta.get(key)
+                    if (!chunks || !meta || chunks.size !== meta.totalChunks || meta.received !== meta.zipSize) {throw new Error("Incomplete transfer")}
+                    const ordered: Uint8Array[] = []
+                    for (let index = 0; index < meta.totalChunks; index++) {
+                        const chunk = chunks.get(index)
+                        if (!chunk) {throw new Error("Missing chunk")}
+                        ordered.push(chunk)
                     }
-                    ordered.push(chunk)
+                    const zip = ChunkProtocol.reassemble(ordered)
+                    if (pending.stallTimer !== null) {clearTimeout(pending.stallTimer)}
+                    this.#pendingRequests.delete(key)
+                    this.#clearTransferState(key)
+                    pending.resolve(zip)
+                    return
                 }
-                const zipBytes = ChunkProtocol.reassemble(ordered)
-                console.debug("[P2P:Provider] reassembled zip:", zipBytes.byteLength, "bytes")
-                if (pending.stallTimer !== null) {
-                    clearTimeout(pending.stallTimer)
-                    pending.stallTimer = null
-                }
-                const remotePeerId = this.#transferringAssets.get(pending.uuidString)
-                this.#incomingChunks.delete(pending.uuidString)
-                this.#transferMeta.delete(pending.uuidString)
-                this.#transferringAssets.delete(pending.uuidString)
-                this.#pendingRequests.delete(pending.uuidString)
-                if (remotePeerId !== undefined) {
-                    this.#activePeerTransfers.delete(remotePeerId)
-                    const connection = this.#connections.get(remotePeerId)
-                    if (connection !== undefined) {
-                        connection.terminate()
-                        this.#connections.delete(remotePeerId)
-                    }
-                    this.#drainPeerQueue(remotePeerId)
-                }
-                pending.progress(1.0)
-                pending.resolve(zipBytes)
-                break
             }
+            this.#resetStallTimer(pending)
+        } catch {
+            this.#failTransfer(pending)
         }
     }
 

@@ -1,3 +1,4 @@
+import {readZipEntry, ZIP_LIMITS, ZipLimits} from "@opendaw/lib-runtime"
 import JSZip from "jszip"
 import {AudioData, WavFile} from "@opendaw/lib-dsp"
 import {SampleMetaData, SoundfontMetaData} from "@opendaw/studio-adapters"
@@ -10,10 +11,12 @@ export namespace AssetZip {
         return zip.generateAsync({type: "arraybuffer"})
     }
 
-    export const unpackSample = async (zipBytes: ArrayBuffer): Promise<[AudioData, SampleMetaData]> => {
+    export const unpackSample = async (zipBytes: ArrayBuffer, limits: ZipLimits = ZIP_LIMITS): Promise<[AudioData, SampleMetaData]> => {
         const zip = await JSZip.loadAsync(zipBytes)
-        const wavBytes = await zip.file("audio.wav")!.async("arraybuffer")
-        const metaJson = await zip.file("meta.json")!.async("string")
+        if (Object.keys(zip.files).length > limits.entries) {throw new Error("Archive entry limit exceeded")}
+        const budget = {remaining: limits.total}
+        const metaJson = new TextDecoder().decode(await readZipEntry(zip.file("meta.json")!, limits.metadata, budget))
+        const wavBytes = (await readZipEntry(zip.file("audio.wav")!, limits.media, budget)).buffer as ArrayBuffer
         const audioData = WavFile.decodeFloats(wavBytes)
         const meta = SampleMetaData.parse(JSON.parse(metaJson))
         return [audioData, meta]
@@ -26,10 +29,12 @@ export namespace AssetZip {
         return zip.generateAsync({type: "arraybuffer"})
     }
 
-    export const unpackSoundfont = async (zipBytes: ArrayBuffer): Promise<[ArrayBuffer, SoundfontMetaData]> => {
+    export const unpackSoundfont = async (zipBytes: ArrayBuffer, limits: ZipLimits = ZIP_LIMITS): Promise<[ArrayBuffer, SoundfontMetaData]> => {
         const zip = await JSZip.loadAsync(zipBytes)
-        const sf2Bytes = await zip.file("soundfont.sf2")!.async("arraybuffer")
-        const metaJson = await zip.file("meta.json")!.async("string")
+        if (Object.keys(zip.files).length > limits.entries) {throw new Error("Archive entry limit exceeded")}
+        const budget = {remaining: limits.total}
+        const metaJson = new TextDecoder().decode(await readZipEntry(zip.file("meta.json")!, limits.metadata, budget))
+        const sf2Bytes = (await readZipEntry(zip.file("soundfont.sf2")!, limits.media, budget)).buffer as ArrayBuffer
         const meta = SoundfontMetaData.parse(JSON.parse(metaJson))
         return [sf2Bytes, meta]
     }

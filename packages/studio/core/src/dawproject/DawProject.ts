@@ -1,3 +1,4 @@
+import {readZipEntry, ZIP_LIMITS, ZipLimits} from "@opendaw/lib-runtime"
 import {asDefined, isDefined, panic, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, MetaDataSchema, ProjectSchema} from "@opendaw/lib-dawproject"
@@ -13,7 +14,7 @@ export namespace DawProject {
         fromUUID(uuid: UUID.Bytes): Resource
     }
 
-    export const decode = async (buffer: ArrayBuffer | Buffer<ArrayBuffer>): Promise<{
+    export const decode = async (buffer: ArrayBuffer | Buffer<ArrayBuffer>, limits: ZipLimits = ZIP_LIMITS): Promise<{
         metaData: MetaDataSchema,
         project: ProjectSchema,
         resources: ResourceProvider
@@ -27,20 +28,23 @@ export namespace DawProject {
             return Promise.reject(error)
         }
         const zip = await JSZip.loadAsync(buffer)
-        const metaDataXml = await zip.file("metadata.xml")?.async("string")
+        if (Object.keys(zip.files).length > limits.entries) {throw new Error("Archive entry limit exceeded")}
+        const budget = {remaining: limits.total}
+        const metadataFile = zip.file("metadata.xml")
+        const metaDataXml = metadataFile ? new TextDecoder().decode(await readZipEntry(metadataFile, limits.metadata, budget)) : undefined
         const metaData = isDefined(metaDataXml) ? Xml.parse(metaDataXml, MetaDataSchema) : Xml.element({}, MetaDataSchema)
-        const projectXml = asDefined(await zip.file("project.xml")?.async("string"), "No project.xml found")
+        const projectXml = new TextDecoder().decode(await readZipEntry(asDefined(zip.file("project.xml"), "No project.xml found"), limits.project ?? Math.min(limits.media, 33_554_432), budget))
         console.debug(projectXml)
         const project = Xml.parse(projectXml, ProjectSchema)
         const resourceFiles = Object.entries(zip.files).filter(([_, file]) =>
             !file.dir && !file.name.endsWith(".xml"))
-        const resources: ReadonlyArray<Resource> =
-            await Promise.all(resourceFiles.map(async ([path, file]) => {
-                const name = path.substring(path.lastIndexOf("/") + 1)
-                const buffer = await file.async("arraybuffer")
-                const uuid = await UUID.sha256(new Uint8Array(buffer).buffer)
-                return {uuid, path, name, buffer}
-            }))
+        const resources: Resource[] = []
+        for (const [path, file] of resourceFiles) {
+            const name = path.substring(path.lastIndexOf("/") + 1)
+            const buffer = (await readZipEntry(file, limits.media, budget)).buffer as ArrayBuffer
+            const uuid = await UUID.sha256(new Uint8Array(buffer).buffer)
+            resources.push({uuid, path, name, buffer})
+        }
         return {
             metaData, project, resources: {
                 fromPath: (path: string): Resource => resources

@@ -23,7 +23,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@opendaw/lib-std": "^0.0.78"
+    "@opendaw/lib-std": "^0.0.78",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@opendaw/eslint-config": "^0.0.28",

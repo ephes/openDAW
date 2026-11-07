@@ -32,9 +32,12 @@ export const encodeHeader = (msgType: MsgType, assetId: UUID.Bytes, chunkNum: nu
 }
 
 export const decodeHeader = (buffer: ArrayBuffer): ChunkHeader => {
+    if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < HEADER_SIZE) {throw new Error("Invalid transfer frame")}
     const view = new DataView(buffer)
     const bytes = new Uint8Array(buffer)
     const msgType = view.getUint8(0) as MsgType
+    if (![MsgType.ChunkData, MsgType.TransferStart, MsgType.TransferComplete, MsgType.ChunkAck, MsgType.Cancel].includes(msgType)) {throw new Error("Unsupported transfer frame")}
+
     const assetId = new Uint8Array(bytes.buffer, 1, UUID.length) as UUID.Bytes
     const chunkNum = view.getUint32(1 + UUID.length, false)
     return {msgType, assetId, chunkNum}
@@ -52,13 +55,8 @@ export const encode = (msgType: MsgType, assetId: UUID.Bytes, chunkNum: number, 
 }
 
 export const decode = (buffer: ArrayBuffer): ChunkMessage => {
-    const view = new DataView(buffer)
-    const bytes = new Uint8Array(buffer)
-    const msgType = view.getUint8(0) as MsgType
-    const assetId = new Uint8Array(bytes.buffer, 1, UUID.length) as UUID.Bytes
-    const chunkNum = view.getUint32(1 + UUID.length, false)
-    const payload = new Uint8Array(bytes.buffer, HEADER_SIZE)
-    return {msgType, assetId, chunkNum, payload}
+    const header = decodeHeader(buffer)
+    return {...header, payload: new Uint8Array(buffer, HEADER_SIZE)}
 }
 
 export const split = (data: ArrayBuffer, chunkSize: number = CHUNK_SIZE): ReadonlyArray<Uint8Array> => {
