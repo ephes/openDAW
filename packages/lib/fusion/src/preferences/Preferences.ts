@@ -2,6 +2,8 @@ import {
     isDefined,
     MutableObservableValue,
     Observer,
+    Optional,
+    Nullable,
     PathTuple,
     Subscription,
     Terminable,
@@ -23,28 +25,41 @@ export interface Preferences<SETTINGS> {
 }
 
 export namespace Preferences {
-    const hasLocalStorage = typeof localStorage !== "undefined"
+    let storageWarning = false
+
+    const readStorage = (key: string): {storage: Optional<Storage>, stored: Nullable<string>} => {
+        const result = tryCatch(() => {
+            const storage = globalThis.localStorage
+            return {storage, stored: storage?.getItem(key) ?? null}
+        })
+        if (result.status === "success") {return result.value}
+        if (!storageWarning) {
+            storageWarning = true
+            console.warn("Preference storage unavailable; using defaults")
+        }
+        return {storage: undefined, stored: null}
+    }
 
     export const host = <SETTINGS extends object>(key: string, zod: z.ZodType<SETTINGS>): PreferencesHost<SETTINGS> => {
-        const facade = new PreferencesHost<SETTINGS>(loadFromStorage(key, zod))
-        if (hasLocalStorage) {
-            facade.subscribeAll(() => tryCatch(() => localStorage.setItem(key, JSON.stringify(facade.settings))))
+        const {storage, stored} = readStorage(key)
+        const facade = new PreferencesHost<SETTINGS>(loadFromStorage(stored, zod))
+        if (isDefined(storage)) {
+            facade.subscribeAll(() => tryCatch(() => storage.setItem(key, JSON.stringify(facade.settings))))
         }
         return facade
     }
 
     export const facade = <SETTINGS extends object>(key: string, zod: z.ZodType<SETTINGS>): PreferencesFacade<SETTINGS> => {
-        const facade = new PreferencesFacade<SETTINGS>(loadFromStorage(key, zod))
-        if (hasLocalStorage) {
-            facade.subscribeAll(() => tryCatch(() => localStorage.setItem(key, JSON.stringify(facade.settings))))
+        const {storage, stored} = readStorage(key)
+        const facade = new PreferencesFacade<SETTINGS>(loadFromStorage(stored, zod))
+        if (isDefined(storage)) {
+            facade.subscribeAll(() => tryCatch(() => storage.setItem(key, JSON.stringify(facade.settings))))
         }
         return facade
     }
 
-    const loadFromStorage = <SETTINGS>(key: string, zod: z.ZodType<SETTINGS>): SETTINGS => {
+    const loadFromStorage = <SETTINGS>(stored: Nullable<string>, zod: z.ZodType<SETTINGS>): SETTINGS => {
         const defaults = zod.parse({})
-        if (!hasLocalStorage) {return defaults}
-        const stored = localStorage.getItem(key)
         if (!isDefined(stored)) {return defaults}
         const {status, value} = tryCatch(() => JSON.parse(stored))
         if (status !== "success" || typeof value !== "object" || value === null) {return defaults}

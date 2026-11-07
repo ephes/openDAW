@@ -23,8 +23,10 @@ export class PreferencesFacade<SETTINGS extends object> implements Preferences<S
 
     setHost(host: PreferencesHost<SETTINGS>): void {
         this.#lifecycle.terminate()
+        let active = true
+        this.#lifecycle.own({terminate: () => {active = false}})
         host.update(this.#object.data)
-        const queueHostUpdate = queueTask(() => host.update(this.#object.data))
+        const queueHostUpdate = queueTask(() => {if (active) {host.update(this.#object.data)}})
         this.#lifecycle.ownAll(
             host.subscribeAll(() => this.#object.update(host.settings)),
             this.#object.subscribeAll(queueHostUpdate)
