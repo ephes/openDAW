@@ -1,5 +1,5 @@
 import {ByteCounter, DataInput, DataOutput} from "./data"
-import {int} from "./lang"
+import {assert, int} from "./lang"
 
 /**
  * Schema defines a fixed structure for numbers and boolean
@@ -72,10 +72,12 @@ export namespace Schema {
 
     export const floats = (length: int) => new class extends Serializer<Float32Array> {
         read(input: DataInput, values: Float32Array): Float32Array {
+            assert(values instanceof Float32Array && values.length === length, "Invalid fixed array type or length")
             for (let i = 0; i < values.length; i++) {values[i] = input.readFloat()}
             return values
         }
         write(output: DataOutput, values: Float32Array): void {
+            assert(values instanceof Float32Array && values.length === length, "Invalid fixed array type or length")
             for (let i = 0; i < values.length; i++) {output.writeFloat(values[i])}
         }
         initialValue(): Float32Array {return new Float32Array(length)}
@@ -83,10 +85,12 @@ export namespace Schema {
 
     export const doubles = (length: int) => new class extends Serializer<Float64Array> {
         read(input: DataInput, values: Float64Array): Float64Array {
+            assert(values instanceof Float64Array && values.length === length, "Invalid fixed array type or length")
             for (let i = 0; i < values.length; i++) {values[i] = input.readDouble()}
             return values
         }
         write(output: DataOutput, values: Float64Array): void {
+            assert(values instanceof Float64Array && values.length === length, "Invalid fixed array type or length")
             for (let i = 0; i < values.length; i++) {output.writeDouble(values[i])}
         }
         initialValue(): Float64Array {return new Float64Array(length)}

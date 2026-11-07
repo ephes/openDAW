@@ -76,3 +76,10 @@ Binary output is relative to the supplied buffer offset, including shared buffer
 auto-growth. ByteCounter includes the four-byte string length plus two bytes per
 UTF-16 code unit. Checksum retains every encoded bigint/Float64 byte; it remains
 a lightweight, non-cryptographic checksum. Affected historical checksums change.
+
+SyncStream writers require the buffer returned by `SyncStream.reader`; arbitrary
+zero-filled buffers are not initialized streams. SyncStream starts empty and grants one writer or reader exclusive ownership.
+Failed writes are discarded; failed reads/consumers release their frame. Errors
+propagate unchanged, and subsequent exchanges remain possible. Constructing another
+writer does not reset ownership. Schema float/double arrays have fixed type and
+length on read and write; matching replacements and in-place updates are supported.
