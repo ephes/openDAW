@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject empty/collapsed mapping domains, define singleton coordinates, and validate continuous inverses and pool ownership.
+
 - Correct shared-stream ownership, recover from callback/serialization failures, and enforce fixed schema array shapes.
 
 - Fix view-relative binary output, UTF-16 byte counts and bigint/Float64 checksum byte fidelity.

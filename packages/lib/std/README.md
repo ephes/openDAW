@@ -83,3 +83,11 @@ Failed writes are discarded; failed reads/consumers release their frame. Errors
 propagate unchanged, and subsequent exchanges remain possible. Constructing another
 writer does not reset ownership. Schema float/double arrays have fixed type and
 length on read and write; matching replacements and in-place updates are supported.
+
+ValueMapping.values requires a nonempty list; a singleton has normalized coordinate
+zero and always maps back to its sole value. LinearInteger bounds must increase
+after rounding and signed-integer clamping. Continuous mapping tests cover inverse
+grids, analytic midpoints, clamping and DefaultDecibel silence/-12 dB center.
+ObjectPool tests enforce exclusive live identities, counter conservation and
+error-safe foreign/double release, without prescribing a growth batch size.
+Run `npm test --workspace=@opendaw/lib-std` after the root build.

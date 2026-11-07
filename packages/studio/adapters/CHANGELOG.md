@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject collapsed integer script declarations before mapping updates and run ScriptDeclaration regressions in local aggregate tests.
+
 - Reject short preset headers before decoding or graph mutation.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.

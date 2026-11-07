@@ -1,4 +1,4 @@
-import {asInstanceOf, isDefined, Notifier, Nullable, Observable, Option, StringMapping, Terminable, ValueMapping} from "@opendaw/lib-std"
+import {asInstanceOf, isDefined, Notifier, Nullable, Observable, Option, StringMapping, Terminable, tryCatch, ValueMapping} from "@opendaw/lib-std"
 import {Field, StringField} from "@opendaw/lib-box"
 import {Pointers} from "@opendaw/studio-enums"
 import {WerkstattParameterBox} from "@opendaw/studio-boxes"
@@ -110,6 +110,9 @@ const parseSingleParam = (line: string): ParamDeclaration => {
     }
     if (defaultValue < min - FLOAT_TOLERANCE || defaultValue > max + FLOAT_TOLERANCE) {
         throw new Error(`Malformed @param: '${line}' — default (${defaultValue}) must be within [${min}, ${max}]`)
+    }
+    if (mapping === "int" && tryCatch(() => ValueMapping.linearInteger(min, max)).status !== "success") {
+        throw new Error(`Malformed @param: '${line}' — integer bounds must increase after rounding and clamping`)
     }
     return {label, defaultValue, min, max, mapping, unit}
 }

@@ -272,3 +272,17 @@ describe("ScriptDeclaration", () => {
         })
     })
 })
+
+
+it.each(["// @param x 1.2 1.1 1.4 int", "// @param x 3.5e20 3e20 4e20 int"])(
+    "rejects collapsed integer mappings while parsing: %s", code => {
+        expect(() => ScriptDeclaration.parseParams(code)).toThrow(/Malformed @param/)
+        expect(() => ScriptDeclaration.parseGroups(code)).toThrow(/Malformed @param/)
+    })
+it("resolves valid fractional integer bounds after parsing", () => {
+    const declaration = ScriptDeclaration.parseParams("// @param x 1 -2.4 4.4 int")[0]
+    const mapping = ScriptDeclaration.resolveValueMapping(declaration)
+    expect(mapping.y(0)).toBe(-2)
+    expect(mapping.y(1)).toBe(4)
+    expect(mapping.y(0.5)).toBe(1)
+})

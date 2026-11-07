@@ -20,7 +20,7 @@
     "generate-exports": "node generate-exports.mjs",
     "build": "npm run generate-exports && tsc",
     "lint": "eslint \"**/*.ts\"",
-    "test": "echo \"No tests to run\""
+    "test": "vitest run src/ScriptDeclaration.test.ts"
   },
   "dependencies": {
     "@opendaw/lib-box": "^0.0.86",
