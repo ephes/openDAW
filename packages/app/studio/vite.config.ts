@@ -5,6 +5,7 @@ import crossOriginIsolation from "vite-plugin-cross-origin-isolation"
 import viteCompression from "vite-plugin-compression"
 import {BuildInfo} from "./src/BuildInfo"
 import {existsSync} from "node:fs"
+import {fileURLToPath} from "node:url"
 
 export default defineConfig(({command}) => {
     const uuid = generateUUID()
@@ -28,7 +29,9 @@ export default defineConfig(({command}) => {
         },
         resolve: {
             alias: {
-                "@": resolve(__dirname, "./src")
+                "@": resolve(__dirname, "./src"),
+                // Monaco embeds an old sanitizer rather than importing its npm dependency.
+                "./dompurify/dompurify.js": fileURLToPath(import.meta.resolve("dompurify"))
             }
         },
         optimizeDeps: {

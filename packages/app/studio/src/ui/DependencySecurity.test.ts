@@ -1,5 +1,5 @@
 import {expect, it} from "vitest"
-import {readFileSync} from "node:fs"
+import {readFileSync, readdirSync} from "node:fs"
 import {URL as NodeURL} from "node:url"
 import {createServer} from "node:http"
 import DOMPurify from "dompurify"
@@ -45,4 +45,15 @@ it("roundtrips a tiny synthetic model message without fetching model assets", ()
 })
 it("compiles a synthetic Sass style through the patched immutable dependency", () => {
     expect(sass.compileString('$color: #123456; .fixture { color: $color; }').css).toContain("color: #123456")
+})
+
+it("bundles the patched sanitizer into Monaco's editor runtime", () => {
+    const folder = new NodeURL("../../dist/", import.meta.url)
+    const editors = readdirSync(folder).filter(name => /^editor\.main\..*\.js$/.test(name))
+    expect(editors.length).toBeGreaterThan(0)
+    for (const editor of editors) {
+        const source = readFileSync(new NodeURL(editor, folder), "utf8")
+        expect(source.includes("3.4.17")).toBe(true)
+        expect(/DOMPurify 3\.1\.7|\.version\s*=\s*["']3\.1\.7["']/.test(source)).toBe(false)
+    }
 })

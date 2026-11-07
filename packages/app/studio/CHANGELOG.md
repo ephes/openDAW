@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Route Monaco’s embedded sanitizer import to patched DOMPurify in Studio builds and guard the emitted editor bundle.
+
 - Patch Monaco sanitization and Nx HTTP, ONNX protobuf and Sass transitive dependencies to scoped security versions.
 
 - Render OAuth errors as text and forward correlated callback, error and close messages.
