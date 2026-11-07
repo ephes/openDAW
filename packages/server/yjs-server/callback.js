@@ -1,81 +1,111 @@
-import http from 'http'
-import * as number from 'lib0/number'
+import http from 'node:http'
+import https from 'node:https'
+import {urlToHttpOptions} from 'node:url'
 
-const CALLBACK_URL = process.env.CALLBACK_URL ? new URL(process.env.CALLBACK_URL) : null
-const CALLBACK_TIMEOUT = number.parseInt(process.env.CALLBACK_TIMEOUT || '5000')
-const CALLBACK_OBJECTS = process.env.CALLBACK_OBJECTS ? JSON.parse(process.env.CALLBACK_OBJECTS) : {}
-
-export const isCallbackSet = !!CALLBACK_URL
-
-/**
- * @param {import('./utils.js').WSSharedDoc} doc
- */
-export const callbackHandler = (doc) => {
-    const room = doc.name
-    const dataToSend = {
-        room,
-        data: {}
+const invalid = name => {throw new Error(`Invalid ${name}`)}
+const parseURL = value => {
+    if (!value) {return null}
+    let url
+    try {url = new URL(value)} catch {return invalid('CALLBACK_URL')}
+    if (!['http:', 'https:'].includes(url.protocol)) {return invalid('CALLBACK_URL')}
+    return url
+}
+const parseTimeout = value => {
+    if (!/^\d+$/.test(value)) {return invalid('CALLBACK_TIMEOUT')}
+    const timeout = Number(value)
+    if (!Number.isInteger(timeout) || timeout <= 0 || timeout > 300000) {return invalid('CALLBACK_TIMEOUT')}
+    return timeout
+}
+const accessors = Object.freeze({Array: 'getArray', Map: 'getMap', Text: 'getText', XmlFragment: 'getXmlFragment', XmlElement: 'getXmlElement'})
+const parseObjects = value => {
+    let objects
+    try {objects = JSON.parse(value)} catch {return invalid('CALLBACK_OBJECTS')}
+    if (objects === null || typeof objects !== 'object' || Array.isArray(objects)
+        || Object.entries(objects).some(([name, type]) => name.length === 0 || typeof type !== 'string' || !Object.hasOwn(accessors, type))) {
+        return invalid('CALLBACK_OBJECTS')
     }
-    const sharedObjectList = Object.keys(CALLBACK_OBJECTS)
-    sharedObjectList.forEach(sharedObjectName => {
-        const sharedObjectType = CALLBACK_OBJECTS[sharedObjectName]
-        dataToSend.data[sharedObjectName] = {
-            type: sharedObjectType,
-            content: getContent(sharedObjectName, sharedObjectType, doc).toJSON()
-        }
-    })
-    CALLBACK_URL && callbackRequest(CALLBACK_URL, CALLBACK_TIMEOUT, dataToSend)
+    return objects
+}
+const CALLBACK_URL = parseURL(process.env.CALLBACK_URL)
+const CALLBACK_TIMEOUT = parseTimeout(process.env.CALLBACK_TIMEOUT || '5000')
+const CALLBACK_OBJECTS = parseObjects(process.env.CALLBACK_OBJECTS || '{}')
+const MAX_INFLIGHT = 4
+const MAX_PENDING = 32
+const MAX_PAYLOAD_BYTES = 1024 * 1024
+const MAX_RESPONSE_BYTES = 64 * 1024
+const inflight = new Set()
+const pending = new Map()
+
+export const isCallbackSet = CALLBACK_URL !== null
+
+/** @param {import('./utils.js').WSSharedDoc} doc */
+export const callbackHandler = doc => {
+    if (!CALLBACK_URL) {return}
+    const data = Object.create(null)
+    for (const [name, type] of Object.entries(CALLBACK_OBJECTS)) {
+        data[name] = {type, content: doc[accessors[type]](name).toJSON()}
+    }
+    const payload = JSON.stringify({room: doc.name, data})
+    if (Buffer.byteLength(payload) > MAX_PAYLOAD_BYTES) {
+        console.warn('Callback payload exceeds byte limit.')
+        return
+    }
+    if (!pending.has(doc.name) && pending.size >= MAX_PENDING) {
+        console.warn('Callback pending room limit reached.')
+        return
+    }
+    pending.set(doc.name, payload)
+    pump()
 }
 
-/**
- * @param {URL} url
- * @param {number} timeout
- * @param {Object} data
- */
-const callbackRequest = (url, timeout, data) => {
-    data = JSON.stringify(data)
-    const options = {
-        hostname: url.hostname,
-        port: url.port,
-        path: url.pathname,
-        timeout,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(data)
-        }
+const pump = () => {
+    for (const [room, payload] of pending) {
+        if (inflight.size >= MAX_INFLIGHT) {return}
+        if (inflight.has(room)) {continue}
+        pending.delete(room)
+        inflight.add(room)
+        callbackRequest(payload, () => {inflight.delete(room); pump()})
     }
-    const req = http.request(options)
-    req.on('timeout', () => {
-        console.warn('Callback request timed out.')
-        req.abort()
-    })
-    req.on('error', (e) => {
-        console.error('Callback request error.', e)
-        req.abort()
-    })
-    req.write(data)
-    req.end()
 }
 
-/**
- * @param {string} objName
- * @param {string} objType
- * @param {import('./utils.js').WSSharedDoc} doc
- */
-const getContent = (objName, objType, doc) => {
-    switch (objType) {
-        case 'Array':
-            return doc.getArray(objName)
-        case 'Map':
-            return doc.getMap(objName)
-        case 'Text':
-            return doc.getText(objName)
-        case 'XmlFragment':
-            return doc.getXmlFragment(objName)
-        case 'XmlElement':
-            return doc.getXmlElement(objName)
-        default :
-            return {}
+const callbackRequest = (payload, complete) => {
+    let settled = false
+    let req
+    let response
+    const finish = reason => {
+        if (settled) {return}
+        settled = true
+        clearTimeout(timer)
+        if (reason) {
+            console.warn(`Callback failed (${reason}).`)
+            response?.destroy()
+            req?.destroy()
+        }
+        complete()
     }
+    const timer = setTimeout(() => finish('deadline'), CALLBACK_TIMEOUT)
+    try {
+        const url = CALLBACK_URL
+        req = (url.protocol === 'https:' ? https : http).request({
+            ...urlToHttpOptions(url),
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload)}
+        })
+        req.on('error', () => finish('transport'))
+        req.on('response', incoming => {
+            if (settled) {incoming.destroy(); return}
+            response = incoming
+            let bytes = 0
+            incoming.on('error', () => finish('response'))
+            incoming.on('aborted', () => finish('aborted'))
+            incoming.on('close', () => finish('closed'))
+            incoming.on('data', chunk => {
+                bytes += chunk.length
+                if (bytes > MAX_RESPONSE_BYTES) {finish('response limit')}
+            })
+            incoming.on('end', () => finish())
+            if (incoming.statusCode < 200 || incoming.statusCode >= 300) {finish('status')}
+        })
+        req.end(payload)
+    } catch {finish('transport')}
 }

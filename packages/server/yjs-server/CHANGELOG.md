@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Validate callback startup settings, preserve HTTPS/query transport, enforce terminal byte/deadline limits and bound/coalesce callback work.
+
 - Debounce optional callbacks per document and cancel pending callbacks on destruction.
 - Apply one browser Origin policy before both Yjs and signaling upgrades.
 - Bound signaling payloads, topic identities and per-peer subscriptions; retire empty signaling rooms immediately.
