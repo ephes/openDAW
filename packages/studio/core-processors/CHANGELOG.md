@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Execute render callbacks at owned block-start boundaries without repeat dispatch; release marker subscriptions and active parameter broadcasts on teardown.
+
 - Clear published meter RMS on reset, publish true RMS levels, and bind monitoring/output-registry teardown to its owned registration.
 
 - Clear compressor delay, lookahead, detection and smoothing histories on reset while preserving configuration.

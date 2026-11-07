@@ -32,3 +32,10 @@ The retained energy decays exponentially; its amplitude RMS therefore decays wit
 of that multiplier. Monitoring and output-buffer teardown owns a specific registration, including
 repeated registrations of the same source. Output registry duplicates retain the first entry and
 return an inert terminable; repeated/stale disposal cannot remove a newer entry.
+
+Renderer callbacks own `[p0,p1)`, including its start. Each callback position is handled once per
+forward traversal to guarantee forward progress. Dispatch snapshots peers and honors cancellation;
+callbacks added at a future position can run in the current render, while additions at an already
+handled position wait for a later visit. Loop/marker rewinds permit dispatch on the next traversal. Renderer teardown owns BPM, marker and tempo subscriptions.
+Parameter disposal terminates active automation broadcasting as well as its adapter listener;
+ordinary stop-automation still restores and notifies the manual value.
