@@ -5,6 +5,7 @@ import {AudioFileBox, AudioUnitBox, BoxIO, SoundfontFileBox} from "@opendaw/stud
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {DeviceBoxUtils, InstrumentFactories, PresetHeader} from "@opendaw/studio-adapters"
 import {Workers} from "../Workers"
+import {readTrashedIds} from "../deletionJournal"
 import {PresetMeta, PresetMetaSchema} from "./PresetMeta"
 
 const FOLDER = "presets/user"
@@ -83,12 +84,12 @@ export namespace PresetStorage {
 
     export const save = async (meta: PresetMeta, data: ArrayBufferLike): Promise<void> => navigator.locks.request(lock, async () => {
         PresetMetaSchema.parse(meta)
+        const trashed = await loadTrashedIds()
         const current = await readIndexOwned()
         await Workers.Opfs.write(fileFor(UUID.parse(meta.uuid)), new Uint8Array(data))
         const next = current.filter(entry => entry.uuid !== meta.uuid)
         next.push({...meta, modified: Date.now()})
         await writeAndCache(next)
-        const trashed = await loadTrashedIds()
         if (trashed.includes(meta.uuid)) {
             await saveTrashedIds(trashed.filter(id => id !== meta.uuid))
         }
@@ -109,22 +110,17 @@ export namespace PresetStorage {
     })
 
     export const remove = async (uuid: UUID.Bytes): Promise<void> => navigator.locks.request(lock, async () => {
-        await Promises.tryCatch(Workers.Opfs.delete(fileFor(uuid)))
-        const uuidStr = UUID.toString(uuid)
-        const current = await readIndexOwned()
-        const next = current.filter(entry => entry.uuid !== uuidStr)
-        await writeAndCache(next)
         const trashed = await loadTrashedIds()
-        if (!trashed.includes(uuidStr)) {
-            trashed.push(uuidStr)
-            await saveTrashedIds(trashed)
+        const current = await readIndexOwned()
+        const uuidStr = UUID.toString(uuid)
+        if (!trashed.includes(uuidStr)) {await saveTrashedIds([...trashed, uuidStr])}
+        try {await Workers.Opfs.delete(fileFor(uuid))} catch (error) {
+            if (!(error instanceof DOMException) || error.name !== "NotFoundError") {throw error}
         }
+        await writeAndCache(current.filter(entry => entry.uuid !== uuidStr))
     })
 
-    export const loadTrashedIds = async (): Promise<Array<UUID.String>> => {
-        const read = await Promises.tryCatch(Workers.Opfs.read(TRASH_PATH))
-        return read.status === "rejected" ? [] : JSON.parse(DEC.decode(read.value))
-    }
+    export const loadTrashedIds = async (): Promise<Array<UUID.String>> => readTrashedIds(FOLDER)
 
     export const saveTrashedIds = async (ids: ReadonlyArray<UUID.String>): Promise<void> => {
         await Workers.Opfs.write(TRASH_PATH, ENC.encode(JSON.stringify(ids)))

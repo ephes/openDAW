@@ -67,3 +67,21 @@ explicit rebuilds hold the standard browser storage Web Lock, reread committed
 state, and update the observable only after the index write. Save validates/rebuilds
 the index before writing its new file; file, index and trash ordering remains explicit.
 Public reads refresh committed state under the lock; mutations never trust another tab's old cache.
+
+### Catalog preflight and deletion journals
+
+Cloud backup validates each domain's complete remote catalog before its upload,
+trash and restore phases. Catalogs require unique UUIDs and their domain metadata;
+project dates and preset timestamps must be finite. Invalid existing catalogs need
+repair and are never treated as empty. Back up the catalog before repairing it: recover
+metadata from its media/project files or a known-good copy, retain UUIDs and valid
+unknown extension fields, and retry. There is no automatic corruption migration.
+Local candidates use the same schema before any domain effects, so invalid local
+metadata cannot poison a previously valid remote catalog. Opaque nonempty preset
+device keys and unknown extension fields round-trip for compatibility. Only a provider-confirmed missing catalog
+starts empty. Only an actually missing trash journal means no tombstones; other
+read failures and invalid UUID lists stop the domain to preserve deletion intent.
+
+Preset save/remove/update operations share a storage lock. Save and remove validate
+deletion intent before changing files; remove persists its tombstone before deletion.
+A journal failure therefore cannot silently delete a preset without recording intent.

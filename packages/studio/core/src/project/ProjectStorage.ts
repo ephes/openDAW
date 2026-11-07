@@ -1,11 +1,10 @@
 import {Class, Option, Progress, safeExecute, UUID} from "@opendaw/lib-std"
 import {AudioFileBox, SoundfontFileBox} from "@opendaw/studio-boxes"
 import {ProjectSkeleton} from "@opendaw/studio-adapters"
-import {Promises} from "@opendaw/lib-runtime"
 import {ProjectMeta} from "./ProjectMeta"
 import {Workers} from "../Workers"
 import {ProjectPaths} from "./ProjectPaths"
-import {deleteWithJournal} from "../deletionJournal"
+import {deleteWithJournal, readTrashedIds} from "../deletionJournal"
 
 export namespace ProjectStorage {
     export type ListEntry = {
@@ -95,7 +94,6 @@ export namespace ProjectStorage {
     }
 
     export const loadTrashedIds = async (): Promise<Array<UUID.String>> => {
-        const {status, value} = await Promises.tryCatch(Workers.Opfs.read(`${ProjectPaths.Folder}/trash.json`))
-        return status === "rejected" ? [] : JSON.parse(new TextDecoder().decode(value))
+        return readTrashedIds(ProjectPaths.Folder)
     }
 }

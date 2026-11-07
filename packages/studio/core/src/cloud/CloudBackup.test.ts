@@ -62,8 +62,13 @@ beforeEach(() => {
 for (const domain of ["Projects", "Samples", "Presets", "Soundfonts"] as const) {
     for (const outcome of ["approve", "cancel", "delete failure", "catalog failure"] as const) {
         it(`${domain} carries uploaded catalog state into ${outcome}`, async () => {
-            const fresh = {uuid: a, name: "New", modified: "2026-01-02"}
-            const old = {uuid: b, name: "Old", modified: "2026-01-01"}
+            const meta = (uuid: UUID.String, name: string, modified: number) => domain === "Projects"
+                ? Object.assign({}, ProjectMeta.init(name), {uuid, modified: new Date(modified).toISOString()})
+                : domain === "Samples" ? {uuid, name, bpm: 120, duration: 1, sample_rate: 44100, origin: "import"}
+                : domain === "Soundfonts" ? {uuid, name, size: 2, url: "", license: "", origin: "import"}
+                : {uuid, name, modified, created: 1, description: "", category: "audio-effect-chain"}
+            const fresh = meta(a, "New", 2)
+            const old = meta(b, "Old", 1)
             const backup = {Projects: CloudBackupProjects, Samples: CloudBackupSamples, Presets: CloudBackupPresets, Soundfonts: CloudBackupSoundfonts}[domain]
             const isProject = domain === "Projects"
             remote.set(backup.RemoteCatalogPath, json(isProject ? {[b]: old} : [old]))
