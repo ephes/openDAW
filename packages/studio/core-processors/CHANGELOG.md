@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cover FreeVerb clear/reuse, stereo/dry mixing and partitioned processing; complete monophonic held-note reset coverage.
+
 - Accent only the measure downbeat when metronome beats are subdivided; add frozen playback, chunk dispatch and solo-routing regressions.
 
 - Execute render callbacks at owned block-start boundaries without repeat dispatch; release marker subscriptions and active parameter broadcasts on teardown.

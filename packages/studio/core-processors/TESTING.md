@@ -46,3 +46,7 @@ Metronome downbeats use the full numerator times subdivision count per measure; 
 clicks identify accents independently of waveform generation. Event dispatch tests specify update/note
 order, one-shot flags and exact chunk coverage. Mixer fixtures use UUID containers and existing
 bus/AuxSend visitors to check audible membership through shared branches and cycles.
+
+FreeVerb tests use stereo impulses through real comb, all-pass and predelay ring wraps, compare
+clear/reuse with a fresh instance, and compare chronological whole and uneven subrange processing.
+Unity dry gain with zero wet gain preserves PCM exactly.

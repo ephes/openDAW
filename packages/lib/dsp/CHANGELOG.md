@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cover pulse harmonic/state limits and deterministic C64 noise clocks/reset.
+
 - Align fade buffers with scalar half-open sample positions and reject unsupported analysis-window lengths below two or nonintegers. Add streaming RMS and spectral-state regressions.
 
 - Clear compressor delay, lookahead, detection and smoothing histories on reset while preserving configuration.
