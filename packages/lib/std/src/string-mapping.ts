@@ -1,4 +1,4 @@
-import {int, isDefined, Nullable, unitValue} from "./lang"
+import {int, isDefined, unitValue} from "./lang"
 import {clamp} from "./math"
 
 export type StringResult = {
@@ -52,7 +52,7 @@ export namespace StringMapping {
 
     export const bool = new class implements StringMapping<boolean> {
         y(x: string): ParseResult<boolean> {
-            switch (x.trim()) {
+            switch (x.trim().toLowerCase()) {
                 case "on":
                 case "yes":
                 case "true":
@@ -68,13 +68,13 @@ export namespace StringMapping {
 
     export const boolValues = (falseValue: string, trueValue: string) => new class implements StringMapping<boolean> {
         y(x: string): ParseResult<boolean> {
-            switch (x.trim()) {
-                case trueValue:
+            if (x.trim() === trueValue) {return {type: "explicit", value: true}}
+            if (x.trim() === falseValue) {return {type: "explicit", value: false}}
+            switch (x.trim().toLowerCase()) {
                 case "on":
                 case "yes":
                 case "true":
                     return {type: "explicit", value: true}
-                case falseValue:
                 default:
                     return {type: "explicit", value: false}
             }
@@ -98,39 +98,31 @@ export namespace StringMapping {
         }
 
         y(x: string): ParseResult<number> {
-            let value = x.trim()
-            const float = parseFloat(value)
-            if (isNaN(float)) {
-                return {type: "unknown", value: value}
-            } else if (this.#unit === "%") {
-                return {
-                    type: "explicit",
-                    value: float / 100.0
-                }
-            } else if (value.endsWith("%")) {
-                return {
-                    type: "unitValue",
-                    value: this.#bipolar
-                        ? clamp(float / 200.0 + 0.5, 0.0, 1.0)
-                        : clamp(float / 100.0, 0.0, 1.0)
-                }
-            } else {
-                if (value.endsWith(this.#unit) && this.#unit.length > 0) {
-                    // remove unit
-                    value = value.slice(0, -this.#unit.length)
-                }
-                const regex = /(\d+)(\D+)/
-                const match: Nullable<RegExpExecArray> = regex.exec(value)
-                const last = match?.at(2)?.at(0)
-                if (isDefined(last)) {
-                    const index: int = prefixes.indexOf(last)
-                    if (index > -1) {
-                        return {type: "explicit", value: float * Math.pow(10.0, (index - 4) * 3.0)}
-                    }
-                }
-                return {type: "explicit", value: float}
+            const value = x.trim()
+            const match = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)(.*)$/.exec(value)
+            if (match === null) {return {type: "unknown", value}}
+            const float = Number(match[1])
+            let suffix = match[2].trim()
+            if (!Number.isFinite(float)) {return {type: "unknown", value}}
+            if (this.#unit === "%") {
+                return suffix === "" || suffix === "%"
+                    ? {type: "explicit", value: this.#bipolar ? float / 200.0 + 0.5 : float / 100.0}
+                    : {type: "unknown", value}
             }
+            if (suffix === "%") {
+                return {type: "unitValue", value: this.#bipolar
+                    ? clamp(float / 200.0 + 0.5, 0.0, 1.0)
+                    : clamp(float / 100.0, 0.0, 1.0)}
+            }
+            if (this.#unit.length > 0 && suffix.endsWith(this.#unit)) {
+                suffix = suffix.slice(0, -this.#unit.length).trim()
+            }
+            const index = prefixes.indexOf(suffix)
+            if (index === -1) {return {type: "unknown", value}}
+            const scaled = float * Math.pow(10.0, (index - 4) * 3.0)
+            return Number.isFinite(scaled) ? {type: "explicit", value: scaled} : {type: "unknown", value}
         }
+
         x(y: number): StringResult {
             if (Number.isNaN(y)) {
                 return {value: "💣", unit: this.#unit}

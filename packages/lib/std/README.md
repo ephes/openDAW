@@ -71,3 +71,13 @@ Standard library providing core utilities and data structures for TypeScript pro
 UUID parsing accepts either exactly 32 hexadecimal digits or the canonical 8-4-4-4-12
 groups, case insensitively. Binary strings use nonnegative UTF-16 code-unit lengths;
 the complete byte requirement is checked before reading any characters.
+
+## Parameter text and inverse observables
+
+Boolean text parsing accepts on/yes/true ignoring case and surrounding whitespace;
+other words remain false. Canonical On/Off text roundtrips. Numeric text accepts a
+complete signed decimal or exponent, optional SI prefix (p/n/μ/m/k/M/G/T), and the
+mapping's exact unit. Unknown suffixes and nonfinite values leave parameters alone.
+Bipolar percent text inverts the -100…100 display range into 0…1; numeric mappings'
+percent shortcuts still produce unit values. Inverse boolean observable callbacks
+receive the inverse owner for both catchup and later notifications.

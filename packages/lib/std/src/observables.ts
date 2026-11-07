@@ -50,7 +50,7 @@ export namespace MutableObservableValue {
         new class implements MutableObservableValue<boolean> {
             getValue() {return !observableValue.getValue()}
             setValue(value: boolean): void {observableValue.setValue(!value)}
-            subscribe(observer: Observer<ObservableValue<boolean>>) {return observableValue.subscribe(observer)}
+            subscribe(observer: Observer<ObservableValue<boolean>>) {return observableValue.subscribe(() => observer(this))}
             catchupAndSubscribe(observer: Observer<ObservableValue<boolean>>) {
                 observer(this)
                 return this.subscribe(observer)

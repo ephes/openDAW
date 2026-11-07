@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Roundtrip boolean, bipolar percent and decimal SI parameter text; notify inverse observable owners consistently.
+
 - Reject malformed UUID representations and binary string lengths before decoding.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
