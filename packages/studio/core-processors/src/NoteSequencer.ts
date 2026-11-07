@@ -82,10 +82,11 @@ export class NoteSequencer implements NoteEventSource, Terminable {
 
     pushRawNoteOff(pitch: byte): void {
         for (const entry of this.#rawNotes) {
+            if (entry.pitch !== pitch) {continue}
             if (entry.running.isEmpty()) {
                 // never started
                 this.#rawNotes.delete(entry)
-            } else if (entry.pitch === pitch) {
+            } else {
                 entry.gate = false
                 return
             }
@@ -194,14 +195,15 @@ export class NoteSequencer implements NoteEventSource, Terminable {
         const truncateNotesAtRegionEnd = this.#context.preferences.settings.playback.truncateNotesAtRegionEnd
         const collection = clip.optCollection.unwrap()
         const clipDuration = clip.duration
-        const clipStart = quantizeFloor(p0, clipDuration)
-        const clipEnd = clipStart + clipDuration
+        if (!(clipDuration > 0) || !Number.isFinite(clipDuration)) {return}
         const truncateEnd = truncateNotesAtRegionEnd ? clipDuration : Number.POSITIVE_INFINITY
-        if (p1 > clipEnd) {
-            yield* this.#processCollection(collection, p0 - clipStart, clipEnd - clipStart, clipStart, truncateEnd)
-            yield* this.#processCollection(collection, 0, p1 - clipEnd, clipEnd, truncateEnd)
-        } else {
-            yield* this.#processCollection(collection, p0 - clipStart, p1 - clipStart, clipStart, truncateEnd)
+        let clipStart = quantizeFloor(p0, clipDuration)
+        while (clipStart < p1) {
+            const clipEnd = clipStart + clipDuration
+            if (clipEnd <= clipStart) {break}
+            yield* this.#processCollection(collection, Math.max(p0 - clipStart, 0),
+                Math.min(p1, clipEnd) - clipStart, clipStart, truncateEnd)
+            clipStart = clipEnd
         }
     }
 
@@ -237,7 +239,9 @@ export class NoteSequencer implements NoteEventSource, Terminable {
                         const a = NoteEvent.curveFunc(searchPosition, playCurve) * duration
                         if (a >= duration) {break}
                         const b = NoteEvent.curveFunc((searchPosition + 1.0 / playCount), playCurve) * duration
-                        const event: Id<NoteEvent> = NoteLifecycleEvent.startWith(source, position + a + delta, b - a)
+                        const subDuration = Math.min(b - a, end - position - a)
+                        if (subDuration <= 0) {break}
+                        const event: Id<NoteEvent> = NoteLifecycleEvent.startWith(source, position + a + delta, subDuration)
                         this.#retainer.addAndRetain({...event})
                         yield event
                     }

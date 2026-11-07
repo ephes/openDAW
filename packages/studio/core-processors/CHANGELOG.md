@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Isolate live note releases by pitch, truncate repeated notes at clip ends, sequence every intersected clip cycle, and fan transport messages out to all enabled MIDI destinations.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.118](https://github.com/andremichelle/openDAW/compare/@opendaw/studio-core-processors@0.0.117...@opendaw/studio-core-processors@0.0.118) (2026-05-22)
