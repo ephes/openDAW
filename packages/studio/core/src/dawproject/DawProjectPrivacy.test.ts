@@ -59,20 +59,23 @@ it("exports second-labeled audio sources accepted by decode and import without c
     expect(region.loopDuration.getValue()).toBe(8 * PPQN.Quarter)
     expect(JSON.stringify(spies.flatMap(spy => spy.mock.calls))).not.toContain("Private")
 })
-it.each([
-    ['<Points id="PrivateContentSentinel"/>', "", "Unsupported DAWproject region content"],
-    [audioContent, `loopEnd="${0.25 / PPQN.Quarter}"`, "Skipping DAWproject clip: loop duration too small"]
-])("keeps structural warning content private", async (content, attributes, warning) => {
+it("keeps structural warning content private", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     vi.spyOn(console, "debug").mockImplementation(() => {})
-    // Keep the same audio file owned by a valid region when the tiny clip is skipped.
-    const xml = withContent(content, attributes).replace("</Clips>", attributes === "" ? "</Clips>"
-        : `<Clip time="8" duration="8">${audioContent}</Clip></Clips>`)
+    const xml = withContent('<Points id="PrivateContentSentinel"/>')
     const bytes = await new JSZip().file("project.xml", xml)
         .file("PrivatePathSentinel.wav", WavFile.encodeFloats(sample())).generateAsync({type: "arraybuffer"})
     const decoded = await DawProject.decode(bytes)
     await DawProjectImport.read(decoded.project, decoded.resources)
-    expect(warn).toHaveBeenCalledWith(warning)
+    expect(warn).toHaveBeenCalledWith("Unsupported DAWproject region content")
     expect(warn.mock.calls.every(args => args.length === 1 && typeof args[0] === "string")).toBe(true)
     expect(JSON.stringify(warn.mock.calls)).not.toContain("Private")
+})
+it("refuses sub-pulse audio loops without exposing document content", async () => {
+    const spies = ["debug", "info", "log", "warn", "error"].map(method => vi.spyOn(console, method as "debug").mockImplementation(() => {}))
+    const bytes = await new JSZip().file("project.xml", withContent(audioContent, `loopEnd="${0.25 / PPQN.Quarter}"`))
+        .file("PrivatePathSentinel.wav", WavFile.encodeFloats(sample())).generateAsync({type: "arraybuffer"})
+    const decoded = await DawProject.decode(bytes)
+    await expect(DawProjectImport.read(decoded.project, decoded.resources)).rejects.toThrow("Unsupported audio playback window")
+    expect(JSON.stringify(spies.flatMap(spy => spy.mock.calls))).not.toContain("Private")
 })

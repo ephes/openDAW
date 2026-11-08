@@ -2,7 +2,7 @@ import {afterEach, expect, it, vi} from "vitest"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema} from "@opendaw/lib-dawproject"
 import {AudioData, LoopableRegion, PPQN, TimeBase, WavFile} from "@opendaw/lib-dsp"
-import {AudioPitchStretchBox, AudioRegionBox, WarpMarkerBox} from "@opendaw/studio-boxes"
+import {AudioPitchStretchBox, AudioRegionBox, AudioTimeStretchBox, ValueEventBox, ValueEventCollectionBox, WarpMarkerBox} from "@opendaw/studio-boxes"
 import {BoxGraph} from "@opendaw/lib-box"
 import {Option, UUID} from "@opendaw/lib-std"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
@@ -89,20 +89,15 @@ it("refuses to export unloaded audio instead of writing an empty warped clip", a
     const samples = {getOrCreate: () => ({data: Option.None})} as unknown as SampleLoaderManager
     expect(() => DawProjectExporter.write(imported.skeleton, samples, {write: (path, _buffer) => Xml.element({path, external: false}, FileReferenceSchema)})).toThrow(/Cannot export unloaded audio/)
 })
-it("refuses beat-valued warp source coordinates explicitly", async () => {
-    const f = fixture()
-    const xml = Xml.pretty(Xml.toElement("Project", f.schema)).replace('contentTimeUnit="seconds"', 'contentTimeUnit="beats"')
-    await expect(DawProjectImport.read(Xml.parse(xml, ProjectSchema), f.resources)).rejects.toThrow(/Unsupported warp source time unit/)
-})
-it("exports ordinary no-stretch audio with second-based extents at constant tempo", async () => {
+it.each([TimeBase.Seconds, TimeBase.Musical])("exports ordinary no-stretch audio with %s extents at constant tempo", async timeBase => {
     const f = fixture()
     const imported = await f.run()
     const region = imported.skeleton.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
     imported.skeleton.boxGraph.beginTransaction()
     region.playMode.defer()
-    region.timeBase.setValue(TimeBase.Seconds)
-    region.duration.setValue(2)
-    region.loopDuration.setValue(4)
+    region.timeBase.setValue(timeBase)
+    region.duration.setValue(timeBase === TimeBase.Seconds ? 2 : 4 * PPQN.Quarter)
+    region.loopDuration.setValue(timeBase === TimeBase.Seconds ? 4 : 8 * PPQN.Quarter)
     region.loopOffset.setValue(0)
     imported.skeleton.mandatoryBoxes.timelineBox.bpm.setValue(120)
     imported.skeleton.boxGraph.endTransaction()
@@ -114,4 +109,61 @@ it("exports ordinary no-stretch audio with second-based extents at constant temp
     expect(result.duration.getValue()).toBe(4 * PPQN.Quarter)
     expect(result.loopDuration.getValue()).toBe(8 * PPQN.Quarter)
     expect(skeleton.boxGraph.boxes().filter(box => box instanceof WarpMarkerBox).map(box => box.seconds.getValue()).sort()).toEqual([0, 4])
+})
+it.each([
+    [TimeBase.Musical, "tempo automation"],
+    [TimeBase.Musical, "waveform offset"],
+    [TimeBase.Seconds, "tempo automation"],
+    [TimeBase.Seconds, "waveform offset"]
+] as const)("refuses no-stretch %s export with %s", async (timeBase, unsupported) => {
+    const f = fixture()
+    const {skeleton} = await f.run()
+    const {boxGraph, mandatoryBoxes: {timelineBox}} = skeleton
+    const region = boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
+    boxGraph.beginTransaction()
+    region.playMode.defer()
+    region.timeBase.setValue(timeBase)
+    region.duration.setValue(timeBase === TimeBase.Seconds ? 2 : 4 * PPQN.Quarter)
+    region.loopDuration.setValue(timeBase === TimeBase.Seconds ? 4 : 8 * PPQN.Quarter)
+    if (unsupported === "tempo automation") {
+        const collection = ValueEventCollectionBox.create(boxGraph, UUID.generate())
+        timelineBox.tempoTrack.events.refer(collection.owners)
+        timelineBox.tempoTrack.enabled.setValue(true)
+        ValueEventBox.create(boxGraph, UUID.generate(), box => {
+            box.events.refer(collection.events)
+            box.position.setValue(PPQN.Quarter)
+            box.value.setValue(0.5)
+        })
+    } else {
+        region.waveformOffset.setValue(0.5)
+    }
+    boxGraph.endTransaction()
+    const samples = {getOrCreate: () => ({data: Option.wrap(f.data)})} as unknown as SampleLoaderManager
+    expect(() => DawProjectExporter.write(skeleton, samples, {
+        write: (path, _buffer) => Xml.element({path}, FileReferenceSchema)
+    })).toThrow(/Unsupported .*audio export with tempo automation or waveform offset/)
+})
+it.each(["pitch", "time"])("refuses %s-stretched export with a waveform offset", async mode => {
+    const f = fixture()
+    const {skeleton} = await f.run()
+    const {boxGraph} = skeleton
+    const region = boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
+    if (mode === "time") {
+        boxGraph.beginTransaction()
+        const pitch = region.playMode.targetVertex.unwrap().box as AudioPitchStretchBox
+        const stretch = AudioTimeStretchBox.create(boxGraph, UUID.generate())
+        pitch.warpMarkers.pointerHub.incoming().forEach(({box}) => (box as WarpMarkerBox).owner.refer(stretch.warpMarkers))
+        region.playMode.refer(stretch)
+        pitch.delete()
+        boxGraph.endTransaction()
+    }
+    const samples = {getOrCreate: () => ({data: Option.wrap(f.data)})} as unknown as SampleLoaderManager
+    const write = () => DawProjectExporter.write(skeleton, samples, {
+        write: (path, _buffer) => Xml.element({path}, FileReferenceSchema)
+    })
+    expect(write).not.toThrow()
+    boxGraph.beginTransaction()
+    region.waveformOffset.setValue(0.5)
+    boxGraph.endTransaction()
+    expect(write).toThrow(/Unsupported .*audio export with tempo automation or waveform offset/)
 })

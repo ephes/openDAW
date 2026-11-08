@@ -199,8 +199,8 @@ export namespace DawProjectExporter {
             const absolute = region.timeBase.getValue() === TimeBase.Seconds
             const hasTempoAutomation = timelineBox.tempoTrack.enabled.getValue() && timelineBox.tempoTrack.events.targetVertex
                 .mapOr(vertex => asInstanceOf(vertex.box, ValueEventCollectionBox).events.pointerHub.incoming().length > 0, false)
-            assert(!absolute || (!hasTempoAutomation && region.waveformOffset.getValue() === 0),
-                "Unsupported absolute audio export with tempo automation or waveform offset")
+            assert(region.waveformOffset.getValue() === 0 && (!(absolute || region.playMode.isEmpty()) || !hasTempoAutomation),
+                "Unsupported audio export with tempo automation or waveform offset")
             const toBeats = (value: number) => absolute
                 ? PPQN.secondsToPulses(value, timelineBox.bpm.getValue()) / PPQN.Quarter
                 : value / PPQN.Quarter

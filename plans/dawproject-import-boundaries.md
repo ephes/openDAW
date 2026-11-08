@@ -19,7 +19,7 @@ B04 review converged with suggestions only after correcting held-note onsets and
 zero-pulse pieces. Adopted final admission suggestion: refuse clips whose derived
 pieces are all sub-pulse, rather than return a successful empty clip.
 
-B06 is independent of the parked B05 branch. It resolves inherited units at the
+B06 independently resolves inherited units at the
 arrangement admission boundary: beat timelines and seconds in warp source/media
 coordinates only. Seconds/mixed timelines fail before box creation. Export source
 unit labels now match the emitted seconds. Decode/encode no longer log document
@@ -31,15 +31,7 @@ asserts the exported source-unit label, both structural-warning privacy paths,
 and separate beat-loop/source-second geometry assertions. Reverting the source
 label and warning payload fixes makes the corresponding new regressions fail.
 
-## Parked audio bundle
-
-B05 remains on `fix/r80-import-audio-offsets` at `c5aa2d5e`; it is not merged.
-Local build, lint and tests pass. The review gate stopped after round 3 with one
-Warning: the no-stretch fallback must also refuse tempo automation/waveform offsets
-for Musical regions, not only Seconds regions. The optional no-stretch pointer
-Critical was fixed. A remaining advisory asks to restore loaded full-project export
-smoke coverage. Rebase this branch onto current main and complete its review gate
-before merging; B06 intentionally proceeded independently.
+## Audio bundle
 
 B05 maps audio playStart to beat playback offsets, keeps warp scale independent of
 loop extent, and admits full-source linear mappings only. Synthetic numbered-ramp
@@ -53,6 +45,26 @@ regions. Legacy exports with mislabeled beat source coordinates are explicitly r
 
 B05 second repair handles the optional no-stretch play mode. Constant-tempo
 absolute extents convert with PPQN's public seconds conversion; tempo-automated
-or waveform-offset absolute export is explicitly refused. An ordinary no-stretch
+or waveform-offset export is explicitly refused for both no-stretch time bases
+and for absolute audio. An ordinary no-stretch
 XML round-trip protects the empty pointer path. The old unloaded sample smoke
 now expects explicit refusal; loaded synthetic cases cover successful export.
+
+On resumption, current main already covered source-unit labeling and privacy; those
+fixes were retained. Audio regressions failed against main's importer/exporter.
+The Musical no-stretch guard regressions also failed against the rebased branch
+before the repair. The guard now includes no-stretch audio in either time base.
+The sub-pulse audio privacy regression now expects admission refusal rather than
+the old skip warning. Main's loaded synthetic WAV ZIP round-trip retains successful
+full encode/decode/import coverage. Codex implements this repair; a fresh Claude
+Opus 5.5 high-effort bundle review and local build/lint/tests gate the merge.
+
+The resumed bundle review confirmed the original guard repair and identified
+stretched-region waveform offsets as another silent loss. Both pitch/time stretch
+regressions failed before the repair. Export now refuses nonzero waveform offsets
+for every audio region instead of silently discarding them. Zero-offset stretch
+exports remain supported. The repair delta receives a fresh review.
+
+The resumed review converged CLEAN in round 2 (Opus 5.5, high effort), with no
+omissions, redactions or remaining findings. Local build, lint, full tests and core
+test typechecking passed after repair. No subagents were used.
