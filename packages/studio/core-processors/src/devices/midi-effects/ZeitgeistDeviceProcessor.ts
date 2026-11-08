@@ -1,7 +1,7 @@
 import {assert, clamp, identity, int, Objects, Option, Terminable, UUID} from "@opendaw/lib-std"
-import {Event, Groove, NoteEvent, ppqn} from "@opendaw/lib-dsp"
+import {Event, Groove, ppqn} from "@opendaw/lib-dsp"
 import {AutomatableParameter} from "../../AutomatableParameter"
-import {NoteEventSource, NoteLifecycleEvent} from "../../NoteEventSource"
+import {ActiveNoteEvent, NoteEventSource, NoteLifecycleEvent} from "../../NoteEventSource"
 import {GrooveAdapter, NoteBroadcaster, ZeitgeistDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {EventProcessor} from "../../EventProcessor"
 import {Block} from "../../processing"
@@ -24,14 +24,13 @@ export class ZeitgeistDeviceProcessor extends EventProcessor implements MidiEffe
         this.#noteBroadcaster = this.own(new NoteBroadcaster(context.broadcaster, adapter.address))
 
         this.ownAll(
+            // The registry owns groove adapters; this processor only owns the pointer subscription.
             adapter.box.groove.catchupAndSubscribe(pointer => {
-                this.#groove.ifSome(adapter => adapter.terminate())
                 this.#groove = Option.wrap(pointer.targetVertex.isEmpty()
                     ? null
                     : context.boxAdapters.adapterFor(pointer.targetVertex.unwrap().box, GrooveAdapter.checkType))
             }),
             Terminable.create(() => {
-                this.#groove.ifSome(adapter => adapter.terminate()) // FIXME This processor does not OWN that adapter!
                 this.#groove = Option.None
             }),
             context.registerProcessor(this)
@@ -63,12 +62,15 @@ export class ZeitgeistDeviceProcessor extends EventProcessor implements MidiEffe
         }
     }
 
-    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<NoteEvent> {
+    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<ActiveNoteEvent> {
         if (this.#source.isEmpty()) {return}
         const source = this.#source.unwrap()
         const groove: Groove = this.#groove.mapOr(identity, Groove.Identity)
         for (const event of source.iterateActiveNotesAt(groove.unwarp(position), onlyExternal)) {
-            yield Objects.overwrite(event, {position: groove.warp(event.position)})
+            const start = groove.warp(event.position)
+            const end = event.position + event.duration
+            yield Objects.overwrite(event, {position: start,
+                duration: Number.isFinite(end) ? groove.warp(end) - start : event.duration})
         }
     }
 

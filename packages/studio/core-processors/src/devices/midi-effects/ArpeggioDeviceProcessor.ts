@@ -5,7 +5,7 @@ import {EngineContext} from "../../EngineContext"
 import {EventProcessor} from "../../EventProcessor"
 import {Block, BlockFlag, Processor} from "../../processing"
 import {AutomatableParameter} from "../../AutomatableParameter"
-import {NoteEventSource, NoteEventTarget, NoteLifecycleEvent} from "../../NoteEventSource"
+import {ActiveNoteEvent, NoteEventSource, NoteEventTarget, NoteLifecycleEvent} from "../../NoteEventSource"
 import {ArpeggioModes, Mode, VelocityMatrix} from "./ArpeggioDevice/ArpeggioModes"
 
 import {MidiEffectProcessor} from "../../MidiEffectProcessor"
@@ -14,7 +14,7 @@ export class ArpeggioDeviceProcessor extends EventProcessor implements MidiEffec
     readonly #adapter: ArpeggioDeviceBoxAdapter
 
     readonly #stack: Array<NoteEvent>
-    readonly #retainer: EventSpanRetainer<Id<NoteEvent>>
+    readonly #retainer: EventSpanRetainer<Id<ActiveNoteEvent>>
 
     readonly #modeIndexParameter: AutomatableParameter<int>
     readonly #rateParameter: AutomatableParameter<int>
@@ -39,7 +39,7 @@ export class ArpeggioDeviceProcessor extends EventProcessor implements MidiEffec
         this.#adapter = adapter
 
         this.#stack = []
-        this.#retainer = new EventSpanRetainer<Id<NoteEvent>>()
+        this.#retainer = new EventSpanRetainer<Id<ActiveNoteEvent>>()
 
         this.#modeIndexParameter = this.own(this.bindParameter(adapter.namedParameter.modeIndex))
         this.#rateParameter = this.own(this.bindParameter(adapter.namedParameter.rate))
@@ -95,9 +95,11 @@ export class ArpeggioDeviceProcessor extends EventProcessor implements MidiEffec
         }
     }
 
-    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<NoteEvent> {
-        if (this.#source.isEmpty() || onlyExternal) {return}
-        yield* this.#retainer.overlapping(position, NoteEvent.Comparator)
+    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<ActiveNoteEvent> {
+        if (this.#source.isEmpty()) {return}
+        for (const event of this.#retainer.overlapping(position, NoteEvent.Comparator)) {
+            if (!onlyExternal || event.external) {yield event}
+        }
     }
 
     reset(): void {

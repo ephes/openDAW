@@ -23,7 +23,7 @@ import {
     unitValue,
     UUID
 } from "@opendaw/lib-std"
-import {NoteCompleteEvent, NoteEventSource, NoteLifecycleEvent} from "./NoteEventSource"
+import {ActiveNoteEvent, NoteCompleteEvent, NoteEventSource, NoteLifecycleEvent} from "./NoteEventSource"
 import {BlockFlag, ProcessPhase} from "./processing"
 
 type RawNote = {
@@ -163,7 +163,7 @@ export class NoteSequencer implements NoteEventSource, Terminable {
         }
     }
 
-    * iterateActiveNotesAt(position: ppqn, onlyEnternal: boolean): IterableIterator<NoteEvent> {
+    * iterateActiveNotesAt(position: ppqn, onlyEnternal: boolean): IterableIterator<ActiveNoteEvent> {
         if (this.#rawNotes.size > 0) {
             for (const {pitch, velocity} of this.#rawNotes) {
                 yield {
@@ -172,11 +172,14 @@ export class NoteSequencer implements NoteEventSource, Terminable {
                     duration: Number.POSITIVE_INFINITY,
                     pitch,
                     velocity,
-                    cent: 0.0
+                    cent: 0.0,
+                    external: true
                 }
             }
         }
-        yield* this.#auditionRetainer.overlapping(position, NoteEvent.Comparator)
+        for (const event of this.#auditionRetainer.overlapping(position, NoteEvent.Comparator)) {
+            yield {...event, external: true}
+        }
         if (onlyEnternal) {return}
         yield* this.#retainer.overlapping(position, NoteEvent.Comparator)
     }
