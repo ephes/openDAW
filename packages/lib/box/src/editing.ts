@@ -62,6 +62,7 @@ class Modification {
     }
 }
 
+/** The first terminal call wins; subsequent approve/revert calls are harmless. */
 export interface ModificationProcess {
     approve(): void
     revert(): void
@@ -77,7 +78,7 @@ export class BoxEditing implements Editing {
     #inProcess: boolean = false
     #disabled: boolean = false
     #historyIndex: int = 0
-    #savedHistoryIndex: int = 0 // -1 = saved state was spliced away, >= 0 = valid saved position
+    #savedHistoryIndex: int = 0 // -1 = saved state no longer exists, >= 0 = valid saved position
 
     constructor(graph: BoxGraph) {
         this.#graph = graph
@@ -207,6 +208,11 @@ export class BoxEditing implements Editing {
         }
         if (this.#pending.length > 0) {
             if (this.#historyIndex > 0) {
+                if (this.#marked.length > this.#historyIndex) {
+                    if (this.#savedHistoryIndex > this.#historyIndex) {this.#savedHistoryIndex = -1}
+                    this.#marked.splice(this.#historyIndex)
+                }
+                if (this.#savedHistoryIndex === this.#historyIndex) {this.#savedHistoryIndex = -1}
                 this.#marked[this.#historyIndex - 1] =
                     [...this.#marked[this.#historyIndex - 1], ...this.#pending.splice(0)]
             } else {
@@ -233,13 +239,12 @@ export class BoxEditing implements Editing {
         const optimized = optimizeUpdates(updates)
         if (optimized.length > 0) {
             const modification = new Modification(optimized)
+            if (this.#marked.length > this.#historyIndex) {
+                if (this.#savedHistoryIndex > this.#historyIndex) {this.#savedHistoryIndex = -1}
+                this.#marked.splice(this.#historyIndex)
+            }
             if (this.#historyIndex > 0) {
-                if (this.#marked.length > this.#historyIndex) {
-                    if (this.#savedHistoryIndex > this.#historyIndex) {
-                        this.#savedHistoryIndex = -1
-                    }
-                    this.#marked.splice(this.#historyIndex)
-                }
+                if (this.#savedHistoryIndex === this.#historyIndex) {this.#savedHistoryIndex = -1}
                 this.#marked[this.#historyIndex - 1] =
                     [...this.#marked[this.#historyIndex - 1], modification]
             } else {
@@ -260,6 +265,7 @@ export class BoxEditing implements Editing {
             onUpdate: (update: Update) => updates.push(update)
         })
         this.#graph.beginTransaction()
+        let settled = false
         const cleanup = () => {
             subscription.terminate()
             this.#modifying = false
@@ -267,6 +273,8 @@ export class BoxEditing implements Editing {
         }
         return {
             approve: () => {
+                if (settled) {return}
+                settled = true
                 const result = tryCatch(() => this.#graph.endTransaction())
                 cleanup()
                 if (result.status === "failure") {throw result.error}
@@ -278,6 +286,8 @@ export class BoxEditing implements Editing {
                 this.#notifier.notify()
             },
             revert: () => {
+                if (settled) {return}
+                settled = true
                 const result = tryCatch(() => this.#graph.endTransaction())
                 cleanup()
                 if (result.status === "success" && updates.length > 0) {

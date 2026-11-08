@@ -124,3 +124,19 @@ Unit tests are necessary but insufficient. The re-entry and broadcast channel is
 1. **Unit tests**: Transaction rollback, dirty tracking, subscriber state, undo/redo failure recovery
 2. **Integration tests with Yjs**: Two `Y.Doc` instances connected via `Y.applyUpdate`, simulating P2P sync. Test out-of-order delivery, concurrent edits, rollback propagation.
 3. **Manual testing**: Two browser tabs in a live room. Create/delete/undo operations crossing peers. Verify no "Transaction already in progress" errors, no UI freezes, no desync.
+
+## Appended edits and terminal process ownership
+
+Appending a real change to the saved history step invalidates that saved marker,
+including pending edits merged by an otherwise empty append. An empty append
+without pending changes leaves it unchanged. Appending after undo discards the
+abandoned redo branch, including at the initial history position. Undo/redo
+cannot return to an invalidated saved marker; a new markSaved establishes one.
+
+Each ModificationProcess has one terminal transition. Its first approve or revert
+settles it; repeated or mixed terminal calls are harmless and cannot mutate the
+graph or end a later process's transaction.
+
+Contributor process: Codex implemented these narrow repairs with synthetic real
+BoxGraph regressions checked against the previous source, local build/lint/tests,
+and an independent Claude review.
