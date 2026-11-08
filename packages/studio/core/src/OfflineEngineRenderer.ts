@@ -10,6 +10,7 @@ import {
     Terminable,
     Terminator,
     TimeSpan,
+    tryCatch,
     UUID
 } from "@opendaw/lib-std"
 import {AudioData, ppqn} from "@opendaw/lib-dsp"
@@ -219,21 +220,32 @@ export class OfflineEngineRenderer {
         boxGraph.beginTransaction()
         enabled.setValue(false)
         boxGraph.endTransaction()
-        const range = optExportConfiguration.flatMap(cfg => Option.wrap(cfg.range))
-        const {startPosition, endPosition} = range.match({
-            none: () => ({startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}),
-            some: r => r === "full"
-                ? {startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}
-                : {startPosition: r.start, endPosition: r.end}
-        })
-        const maxDurationSeconds = source.tempoMap.intervalToSeconds(startPosition, endPosition) + 30
-        const renderer = await this.create(source, optExportConfiguration, sampleRate)
-        const result = await renderer.render(
-            {maxDurationSeconds}, startPosition, endPosition, progress, abortSignal)
-        boxGraph.beginTransaction()
-        enabled.setValue(wasEnabled)
-        boxGraph.endTransaction()
-        return result
+        let loopChanged = false
+        const subscription = enabled.subscribe(() => {loopChanged = true})
+        let renderer: OfflineEngineRenderer | undefined
+        try {
+            const range = optExportConfiguration.flatMap(cfg => Option.wrap(cfg.range))
+            const {startPosition, endPosition} = range.match({
+                none: () => ({startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}),
+                some: r => r === "full"
+                    ? {startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}
+                    : {startPosition: r.start, endPosition: r.end}
+            })
+            const maxDurationSeconds = source.tempoMap.intervalToSeconds(startPosition, endPosition) + 30
+            renderer = await this.create(source, optExportConfiguration, sampleRate)
+            const result = await renderer.render(
+                {maxDurationSeconds}, startPosition, endPosition, progress, abortSignal)
+            return result
+        } finally {
+            subscription.terminate()
+            const cleanup = tryCatch(() => renderer?.terminate())
+            if (cleanup.status === "failure") {console.warn("Offline export cleanup failed")}
+            if (!loopChanged) {
+                boxGraph.beginTransaction()
+                enabled.setValue(wasEnabled)
+                boxGraph.endTransaction()
+            }
+        }
     }
 
     readonly #worker: Worker
@@ -245,6 +257,7 @@ export class OfflineEngineRenderer {
     readonly #sampleRate: int
     readonly #numberOfChannels: int
 
+    #terminated = false
     #totalFrames: int = 0
 
     private constructor(
@@ -292,8 +305,9 @@ export class OfflineEngineRenderer {
     }
 
     terminate(): void {
-        this.#terminator.terminate()
-        this.#worker.terminate()
+        if (this.#terminated) {return}
+        this.#terminated = true
+        try {this.#terminator.terminate()} finally {this.#worker.terminate()}
     }
 
     async step(samples: int): Promise<Float32Array[]> {

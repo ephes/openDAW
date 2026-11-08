@@ -170,3 +170,14 @@ Any live graph update during flatten conservatively refuses publication with a
 retry message, including tempo, automation and routing edits. This avoids replacing
 a newer source state. Retry after editing has stopped. The commit remains one
 synchronous undoable transaction.
+
+## Operation resource ownership
+
+One final cleanup path owns the copied project, progress dialog, renderer and
+subscriptions through preparation, render, import and modifier creation. It runs
+before failure acknowledgement and preserves the primary failure if disposal
+itself fails. Every subsequent flatten gets a fresh operation.
+
+Offline export temporarily disables the live loop inside transactions and restores
+its original state in finally on success, render/create failure or abort. An
+observed newer loop edit is preserved, including a toggle back to disabled.
