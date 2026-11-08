@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Coalesce concurrent freezes per unit and discard renders invalidated by BPM or tempo automation changes.
+
 - Own offline abort listeners without overwriting caller handlers, honor pre-abort and pending loading cancellation, and release synchronous cached sample/soundfont subscriptions.
 
 - Release offline worker, message channels, MIDI and live-stream subscriptions after initialization failures; release render polling on loading and play failures.

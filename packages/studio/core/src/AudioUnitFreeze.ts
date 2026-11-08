@@ -13,6 +13,8 @@ export class AudioUnitFreeze implements Terminable {
     readonly #project: Project
     readonly #terminator = new Terminator()
     readonly #frozenAudioUnits: Map<string, FrozenEntry> = new Map()
+    readonly #pending = new Map<string, {generation: number, task: Promise<void>}>()
+    #generation = 0
     readonly #notifier = new Notifier<UUID.Bytes>()
 
     constructor(project: Project) {
@@ -55,7 +57,20 @@ export class AudioUnitFreeze implements Terminable {
         return false
     }
 
-    async freeze(audioUnitBoxAdapter: AudioUnitBoxAdapter): Promise<void> {
+    freeze(audioUnitBoxAdapter: AudioUnitBoxAdapter): Promise<void> {
+        const key = UUID.toString(audioUnitBoxAdapter.uuid)
+        const pending = this.#pending.get(key)
+        if (pending?.generation === this.#generation) {return pending.task}
+        if (this.isFrozen(audioUnitBoxAdapter)) {return Promise.resolve()}
+        const generation = this.#generation
+        // Defer work until the pending owner has been registered.
+        const task = Promise.resolve().then(() => this.#freeze(audioUnitBoxAdapter, generation))
+            .finally(() => {if (this.#pending.get(key)?.task === task) {this.#pending.delete(key)}})
+        this.#pending.set(key, {generation, task})
+        return task
+    }
+
+    async #freeze(audioUnitBoxAdapter: AudioUnitBoxAdapter, generation: number): Promise<void> {
         const {engine} = this.#project
         if (this.hasSidechainDependents(audioUnitBoxAdapter)) {
             await RuntimeNotifier.info({
@@ -100,6 +115,7 @@ export class AudioUnitFreeze implements Terminable {
             return
         }
         dialog.terminate()
+        if (generation !== this.#generation) {return}
         const audioData = renderResult.value
         engine.setFrozenAudio(audioUnitBoxAdapter.uuid, audioData)
         const {regionSelection, userEditingManager} = this.#project
@@ -138,6 +154,7 @@ export class AudioUnitFreeze implements Terminable {
     }
 
     #unfreezeAll(): void {
+        this.#generation++
         const keys = Array.from(this.#frozenAudioUnits.keys())
         for (const key of keys) {
             this.#removeFrozen(UUID.parse(key), key)
