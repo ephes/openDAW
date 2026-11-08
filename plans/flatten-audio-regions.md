@@ -181,3 +181,12 @@ itself fails. Every subsequent flatten gets a fresh operation.
 Offline export temporarily disables the live loop inside transactions and restores
 its original state in finally on success, render/create failure or abort. An
 observed newer loop edit is preserved, including a toggle back to disabled.
+
+## Offline initialization and loading
+
+Offline creation retains ownership of the worker, message channels/messengers,
+engine callbacks, MIDI and live-stream subscriptions until initialization succeeds.
+Script installation and initialization failures release them before rejecting.
+The returned renderer owns the same resources and terminates idempotently.
+Loading-query and play failures also release render polling and the worker,
+without sending a render request or replacing the initiating error.
