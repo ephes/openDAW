@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound FFmpeg core downloads/startup and serialize complete MP3/FLAC conversions on the shared worker.
+
+- Share FFmpeg initialization, allow failed startup retries, revoke startup blob URLs and terminate failed workers.
+
 - Validate inherited DAWproject beat timeline and second-based media units before creating boxes; label exported warp sources as seconds.
 - Remove DAWproject XML/metadata console logging and omit names/content from structural import warnings.
 

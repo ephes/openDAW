@@ -11,6 +11,7 @@ export class FFmpegWorker {
     }
 
     readonly #ffmpeg: FFmpeg
+    #operation: Promise<unknown> = Promise.resolve()
     readonly #progressNotifier: Notifier<unitValue>
 
     constructor(ffmpeg: FFmpeg) {
@@ -38,6 +39,12 @@ export class FFmpegWorker {
         return new Uint8Array(await response.arrayBuffer())
     }
 
+    runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+        const result = this.#operation.then(operation)
+        this.#operation = result.catch(() => {})
+        return result
+    }
+
     async cleanupFiles(files: string[]): Promise<void> {
         return Promise.all(files.map(file => this.#ffmpeg.deleteFile(file).catch())).then(EmptyExec)
     }
@@ -56,54 +63,99 @@ class Loader {
 
     readonly #progressNotifier = new Notifier<unitValue>()
 
-    async load(): Promise<FFmpegWorker> {
-        const {FFmpeg} = await import("@ffmpeg/ffmpeg")
-        const ffmpeg = new FFmpeg()
-        ffmpeg.on("log", ({type, message}: LogEvent) => {
-            console.debug(`[FFmpeg ${type}]`, message)
-        })
-        ffmpeg.on("progress", event => {
-            this.#progressNotifier.notify(event.progress)
-        })
-        const baseURL = "https://package.opendaw.studio" // mirror of https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm
-        console.debug("[FFmpeg] Downloading core files...")
-        const downloadWithProgress = async (url: string): Promise<ArrayBuffer> => {
-            const response = await fetch(url)
-            if (!response.ok) throw new Error(`Failed to fetch ${url}`)
-            const contentLength = response.headers.get("content-length")
-            const total = contentLength ? parseInt(contentLength, 10) : 0
-            if (!response.body || total === 0) {
-                return response.arrayBuffer()
-            }
-            const reader = response.body.getReader()
-            const chunks: Uint8Array[] = []
-            let received = 0
-            for (;;) {
-                const {done, value} = await reader.read()
-                if (done) break
-                chunks.push(value)
-                received += value.length
-                this.#progressNotifier.notify(received / total)
-            }
-            const result = new Uint8Array(received)
-            let position = 0
-            for (const chunk of chunks) {
-                result.set(chunk, position)
-                position += chunk.length
-            }
-            console.debug("position", position)
-            return result.buffer
+    #pending: Nullable<Promise<FFmpegWorker>> = null
+    #worker: Nullable<FFmpegWorker> = null
+
+    load(): Promise<FFmpegWorker> {
+        if (this.#worker !== null && !this.#worker.loaded) {
+            this.#worker = null
+            this.#pending = null
         }
-        const coreData = await downloadWithProgress(`${baseURL}/ffmpeg-core.js`)
-        const wasmData = await downloadWithProgress(`${baseURL}/ffmpeg-core.wasm`)
-        console.debug("[FFmpeg] Creating blob URLs...")
-        const coreBlob = new Blob([coreData], {type: "text/javascript"})
-        const wasmBlob = new Blob([wasmData], {type: "application/wasm"})
-        const coreURL = URL.createObjectURL(coreBlob)
-        const wasmURL = URL.createObjectURL(wasmBlob)
-        console.debug("[FFmpeg] Initializing...")
-        await ffmpeg.load({coreURL, wasmURL})
-        console.debug("[FFmpeg] Ready")
-        return new FFmpegWorker(ffmpeg)
+        return this.#pending ??= this.initialize().then(worker => this.#worker = worker).catch(error => {
+            this.#pending = null
+            throw error
+        })
+    }
+
+    private async initialize(): Promise<FFmpegWorker> {
+        const controller = new AbortController()
+        const {signal} = controller
+        const deadline = setTimeout(() => controller.abort(new Error("FFmpeg startup timed out")), 120_000)
+        const urls: string[] = []
+        let ffmpeg: FFmpeg | undefined
+        // Race even APIs that do not observe AbortSignal (notably core initialization).
+        const wait = <T>(promise: Promise<T>): Promise<T> => {
+            signal.throwIfAborted()
+            return new Promise<T>((resolve, reject) => {
+                const abort = () => reject(signal.reason)
+                signal.addEventListener("abort", abort, {once: true})
+                promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort))
+            })
+        }
+        try {
+            const {FFmpeg} = await wait(import("@ffmpeg/ffmpeg"))
+            ffmpeg = new FFmpeg()
+            const download = async (name: string, limit: number): Promise<ArrayBuffer> => {
+                const response = await wait(fetch(`https://package.opendaw.studio/${name}`, {signal}))
+                if (!response.ok) throw new Error("FFmpeg core download failed")
+                if (!response.body) throw new Error("FFmpeg core download has no body")
+                const reader = response.body.getReader()
+                const cancel = () => { void reader.cancel().catch(() => {}) }
+                signal.addEventListener("abort", cancel, {once: true})
+                let complete = false
+                try {
+                    const header = response.headers.get("content-length")
+                    const encoding = response.headers.get("content-encoding")
+                    const total = header === null || (encoding !== null && encoding !== "identity")
+                        ? null : Number(header)
+                    if (total !== null && (!Number.isSafeInteger(total) || total <= 0 || total > limit)) {
+                        throw new Error("FFmpeg core download size refused")
+                    }
+                    const chunks: Uint8Array[] = []
+                    let received = 0
+                    for (;;) {
+                        const {done, value} = await wait(reader.read())
+                        signal.throwIfAborted()
+                        if (done) break
+                        received += value.byteLength
+                        if (received > limit || (total !== null && received > total)) {
+                            throw new Error("FFmpeg core download size refused")
+                        }
+                        chunks.push(value)
+                        if (total !== null) this.#progressNotifier.notify(received / total)
+                    }
+                    if (received === 0 || (total !== null && received !== total)) {
+                        throw new Error("FFmpeg core download truncated")
+                    }
+                    const result = new Uint8Array(received)
+                    let position = 0
+                    for (const chunk of chunks) {
+                        result.set(chunk, position)
+                        position += chunk.byteLength
+                    }
+                    complete = true
+                    return result.buffer
+                } finally {
+                    signal.removeEventListener("abort", cancel)
+                    if (!complete) cancel()
+                    reader.releaseLock()
+                }
+            }
+            const coreData = await download("ffmpeg-core.js", 2 * 1024 * 1024)
+            const wasmData = await download("ffmpeg-core.wasm", 40 * 1024 * 1024)
+            const coreURL = URL.createObjectURL(new Blob([coreData], {type: "text/javascript"}))
+            urls.push(coreURL)
+            const wasmURL = URL.createObjectURL(new Blob([wasmData], {type: "application/wasm"}))
+            urls.push(wasmURL)
+            await wait(ffmpeg.load({coreURL, wasmURL}))
+            return new FFmpegWorker(ffmpeg)
+        } catch (error) {
+            controller.abort(error)
+            try { ffmpeg?.terminate() } catch { console.warn("[FFmpeg] Startup cleanup failed") }
+            throw error
+        } finally {
+            clearTimeout(deadline)
+            urls.forEach(url => URL.revokeObjectURL(url))
+        }
     }
 }
