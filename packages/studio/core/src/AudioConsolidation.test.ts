@@ -196,3 +196,32 @@ it("releases operation resources before waiting for failure acknowledgement", as
         expect(vi.mocked(RuntimeNotifier.progress).mock.results[0].value.terminate).toHaveBeenCalledTimes(1)
     } finally {notice.resolve(); await running}
 })
+
+it.each(["copy", "render", "import", "modifier"])("releases operation resources after %s failure and permits retry", async stage => {
+    const f = fixture()
+    const fault = new Error(`synthetic ${stage} failure`)
+    if (stage === "copy") {f.project.copy.mockImplementationOnce(() => {throw fault})}
+    if (stage === "render") {f.renderer.step.mockRejectedValueOnce(fault)}
+    if (stage === "import") {f.sampleService.importFile.mockRejectedValueOnce(fault)}
+    if (stage === "modifier") {vi.mocked(AudioFileBoxFactory.createModifier).mockRejectedValueOnce(fault)}
+    const current = f.graph.toArrayBuffer()
+    await f.run()
+    expect(f.graph.toArrayBuffer()).toEqual(current)
+    expect(RuntimeNotifier.info).toHaveBeenCalledWith(expect.objectContaining({message: String(fault)}))
+    if (stage !== "copy") {
+        expect(f.copied.terminate).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(RuntimeNotifier.progress).mock.results[0].value.terminate).toHaveBeenCalledTimes(1)
+    }
+    await f.run()
+    expect(f.project.trackUserCreatedSample).toHaveBeenCalledTimes(1)
+})
+
+it("preserves the primary failure and releases the remaining owners when renderer cleanup throws", async () => {
+    const f = fixture()
+    f.renderer.step.mockRejectedValueOnce(new Error("primary render failure"))
+    f.renderer.terminate.mockImplementationOnce(() => {throw new Error("secondary cleanup failure")})
+    await expect(f.run()).resolves.toBeUndefined()
+    expect(f.copied.terminate).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(RuntimeNotifier.progress).mock.results[0].value.terminate).toHaveBeenCalledTimes(1)
+    expect(RuntimeNotifier.info).toHaveBeenCalledWith(expect.objectContaining({message: expect.stringContaining("primary render failure")}))
+})

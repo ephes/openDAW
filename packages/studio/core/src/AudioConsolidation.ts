@@ -1,4 +1,4 @@
-import {Arrays, Errors, Option, RuntimeNotifier, UUID} from "@opendaw/lib-std"
+import {Arrays, Errors, Option, RuntimeNotifier, tryCatch, UUID} from "@opendaw/lib-std"
 import {AudioData, RegionCollection, WavFile} from "@opendaw/lib-dsp"
 import {AudioRegionBoxAdapter, ExportConfiguration} from "@opendaw/studio-adapters"
 import {
@@ -128,9 +128,11 @@ export namespace AudioConsolidation {
             abortSignal?.removeEventListener("abort", incomingAbort)
             signal.removeEventListener("abort", cancel)
             sourceSubscription.terminate()
-            renderer?.terminate()
-            copiedProject?.terminate()
-            dialog?.terminate()
+            for (const owned of [renderer, copiedProject, dialog]) {
+                if (owned === undefined) {continue}
+                const result = tryCatch(() => owned.terminate())
+                if (result.status === "failure") {console.warn("Flatten cleanup failed")}
+            }
         }
         if (failure !== undefined) {
             await RuntimeNotifier.info({headline: "Flatten Failed", message: String(failure.error)})
