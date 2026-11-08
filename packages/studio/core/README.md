@@ -218,3 +218,20 @@ need correction before import; the importer does not guess.
 
 DAWproject decode/encode console diagnostics exclude XML bodies, metadata, names,
 comments and resource paths. Import warnings use fixed structural categories.
+
+Warped audio supports strictly ordered linear mappings from (0 beats, 0 source
+seconds) to the full source duration. Collinear intermediate markers are accepted;
+nonlinear mappings, nonzero origins and multiple warped contents are refused before
+box creation. playStart is preserved in beat playback coordinates. Audio loopStart
+must be zero; loops may end earlier than the source while retaining its original
+warp scale. Nonlooping clips must fit the remaining source window.
+
+Warp source coordinates are seconds (an omitted source unit defaults to seconds);
+beat-valued warp source coordinates are refused. Export writes seconds, preserves
+existing warp markers and play offsets, and requires loaded audio instead of emitting
+an empty warped clip. Old exports that labeled seconds as beats must be corrected
+before import; ambiguous timing is not guessed.
+
+No-stretch audio with absolute durations exports through constant-tempo beat
+conversion. Absolute audio export with tempo automation or a nonzero waveform
+offset is explicitly unsupported; beat positions remain beat positions.

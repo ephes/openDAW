@@ -13,7 +13,6 @@ import {
     Multimap,
     NumberComparator,
     Option,
-    Optional,
     panic,
     UUID,
     ValueMapping
@@ -126,6 +125,38 @@ export namespace DawProjectImport {
         return {position, duration, playStart, loopStart, loopEnd}
     }
 
+    const audioCoordinates = (clip: ClipSchema, warps: WarpsSchema) => {
+        assert((warps.contentTimeUnit ?? "seconds") === "seconds", "Unsupported warp source time unit: expected seconds")
+        assert(warps.content?.length === 1 && isInstanceOf(warps.content[0], AudioSchema),
+            "Unsupported warped audio content")
+        const audio = asInstanceOf(asDefined(warps.content)[0], AudioSchema)
+        const first = asDefined(warps.warps.at(0), "Unsupported empty warp mapping")
+        const last = asDefined(warps.warps.at(-1), "Unsupported empty warp mapping")
+        const span = last.time
+        assert(warps.warps.length >= 2 && first.time === 0 && first.contentTime === 0
+            && Number.isFinite(span) && span * PPQN.Quarter >= 1
+            && Number.isFinite(audio.duration) && audio.duration > 0
+            && Math.abs(last.contentTime - audio.duration) <= 1e-8 * Math.max(1, audio.duration),
+        "Unsupported warp source window: expected full source from zero")
+        warps.warps.forEach((warp, index) => {
+            assert(Number.isFinite(warp.time) && Number.isFinite(warp.contentTime)
+                && (index === 0 || warp.time > warps.warps[index - 1].time)
+                && Math.abs(warp.contentTime - warp.time / span * audio.duration) <= 1e-8 * Math.max(1, audio.duration),
+            "Unsupported nonlinear warp mapping")
+        })
+        const position = asDefined(clip.time, "Time not defined")
+        const duration = asDefined(clip.duration, "Duration not defined")
+        const playStart = clip.playStart ?? 0
+        const loopDuration = clip.loopEnd ?? span
+        assert(Number.isFinite(position) && Number.isFinite(duration) && duration * PPQN.Quarter >= 1
+            && Number.isFinite(playStart) && playStart >= 0 && playStart < loopDuration
+            && (clip.loopStart ?? 0) === 0 && Number.isFinite(loopDuration)
+            && loopDuration * PPQN.Quarter >= 1 && loopDuration <= span
+            && (clip.loopEnd !== undefined || duration <= span - playStart + 1e-8),
+        "Unsupported audio playback window")
+        return {audio, position, duration, playStart, loopDuration, span}
+    }
+
     const requireBeats = (unit: string): void => {
         assert(unit === "beats", "Unsupported timeline time unit: expected beats")
     }
@@ -149,6 +180,7 @@ export namespace DawProjectImport {
                 assert(isInstanceOf(source, AudioSchema) && (source.timeUnit ?? sourceUnit) === "seconds",
                     "Unsupported audio source time unit: expected seconds")
             })
+            audioCoordinates(clip, content)
         }
     }
 
@@ -486,13 +518,8 @@ export namespace DawProjectImport {
                 }
             }
 
-            const readAnyRegionContent = async (clip: ClipSchema, warpsSchema: WarpsSchema, trackBox: TrackBox): Promise<unknown> => {
-                const audio = warpsSchema.content?.at(0) as Optional<AudioSchema>
-                if (isUndefined(audio)) {return}
-                const warps = warpsSchema.warps
-                const warp0 = warps.at(0)
-                const warpN = warps.at(-1)
-                const warpDistance = asDefined(warpN?.time) - asDefined(warp0?.time)
+            const readAnyRegionContent = async (clip: ClipSchema, warpsSchema: WarpsSchema, trackBox: TrackBox): Promise<void> => {
+                const {audio, position, duration, playStart, loopDuration, span} = audioCoordinates(clip, warpsSchema)
                 const {path, external} = audio.file
                 assert(external !== true, "File cannot be external")
                 const {uuid, name} = resources.fromPath(path)
@@ -504,24 +531,17 @@ export namespace DawProjectImport {
                     }))
                 audioIdSet.add(uuid, true)
 
-                const position = asDefined(clip.time, "Time not defined")
-                const duration = asDefined(clip.duration, "Duration not defined")
-                const loopDuration = clip.loopEnd ?? warpDistance
                 const durationInPulses = duration * PPQN.Quarter
                 const loopDurationInPulses = loopDuration * PPQN.Quarter
-                if (loopDurationInPulses < 1) {
-                    console.warn("Skipping DAWproject clip: loop duration too small")
-                    return
-                }
                 const collectionBox = ValueEventCollectionBox.create(boxGraph, UUID.generate())
                 const pitchStretch = AudioPitchStretchBox.create(boxGraph, UUID.generate())
                 AudioContentHelpers.addDefaultWarpMarkers(
-                    boxGraph, pitchStretch, loopDurationInPulses, audioFileBox.endInSeconds.getValue())
+                    boxGraph, pitchStretch, span * PPQN.Quarter, audioFileBox.endInSeconds.getValue())
                 AudioRegionBox.create(boxGraph, UUID.generate(), box => {
                     box.position.setValue(position * PPQN.Quarter)
                     box.duration.setValue(durationInPulses)
                     box.label.setValue(clip.name ?? "")
-                    box.loopOffset.setValue(0.0)
+                    box.loopOffset.setValue(playStart * PPQN.Quarter)
                     box.loopDuration.setValue(loopDurationInPulses)
                     box.mute.setValue(clip.enable === false)
                     box.regions.refer(trackBox.regions)

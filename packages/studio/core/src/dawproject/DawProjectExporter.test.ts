@@ -1,4 +1,4 @@
-import {describe, it} from "vitest"
+import {describe, expect, it} from "vitest"
 import {fileURLToPath} from "url"
 import * as path from "node:path"
 import * as fs from "node:fs"
@@ -43,13 +43,12 @@ describe("DawProjectExport", () => {
             register(_uuid: UUID.Bytes): Terminable {return Terminable.Empty}
         }
         const skeleton = ProjectSkeleton.decode(arrayBuffer)
-        const schema = DawProjectExporter.write(skeleton, sampleManager, {
+        expect(() => DawProjectExporter.write(skeleton, sampleManager, {
             write: (path: string, buffer: ArrayBufferLike): FileReferenceSchema => {
                 console.debug(`store ${buffer.byteLength} bytes at ${path}`)
                 return Xml.element({path, external: false}, FileReferenceSchema)
             }
-        })
-        // console.dir(schema, {depth: Number.MAX_SAFE_INTEGER})
-        console.debug(Xml.pretty(Xml.toElement("Project", schema)))
+        })).toThrow(/Cannot export unloaded audio/)
+
     })
 })

@@ -40,3 +40,19 @@ for Musical regions, not only Seconds regions. The optional no-stretch pointer
 Critical was fixed. A remaining advisory asks to restore loaded full-project export
 smoke coverage. Rebase this branch onto current main and complete its review gate
 before merging; B06 intentionally proceeded independently.
+
+B05 maps audio playStart to beat playback offsets, keeps warp scale independent of
+loop extent, and admits full-source linear mappings only. Synthetic numbered-ramp
+WAV data verifies the first source sample, extent and pitch-mode marker geometry.
+Nonlinear mappings and unsupported window combinations fail before graph/resource work.
+
+B05 review identified the exporter's visible-duration warp span. Export now serializes
+existing warp markers and play offsets, labels source coordinates as seconds and
+refuses unloaded audio. Synthetic XML export/import tests protect trimmed and looped
+regions. Legacy exports with mislabeled beat source coordinates are explicitly refused.
+
+B05 second repair handles the optional no-stretch play mode. Constant-tempo
+absolute extents convert with PPQN's public seconds conversion; tempo-automated
+or waveform-offset absolute export is explicitly refused. An ordinary no-stretch
+XML round-trip protects the empty pointer path. The old unloaded sample smoke
+now expects explicit refusal; loaded synthetic cases cover successful export.

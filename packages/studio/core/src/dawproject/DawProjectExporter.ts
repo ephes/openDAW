@@ -1,6 +1,6 @@
-import {asDefined, asInstanceOf, Color, ifDefined, isInstanceOf, Maybe, Option, Optional, UUID} from "@opendaw/lib-std"
+import {asDefined, asInstanceOf, assert, Color, ifDefined, isInstanceOf, Maybe, Option, Optional, UUID} from "@opendaw/lib-std"
 import {Xml} from "@opendaw/lib-xml"
-import {dbToGain, PPQN} from "@opendaw/lib-dsp"
+import {dbToGain, PPQN, TimeBase} from "@opendaw/lib-dsp"
 import {AddressIdEncoder, BooleanField, Field} from "@opendaw/lib-box"
 import {Html} from "@opendaw/lib-dom"
 import {
@@ -40,6 +40,9 @@ import {
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {
     AudioFileBox,
+    AudioPitchStretchBox,
+    AudioTimeStretchBox,
+    WarpMarkerBox,
     AudioRegionBox,
     AudioUnitBox,
     BoxVisitor,
@@ -183,42 +186,46 @@ export namespace DawProjectExporter {
 
         const writeAudioRegion = (region: AudioRegionBox): ClipsSchema => {
             const audioFileBox = asInstanceOf(region.file.targetVertex.unwrap("No file at region").box, AudioFileBox)
-            const audioElement = sampleManager.getOrCreate(audioFileBox.address.uuid).data
-                .map(({numberOfFrames, sampleRate, numberOfChannels}) => Xml.element({
-                    duration: numberOfFrames / sampleRate,
-                    channels: numberOfChannels,
-                    sampleRate,
-                    algorithm: AudioAlgorithm.REPITCH,
-                    file: Xml.element({
-                        path: `samples/${audioFileBox.fileName.getValue()}.wav`,
-                        external: false
-                    }, FileReferenceSchema)
-                }, AudioSchema))
-            const duration = region.duration.getValue() / PPQN.Quarter
+            const {numberOfFrames, sampleRate, numberOfChannels} = sampleManager.getOrCreate(audioFileBox.address.uuid).data
+                .unwrap("Cannot export unloaded audio")
+            const audioElement = Xml.element({
+                duration: numberOfFrames / sampleRate,
+                channels: numberOfChannels,
+                sampleRate,
+                algorithm: AudioAlgorithm.REPITCH,
+                file: Xml.element({path: `samples/${audioFileBox.fileName.getValue()}.wav`, external: false}, FileReferenceSchema)
+            }, AudioSchema)
+            const playMode = region.playMode.targetVertex.mapOr(vertex => vertex.box, undefined)
+            const absolute = region.timeBase.getValue() === TimeBase.Seconds
+            const hasTempoAutomation = timelineBox.tempoTrack.enabled.getValue() && timelineBox.tempoTrack.events.targetVertex
+                .mapOr(vertex => asInstanceOf(vertex.box, ValueEventCollectionBox).events.pointerHub.incoming().length > 0, false)
+            assert(!absolute || (!hasTempoAutomation && region.waveformOffset.getValue() === 0),
+                "Unsupported absolute audio export with tempo automation or waveform offset")
+            const toBeats = (value: number) => absolute
+                ? PPQN.secondsToPulses(value, timelineBox.bpm.getValue()) / PPQN.Quarter
+                : value / PPQN.Quarter
+            const warps = isInstanceOf(playMode, AudioPitchStretchBox) || isInstanceOf(playMode, AudioTimeStretchBox)
+                ? playMode.warpMarkers.pointerHub.incoming().map(({box}) => asInstanceOf(box, WarpMarkerBox))
+                    .sort((a, b) => a.position.getValue() - b.position.getValue())
+                    .map(marker => Xml.element({time: marker.position.getValue() / PPQN.Quarter, contentTime: marker.seconds.getValue()}, WarpSchema))
+                : [Xml.element({time: 0, contentTime: 0}, WarpSchema),
+                    Xml.element({time: PPQN.secondsToPulses(audioElement.duration, timelineBox.bpm.getValue()) / PPQN.Quarter, contentTime: audioElement.duration}, WarpSchema)]
+            const duration = toBeats(region.duration.getValue())
             return Xml.element({
                 clips: [Xml.element({
                     time: region.position.getValue() / PPQN.Quarter,
                     duration,
                     contentTimeUnit: TimeUnit.BEATS,
-                    playStart: 0.0,
+                    playStart: region.loopOffset.getValue() / PPQN.Quarter,
                     loopStart: 0.0,
-                    loopEnd: region.loopDuration.getValue() / PPQN.Quarter,
+                    loopEnd: toBeats(region.loopDuration.getValue()),
                     enable: !region.mute.getValue(),
                     name: region.label.getValue(),
                     color: Color.hslToHex(region.hue.getValue(), 1.0, 0.60),
                     content: [Xml.element({
-                        content: audioElement.mapOr(element => [element], []),
+                        content: [audioElement],
                         contentTimeUnit: TimeUnit.SECONDS,
-                        warps: [
-                            Xml.element({
-                                time: 0.0,
-                                contentTime: 0.0
-                            }, WarpSchema),
-                            Xml.element({
-                                time: duration,
-                                contentTime: audioElement.mapOr(element => element.duration, 0)
-                            }, WarpSchema)
-                        ]
+                        warps
                     }, WarpsSchema)]
                 }, ClipSchema)]
             }, ClipsSchema)
