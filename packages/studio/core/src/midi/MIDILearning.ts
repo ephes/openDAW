@@ -39,6 +39,8 @@ export class MIDILearning implements Terminable {
 
     #optMIDIContollers: Option<Field<Pointers.MIDIControllers>> = Option.None
     #optFieldSubscription: Option<Subscription> = Option.None
+    #terminated = false
+    #generation = 0
 
     constructor(project: Project) {
         this.#project = project
@@ -46,12 +48,15 @@ export class MIDILearning implements Terminable {
     }
 
     followUser(field: Field<Pointers.MIDIControllers>): void {
+        if (this.#terminated) {return}
+        this.#generation++
         this.#killAllConnections()
         this.#optFieldSubscription.ifSome(subscription => subscription.terminate())
         this.#optFieldSubscription = Option.None
         this.#optMIDIContollers = Option.wrap(field)
         this.#optFieldSubscription = Option.wrap(field.pointerHub.catchupAndSubscribe({
             onAdded: ({box: anyBox}) => {
+                if (this.#terminated) {return}
                 const box = asInstanceOf(anyBox, MIDIControllerBox)
                 const {subscription, handleEvent} = this.#registerMIDIControllerBox(box)
                 this.#connections.add({box, subscription, handleEvent})
@@ -70,6 +75,7 @@ export class MIDILearning implements Terminable {
     }
 
     async learnMIDIControls(field: PrimitiveField<PrimitiveValues, Pointers.MIDIControl | Pointers>) {
+        if (this.#terminated || !field.isAttached()) {return}
         if (this.#optMIDIContollers.isEmpty()) {
             return RuntimeNotifier.info({
                 headline: "Learn Midi Controller...",
@@ -77,20 +83,28 @@ export class MIDILearning implements Terminable {
             })
         }
         if (!MidiDevices.canRequestMidiAccess()) {return}
+        const owner = this.#optMIDIContollers.unwrap()
+        const generation = this.#generation
+        const isCurrent = () => !this.#terminated && generation === this.#generation
+            && owner.isAttached() && field.isAttached()
         await MidiDevices.requestPermission()
+        if (!isCurrent()) {return}
         const learnLifecycle = this.#terminator.spawn()
         const abortController = new AbortController()
+        learnLifecycle.own({terminate: () => abortController.abort(Errors.AbortError)})
         learnLifecycle.own(MidiDevices.subscribeMessageEvents((event: MIDIMessageEvent) => {
+            if (!isCurrent()) {
+                learnLifecycle.terminate()
+                return
+            }
             const data = event.data
             if (data === null) {return}
             const deviceId = event.target instanceof MIDIInput ? event.target.id : ""
             if (MidiData.isController(data)) {
                 learnLifecycle.terminate()
-                abortController.abort(Errors.AbortError)
-                const midiControllersField = this.#optMIDIContollers.unwrap()
                 const {editing} = this.#project
                 const optBox = editing.modify(() => MIDIControllerBox.create(this.#project.boxGraph, UUID.generate(), box => {
-                    box.controllers.refer(midiControllersField)
+                    box.controllers.refer(owner)
                     box.parameter.refer(field)
                     box.deviceId.setValue(deviceId)
                     box.deviceChannel.setValue(MidiData.readChannel(data))
@@ -108,6 +122,12 @@ export class MIDILearning implements Terminable {
     }
 
     terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
+        this.#generation++
+        this.#optFieldSubscription.ifSome(subscription => subscription.terminate())
+        this.#optFieldSubscription = Option.None
+        this.#optMIDIContollers = Option.None
         this.#killAllConnections()
         this.#terminator.terminate()
     }
