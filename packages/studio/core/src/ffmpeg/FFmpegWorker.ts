@@ -1,4 +1,4 @@
-import {EmptyExec, Lazy, Notifier, Nullable, Progress, unitValue} from "@opendaw/lib-std"
+import {Lazy, Notifier, Nullable, Progress, unitValue} from "@opendaw/lib-std"
 import type {FFmpeg, LogEvent} from "@ffmpeg/ffmpeg"
 import {Mp3Converter} from "./mp3"
 import {FlacConverter} from "./flac"
@@ -46,7 +46,10 @@ export class FFmpegWorker {
     }
 
     async cleanupFiles(files: string[]): Promise<void> {
-        return Promise.all(files.map(file => this.#ffmpeg.deleteFile(file).catch())).then(EmptyExec)
+        await Promise.all(files.map(async file => {
+            try { await this.#ffmpeg.deleteFile(file) }
+            catch { console.warn("[FFmpeg] Temporary file cleanup failed") }
+        }))
     }
 }
 

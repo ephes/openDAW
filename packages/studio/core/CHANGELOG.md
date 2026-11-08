@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse nonzero MP3/FLAC encoder exits before reading output; attempt all temporary deletions without replacing conversion outcomes.
+
 - Bound FFmpeg core downloads/startup and serialize complete MP3/FLAC conversions on the shared worker.
 
 - Share FFmpeg initialization, allow failed startup retries, revoke startup blob URLs and terminate failed workers.

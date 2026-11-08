@@ -31,7 +31,8 @@ export class Mp3Converter implements FFmpegConverter<Mp3Options> {
                     args.push("-b:a", options.bitrate ?? "320k")
                 }
                 args.push("output.mp3")
-                await this.#worker.ffmpeg.exec(args)
+                const exitCode = await this.#worker.ffmpeg.exec(args)
+                if (exitCode !== 0) throw new Error("MP3 conversion failed")
                 const outputData = await this.#worker.ffmpeg.readFile("output.mp3")
                 if (typeof outputData === "string") {
                     return Promise.reject(outputData)

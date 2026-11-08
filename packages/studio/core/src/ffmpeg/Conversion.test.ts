@@ -47,3 +47,39 @@ describe("conversion ownership", () => {
         expect(ffmpeg.deleteFile).toHaveBeenCalledTimes(4)
     })
 })
+
+
+describe("encoder outcome integrity", () => {
+    it.each(["mp3", "flac"] as const)("refuses stale %s output after nonzero exit and permits retry", async format => {
+        const {worker, ffmpeg} = setup()
+        ffmpeg.exec.mockResolvedValueOnce(7)
+        ffmpeg.readFile.mockResolvedValueOnce(new Uint8Array([99]))
+        const converter = format === "mp3" ? worker.mp3Converter() : worker.flacConverter()
+        await expect(converter.convert(new Blob(["a"]), () => {})).rejects.toThrow("conversion failed")
+        expect(ffmpeg.readFile).not.toHaveBeenCalled()
+        expect(ffmpeg.deleteFile).toHaveBeenCalledTimes(2)
+        await expect(converter.convert(new Blob(["b"]), () => {})).resolves.toBeInstanceOf(ArrayBuffer)
+        expect(ffmpeg.readFile).toHaveBeenCalledTimes(1)
+    })
+    it.each(["mp3", "flac"] as const)("preserves %s exec/read errors and success when either deletion fails", async format => {
+        for (const failure of ["exec", "read", "none"]) {
+            for (const deletion of [0, 1]) {
+                const {worker, ffmpeg} = setup()
+                const primary = new Error("synthetic primary")
+                const diagnostic = vi.spyOn(console, "warn").mockImplementation(() => {})
+                if (failure === "exec") ffmpeg.exec.mockRejectedValueOnce(primary)
+                if (failure === "read") ffmpeg.readFile.mockRejectedValueOnce(primary)
+                ffmpeg.deleteFile.mockImplementation(async () => {
+                    if (ffmpeg.deleteFile.mock.calls.length - 1 === deletion) throw new Error("synthetic deletion")
+                })
+                const converter = format === "mp3" ? worker.mp3Converter() : worker.flacConverter()
+                const result = converter.convert(new Blob(["a"]), () => {})
+                if (failure === "none") await expect(result).resolves.toBeInstanceOf(ArrayBuffer)
+                else await expect(result).rejects.toBe(primary)
+                expect(ffmpeg.deleteFile).toHaveBeenCalledTimes(2)
+                expect(diagnostic).toHaveBeenCalledExactlyOnceWith("[FFmpeg] Temporary file cleanup failed")
+                diagnostic.mockRestore()
+            }
+        }
+    })
+})
