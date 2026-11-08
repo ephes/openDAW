@@ -42,3 +42,16 @@ Cleanup diagnostics can include an absent temporary file after an early failure.
 The O3 review suggested distinguishing missing files; this is deferred because
 the public worker API does not provide a reliable structured not-found status.
 Both paths are still attempted so stale outputs are also removed.
+
+
+## Legacy region timing (O4)
+
+AudioFit validates finite positive BPM, file span, region/loop duration and derived
+float32 results before opening a transaction. Invalid geometry refuses without
+changing any timing, playback, timebase or event ownership. The existing legacy
+integer-bit signature is classified per field; normal float fields remain intact.
+A denormal signature or deprecated AudioFit on a nonmusical timebase is
+ambiguous and refused rather than guessed. Modern seconds-based timing, including
+small normal float32 loop-offset residues, is preserved without bit decoding. Valid AudioFit retains proportional audible duration
+and loop offset while becoming seconds-based. Synthetic mixed/all-legacy/modern
+fixtures verify repeat migration and unchanged state on refusal.
