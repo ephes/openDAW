@@ -144,3 +144,62 @@ MenuItem.default({label: "Flatten", selectable: region.canFlatten(selection.sele
 1. Type-check all modified packages with `npx tsc --noEmit`
 2. Existing stem export should still work (`useInstrumentOutput` defaults to `false`)
 3. Manual test: select multiple audio regions on same track → right-click → Flatten → progress dialog appears → new single region created with rendered audio
+
+## Selection extent and publication
+
+Flatten renders from the earliest selected start to the greatest selected complete
+endpoint, including nested and equal-start regions. Unselected overlaps are excluded
+from the copied render graph and retained in the live graph. Only selected source
+regions are replaced, in one undoable edit.
+
+Contributor process: these repairs were developed with Codex, using synthetic PCM
+and graph fixtures, regression failures against the prior implementation, local
+build/lint/tests and an independent Claude review gate.
+
+## Cancellation and concurrent edits
+
+Cancellation is checked before copying and after every awaited stage. It stops
+and terminates an owned renderer, removes the incoming abort listener, and
+prevents graph replacement and user-created-sample registration. An import
+already in flight may finish storing its sample; cancellation does not delete
+that library asset. A source edit during an in-flight import can likewise leave
+its completed library asset; edits already detected after rendering refuse import.
+A late renderer created after cancellation is terminated.
+
+Any live graph update during flatten conservatively refuses publication with a
+retry message, including tempo, automation and routing edits. This avoids replacing
+a newer source state. Retry after editing has stopped. The commit remains one
+synchronous undoable transaction.
+
+## Operation resource ownership
+
+One final cleanup path owns the copied project, progress dialog, renderer and
+subscriptions through preparation, render, import and modifier creation. It runs
+before failure acknowledgement and preserves the primary failure if disposal
+itself fails. Every subsequent flatten gets a fresh operation.
+
+Offline export temporarily disables the live loop inside transactions and restores
+its original state in finally on success, render/create failure or abort. An
+observed newer loop edit is preserved, including a toggle back to disabled.
+
+## Offline initialization and loading
+
+Offline creation retains ownership of the worker, message channels/messengers,
+engine callbacks, MIDI and live-stream subscriptions until initialization succeeds.
+Script installation and initialization failures release them before rejecting.
+The returned renderer owns the same resources and terminates idempotently.
+Loading-query and play failures also release render polling and the worker,
+without sending a render request or replacing the initiating error.
+
+## Offline cancellation and loader subscriptions
+
+Render uses an owned abort event listener, leaves caller handlers intact and removes
+it at settlement. Already-aborted signals reject before polling or loading starts.
+Cancellation races loading, play and rendering so it rejects even if a worker reply
+is pending. Stop and termination are idempotent for the operation; a late abort
+after settlement does nothing.
+
+Audio and soundfont terminal callbacks can run synchronously during subscribe.
+The offline renderer retires their returned subscriptions after synchronous delivery
+and uses scoped resource ownership for later delivery and renderer termination,
+without changing the loader API. Repeated cached errors do not accumulate observers.

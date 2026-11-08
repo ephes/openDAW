@@ -2,7 +2,6 @@ import {
     DefaultObservableValue,
     Errors,
     int,
-    isDefined,
     Nullable,
     Option,
     panic,
@@ -10,6 +9,7 @@ import {
     Terminable,
     Terminator,
     TimeSpan,
+    tryCatch,
     UUID
 } from "@opendaw/lib-std"
 import {AudioData, ppqn} from "@opendaw/lib-dsp"
@@ -52,160 +52,190 @@ export class OfflineEngineRenderer {
         const numStems = ExportConfiguration.countStems(optExportConfiguration)
         if (numStems === 0) {return panic("Nothing to export")}
         const numberOfChannels = numStems * 2
-        const worker = new Worker(this.getWorkerUrl(), {type: "module"})
-        const messenger = Messenger.for(worker)
-        const protocol = Communicator.sender<OfflineEngineProtocol>(
-            messenger.channel("offline-engine"),
-            dispatcher => new class implements OfflineEngineProtocol {
-                initialize(enginePort: MessagePort, config: OfflineEngineInitializeConfig): Promise<void> {
-                    return dispatcher.dispatchAndReturn(this.initialize, enginePort, config)
-                }
-                addModule(code: string): Promise<void> {
-                    return dispatcher.dispatchAndReturn(this.addModule, code)
-                }
-                render(config: OfflineEngineRenderConfig): Promise<Float32Array[]> {
-                    return dispatcher.dispatchAndReturn(this.render, config)
-                }
-                step(samples: number): Promise<Float32Array[]> {
-                    return dispatcher.dispatchAndReturn(this.step, samples)
-                }
-                stop(): void { dispatcher.dispatchAndForget(this.stop) }
-            }
-        )
-        const channel = new MessageChannel()
-        const engineStateIO = EngineStateSchema()
-        const reader = SyncStream.reader<EngineState>(engineStateIO, () => {})
-        const controlFlagsBuffer = new SharedArrayBuffer(4)
         const terminator = new Terminator()
-        const engineMessenger = Messenger.for(channel.port2)
-        Communicator.executor<EngineToClient>(engineMessenger.channel("engine-to-client"), {
-            log: (message: string): void => console.log("OFFLINE-ENGINE", message),
-            error: (reason: unknown) => console.error("OFFLINE-ENGINE", reason),
-            ready: (): void => {},
-            fetchAudio: (uuid: UUID.Bytes): Promise<AudioData> => new Promise((resolve, reject) => {
-                const handler = source.sampleManager.getOrCreate(uuid)
-                const subscription = handler.subscribe(state => {
-                    if (state.type === "error") {
-                        reject(new Error(state.reason))
-                        subscription.terminate()
-                    } else if (state.type === "loaded") {
-                        resolve(handler.data.unwrap())
-                        subscription.terminate()
+        let worker: Worker | undefined
+        let initialized = false
+        try {
+            worker = new Worker(this.getWorkerUrl(), {type: "module"})
+            const messenger = terminator.own(Messenger.for(worker))
+            const protocol = Communicator.sender<OfflineEngineProtocol>(
+                terminator.own(messenger.channel("offline-engine")),
+                dispatcher => new class implements OfflineEngineProtocol {
+                    initialize(enginePort: MessagePort, config: OfflineEngineInitializeConfig): Promise<void> {
+                        return dispatcher.dispatchAndReturn(this.initialize, enginePort, config)
                     }
-                })
-            }),
-            fetchSoundfont: (uuid: UUID.Bytes): Promise<SoundFont2> => new Promise((resolve, reject) => {
-                const handler = source.soundfontManager.getOrCreate(uuid)
-                const subscription = handler.subscribe(state => {
-                    if (state.type === "error") {
-                        reject(new Error(state.reason))
-                        subscription.terminate()
-                    } else if (state.type === "loaded") {
-                        resolve(handler.soundfont.unwrap())
-                        subscription.terminate()
+                    addModule(code: string): Promise<void> {
+                        return dispatcher.dispatchAndReturn(this.addModule, code)
                     }
-                })
-            }),
-            fetchNamWasm: async (): Promise<ArrayBuffer> => {
-                const url = new URL("@opendaw/nam-wasm/nam.wasm", import.meta.url)
-                const response = await fetch(url)
-                return response.arrayBuffer()
-            },
-            notifyClipSequenceChanges: (): void => {},
-            switchMarkerState: (): void => {},
-            deviceMessage: (uuid: string, message: string): void => {
-                console.warn(`OFFLINE-ENGINE device(${uuid}): ${message}`)
-            }
-        })
-
-        const engineCommands = Communicator.sender<EngineCommands>(
-            engineMessenger.channel("engine-commands"),
-            dispatcher => new class implements EngineCommands {
-                play(): void { dispatcher.dispatchAndForget(this.play) }
-                stop(reset: boolean): void { dispatcher.dispatchAndForget(this.stop, reset) }
-                setPosition(position: ppqn): void { dispatcher.dispatchAndForget(this.setPosition, position) }
-                prepareRecordingState(countIn: boolean): void { dispatcher.dispatchAndForget(this.prepareRecordingState, countIn) }
-                stopRecording(): void { dispatcher.dispatchAndForget(this.stopRecording) }
-                queryLoadingComplete(): Promise<boolean> { return dispatcher.dispatchAndReturn(this.queryLoadingComplete) }
-                panic(): void { dispatcher.dispatchAndForget(this.panic) }
-                noteSignal(signal: NoteSignal): void { dispatcher.dispatchAndForget(this.noteSignal, signal) }
-                ignoreNoteRegion(uuid: UUID.Bytes): void { dispatcher.dispatchAndForget(this.ignoreNoteRegion, uuid) }
-                scheduleClipPlay(clipIds: ReadonlyArray<UUID.Bytes>): void { dispatcher.dispatchAndForget(this.scheduleClipPlay, clipIds) }
-                scheduleClipStop(trackIds: ReadonlyArray<UUID.Bytes>): void { dispatcher.dispatchAndForget(this.scheduleClipStop, trackIds) }
-                setupMIDI(port: MessagePort, buffer: SharedArrayBuffer): void { dispatcher.dispatchAndForget(this.setupMIDI, port, buffer) }
-                updateMonitoringMap(map: ReadonlyArray<MonitoringMapEntry>): void { dispatcher.dispatchAndForget(this.updateMonitoringMap, map) }
-                loadClickSound(index: 0 | 1, data: AudioData): void { dispatcher.dispatchAndForget(this.loadClickSound, index, data) }
-                setFrozenAudio(uuid: UUID.Bytes, audioData: Nullable<AudioData>): void { dispatcher.dispatchAndForget(this.setFrozenAudio, uuid, audioData) }
-                terminate(): void { dispatcher.dispatchAndForget(this.terminate) }
-            }
-        )
-
-        channel.port2.start()
-
-        terminator.own(source.liveStreamReceiver.connect(engineMessenger.channel("engine-live-data")))
-
-        const {port, sab} = terminator.own(MIDIReceiver.create(() => 0,
-            (deviceId, data, relativeTimeInMs) => source.receivedMIDIFromEngine(deviceId, data, relativeTimeInMs)))
-
-        const loadScriptDevice = async (code: string,
-                                        headerPattern: RegExp,
-                                        registryName: string,
-                                        functionName: string,
-                                        uuid: string): Promise<void> => {
-            const match = code.match(headerPattern)
-            if (match === null) {return}
-            const userCode = code.slice(match[0].length)
-            const update = parseInt(match[3])
-            await protocol.addModule(`
-                if (typeof globalThis.openDAW === "undefined") { globalThis.openDAW = {} }
-                if (typeof globalThis.openDAW.${registryName} === "undefined") { globalThis.openDAW.${registryName} = {} }
-                globalThis.openDAW.${registryName}["${uuid}"] = {
-                    update: ${update},
-                    create: (function ${functionName}() {
-                        ${userCode}
-                        return Processor
-                    })()
+                    render(config: OfflineEngineRenderConfig): Promise<Float32Array[]> {
+                        return dispatcher.dispatchAndReturn(this.render, config)
+                    }
+                    step(samples: number): Promise<Float32Array[]> {
+                        return dispatcher.dispatchAndReturn(this.step, samples)
+                    }
+                    stop(): void { dispatcher.dispatchAndForget(this.stop) }
                 }
-            `)
-        }
-        for (const box of source.boxGraph.boxes()) {
-            if (box instanceof WerkstattDeviceBox) {
-                await loadScriptDevice(box.code.getValue(),
-                    /^\/\/ @werkstatt (\w+) (\d+) (\d+)\n/,
-                    "werkstattProcessors", "werkstatt",
-                    UUID.toString(box.address.uuid))
-            } else if (box instanceof SpielwerkDeviceBox) {
-                await loadScriptDevice(box.code.getValue(),
-                    /^\/\/ @spielwerk (\w+) (\d+) (\d+)\n/,
-                    "spielwerkProcessors", "spielwerk",
-                    UUID.toString(box.address.uuid))
-            } else if (box instanceof ApparatDeviceBox) {
-                await loadScriptDevice(box.code.getValue(),
-                    /^\/\/ @apparat (\w+) (\d+) (\d+)\n/,
-                    "apparatProcessors", "apparat",
-                    UUID.toString(box.address.uuid))
+            )
+            const channel = new MessageChannel()
+            terminator.own({terminate: () => {channel.port1.close(); channel.port2.close()}})
+            const engineStateIO = EngineStateSchema()
+            const reader = SyncStream.reader<EngineState>(engineStateIO, () => {})
+            const controlFlagsBuffer = new SharedArrayBuffer(4)
+            const engineMessenger = terminator.own(Messenger.for(channel.port2))
+            terminator.own(Communicator.executor<EngineToClient>(terminator.own(engineMessenger.channel("engine-to-client")), {
+                log: (message: string): void => console.log("OFFLINE-ENGINE", message),
+                error: (reason: unknown) => console.error("OFFLINE-ENGINE", reason),
+                ready: (): void => {},
+                fetchAudio: (uuid: UUID.Bytes): Promise<AudioData> => new Promise((resolve, reject) => {
+                    const handler = source.sampleManager.getOrCreate(uuid)
+                    const lifetime = terminator.spawn()
+                    let settled = false
+                    const subscription = handler.subscribe(state => {
+                        if (settled) {return}
+                        if (state.type === "error") {
+                            settled = true
+                            reject(new Error(state.reason))
+                            lifetime.terminate()
+                        } else if (state.type === "loaded") {
+                            settled = true
+                            resolve(handler.data.unwrap())
+                            lifetime.terminate()
+                        }
+                    })
+                    if (settled) {subscription.terminate()}
+                    else {lifetime.own(subscription)}
+                }),
+                fetchSoundfont: (uuid: UUID.Bytes): Promise<SoundFont2> => new Promise((resolve, reject) => {
+                    const handler = source.soundfontManager.getOrCreate(uuid)
+                    const lifetime = terminator.spawn()
+                    let settled = false
+                    const subscription = handler.subscribe(state => {
+                        if (settled) {return}
+                        if (state.type === "error") {
+                            settled = true
+                            reject(new Error(state.reason))
+                            lifetime.terminate()
+                        } else if (state.type === "loaded") {
+                            settled = true
+                            resolve(handler.soundfont.unwrap())
+                            lifetime.terminate()
+                        }
+                    })
+                    if (settled) {subscription.terminate()}
+                    else {lifetime.own(subscription)}
+                }),
+                fetchNamWasm: async (): Promise<ArrayBuffer> => {
+                    const url = new URL("@opendaw/nam-wasm/nam.wasm", import.meta.url)
+                    const response = await fetch(url)
+                    return response.arrayBuffer()
+                },
+                notifyClipSequenceChanges: (): void => {},
+                switchMarkerState: (): void => {},
+                deviceMessage: (uuid: string, message: string): void => {
+                    console.warn(`OFFLINE-ENGINE device(${uuid}): ${message}`)
+                }
+            }))
+
+            const engineCommands = Communicator.sender<EngineCommands>(
+                terminator.own(engineMessenger.channel("engine-commands")),
+                dispatcher => new class implements EngineCommands {
+                    play(): void { dispatcher.dispatchAndForget(this.play) }
+                    stop(reset: boolean): void { dispatcher.dispatchAndForget(this.stop, reset) }
+                    setPosition(position: ppqn): void { dispatcher.dispatchAndForget(this.setPosition, position) }
+                    prepareRecordingState(countIn: boolean): void { dispatcher.dispatchAndForget(this.prepareRecordingState, countIn) }
+                    stopRecording(): void { dispatcher.dispatchAndForget(this.stopRecording) }
+                    queryLoadingComplete(): Promise<boolean> { return dispatcher.dispatchAndReturn(this.queryLoadingComplete) }
+                    panic(): void { dispatcher.dispatchAndForget(this.panic) }
+                    noteSignal(signal: NoteSignal): void { dispatcher.dispatchAndForget(this.noteSignal, signal) }
+                    ignoreNoteRegion(uuid: UUID.Bytes): void { dispatcher.dispatchAndForget(this.ignoreNoteRegion, uuid) }
+                    scheduleClipPlay(clipIds: ReadonlyArray<UUID.Bytes>): void { dispatcher.dispatchAndForget(this.scheduleClipPlay, clipIds) }
+                    scheduleClipStop(trackIds: ReadonlyArray<UUID.Bytes>): void { dispatcher.dispatchAndForget(this.scheduleClipStop, trackIds) }
+                    setupMIDI(port: MessagePort, buffer: SharedArrayBuffer): void { dispatcher.dispatchAndForget(this.setupMIDI, port, buffer) }
+                    updateMonitoringMap(map: ReadonlyArray<MonitoringMapEntry>): void { dispatcher.dispatchAndForget(this.updateMonitoringMap, map) }
+                    loadClickSound(index: 0 | 1, data: AudioData): void { dispatcher.dispatchAndForget(this.loadClickSound, index, data) }
+                    setFrozenAudio(uuid: UUID.Bytes, audioData: Nullable<AudioData>): void { dispatcher.dispatchAndForget(this.setFrozenAudio, uuid, audioData) }
+                    terminate(): void { dispatcher.dispatchAndForget(this.terminate) }
+                }
+            )
+
+            channel.port2.start()
+
+            terminator.own(source.liveStreamReceiver.connect(terminator.own(engineMessenger.channel("engine-live-data"))))
+
+            const {port, sab} = terminator.own(MIDIReceiver.create(() => 0,
+                (deviceId, data, relativeTimeInMs) => source.receivedMIDIFromEngine(deviceId, data, relativeTimeInMs)))
+
+            const loadScriptDevice = async (code: string,
+                                            headerPattern: RegExp,
+                                            registryName: string,
+                                            functionName: string,
+                                            uuid: string): Promise<void> => {
+                const match = code.match(headerPattern)
+                if (match === null) {return}
+                const userCode = code.slice(match[0].length)
+                const update = parseInt(match[3])
+                await protocol.addModule(`
+                    if (typeof globalThis.openDAW === "undefined") { globalThis.openDAW = {} }
+                    if (typeof globalThis.openDAW.${registryName} === "undefined") { globalThis.openDAW.${registryName} = {} }
+                    globalThis.openDAW.${registryName}["${uuid}"] = {
+                        update: ${update},
+                        create: (function ${functionName}() {
+                            ${userCode}
+                            return Processor
+                        })()
+                    }
+                `)
+            }
+            for (const box of source.boxGraph.boxes()) {
+                if (box instanceof WerkstattDeviceBox) {
+                    await loadScriptDevice(box.code.getValue(),
+                        /^\/\/ @werkstatt (\w+) (\d+) (\d+)\n/,
+                        "werkstattProcessors", "werkstatt",
+                        UUID.toString(box.address.uuid))
+                } else if (box instanceof SpielwerkDeviceBox) {
+                    await loadScriptDevice(box.code.getValue(),
+                        /^\/\/ @spielwerk (\w+) (\d+) (\d+)\n/,
+                        "spielwerkProcessors", "spielwerk",
+                        UUID.toString(box.address.uuid))
+                } else if (box instanceof ApparatDeviceBox) {
+                    await loadScriptDevice(box.code.getValue(),
+                        /^\/\/ @apparat (\w+) (\d+) (\d+)\n/,
+                        "apparatProcessors", "apparat",
+                        UUID.toString(box.address.uuid))
+                }
+            }
+            await protocol.initialize(channel.port1, {
+                sampleRate,
+                numberOfChannels,
+                processorsUrl: AudioWorklets.processorsUrl,
+                syncStreamBuffer: reader.buffer,
+                controlFlagsBuffer,
+                project: source.toArrayBuffer(),
+                exportConfiguration: optExportConfiguration.unwrapOrUndefined()
+            })
+            engineCommands.setupMIDI(port, sab)
+            const renderer = new OfflineEngineRenderer(
+                worker,
+                protocol,
+                engineCommands,
+                terminator,
+                reader,
+                engineStateIO,
+                sampleRate,
+                numberOfChannels
+            )
+            initialized = true
+            return renderer
+        } finally {
+            if (!initialized) {
+                while (terminator.nonEmpty()) {
+                    const cleanup = tryCatch(() => terminator.terminate())
+                    if (cleanup.status === "failure") {console.warn("Offline initialization cleanup failed")}
+                }
+                const cleanup = tryCatch(() => worker?.terminate())
+                if (cleanup.status === "failure") {console.warn("Offline worker cleanup failed")}
             }
         }
-        await protocol.initialize(channel.port1, {
-            sampleRate,
-            numberOfChannels,
-            processorsUrl: AudioWorklets.processorsUrl,
-            syncStreamBuffer: reader.buffer,
-            controlFlagsBuffer,
-            project: source.toArrayBuffer(),
-            exportConfiguration: optExportConfiguration.unwrapOrUndefined()
-        })
-        engineCommands.setupMIDI(port, sab)
-        return new OfflineEngineRenderer(
-            worker,
-            protocol,
-            engineCommands,
-            terminator,
-            reader,
-            engineStateIO,
-            sampleRate,
-            numberOfChannels
-        )
     }
 
     static async start(source: Project,
@@ -219,21 +249,32 @@ export class OfflineEngineRenderer {
         boxGraph.beginTransaction()
         enabled.setValue(false)
         boxGraph.endTransaction()
-        const range = optExportConfiguration.flatMap(cfg => Option.wrap(cfg.range))
-        const {startPosition, endPosition} = range.match({
-            none: () => ({startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}),
-            some: r => r === "full"
-                ? {startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}
-                : {startPosition: r.start, endPosition: r.end}
-        })
-        const maxDurationSeconds = source.tempoMap.intervalToSeconds(startPosition, endPosition) + 30
-        const renderer = await this.create(source, optExportConfiguration, sampleRate)
-        const result = await renderer.render(
-            {maxDurationSeconds}, startPosition, endPosition, progress, abortSignal)
-        boxGraph.beginTransaction()
-        enabled.setValue(wasEnabled)
-        boxGraph.endTransaction()
-        return result
+        let loopChanged = false
+        const subscription = enabled.subscribe(() => {loopChanged = true})
+        let renderer: OfflineEngineRenderer | undefined
+        try {
+            const range = optExportConfiguration.flatMap(cfg => Option.wrap(cfg.range))
+            const {startPosition, endPosition} = range.match({
+                none: () => ({startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}),
+                some: r => r === "full"
+                    ? {startPosition: 0 as ppqn, endPosition: source.lastRegionAction()}
+                    : {startPosition: r.start, endPosition: r.end}
+            })
+            const maxDurationSeconds = source.tempoMap.intervalToSeconds(startPosition, endPosition) + 30
+            renderer = await this.create(source, optExportConfiguration, sampleRate)
+            const result = await renderer.render(
+                {maxDurationSeconds}, startPosition, endPosition, progress, abortSignal)
+            return result
+        } finally {
+            subscription.terminate()
+            const cleanup = tryCatch(() => renderer?.terminate())
+            if (cleanup.status === "failure") {console.warn("Offline export cleanup failed")}
+            if (!loopChanged) {
+                boxGraph.beginTransaction()
+                enabled.setValue(wasEnabled)
+                boxGraph.endTransaction()
+            }
+        }
     }
 
     readonly #worker: Worker
@@ -245,6 +286,8 @@ export class OfflineEngineRenderer {
     readonly #sampleRate: int
     readonly #numberOfChannels: int
 
+    #stopped = false
+    #terminated = false
     #totalFrames: int = 0
 
     private constructor(
@@ -272,13 +315,15 @@ export class OfflineEngineRenderer {
     get totalFrames(): int {return this.#totalFrames}
 
     async play(): Promise<void> {
+        this.#stopped = false
         this.#engineCommands.play()
         await this.#engineCommands.queryLoadingComplete()
     }
 
     stop(): void {
-        this.#engineCommands.stop(true)
-        this.#protocol.stop()
+        if (this.#terminated || this.#stopped) {return}
+        this.#stopped = true
+        try {this.#engineCommands.stop(true)} finally {this.#protocol.stop()}
     }
 
     setPosition(position: ppqn): void {
@@ -292,8 +337,14 @@ export class OfflineEngineRenderer {
     }
 
     terminate(): void {
-        this.#terminator.terminate()
-        this.#worker.terminate()
+        if (this.#terminated) {return}
+        this.#terminated = true
+        while (this.#terminator.nonEmpty()) {
+            const cleanup = tryCatch(() => this.#terminator.terminate())
+            if (cleanup.status === "failure") {console.warn("Offline renderer cleanup failed")}
+        }
+        const cleanup = tryCatch(() => this.#worker.terminate())
+        if (cleanup.status === "failure") {console.warn("Offline worker cleanup failed")}
     }
 
     async step(samples: int): Promise<Float32Array[]> {
@@ -308,48 +359,50 @@ export class OfflineEngineRenderer {
                  progress: DefaultObservableValue<number>,
                  abortSignal?: AbortSignal
     ): Promise<AudioData> {
-        const {promise, reject, resolve} = Promise.withResolvers<AudioData>()
-        let cancelled = false
-        const span = endPosition - startPosition
-        const polling = span > 0
-            ? AnimationFrame.add(() => {
-                this.#reader.tryRead()
-                progress.setValue(Math.min(1.0,
-                    Math.max(0, this.#engineStateIO.object.position - startPosition) / span))
-            })
-            : Terminable.Empty
-        if (isDefined(abortSignal)) {
-            abortSignal.onabort = () => {
-                polling.terminate()
-                this.stop()
-                this.terminate()
-                cancelled = true
-                reject(Errors.AbortError)
-            }
-        }
-        while (!await this.#engineCommands.queryLoadingComplete()) {
-            await Wait.timeSpan(TimeSpan.millis(100))
-        }
-        if (startPosition !== 0) {this.setPosition(startPosition)}
-        await this.play()
-        this.#protocol.render(config).then(channels => {
-            polling.terminate()
-            if (cancelled) {return}
-            progress.setValue(1.0)
+        let polling: Terminable = Terminable.Empty
+        const aborted = Promise.withResolvers<never>()
+        void aborted.promise.catch(() => {})
+        const cancel = () => {
+            aborted.reject(Errors.AbortError)
+            const cleanup = tryCatch(() => this.stop())
+            if (cleanup.status === "failure") {console.warn("Offline stop failed")}
             this.terminate()
+        }
+        const wait = async <T>(promise: Promise<T>): Promise<T> => {
+            const result = await Promise.race([promise, aborted.promise])
+            if (abortSignal?.aborted) {throw Errors.AbortError}
+            return result
+        }
+        try {
+            if (abortSignal?.aborted) {throw Errors.AbortError}
+            abortSignal?.addEventListener("abort", cancel, {once: true})
+            const span = endPosition - startPosition
+            if (span > 0) {
+                polling = AnimationFrame.add(() => {
+                    this.#reader.tryRead()
+                    progress.setValue(Math.min(1.0,
+                        Math.max(0, this.#engineStateIO.object.position - startPosition) / span))
+                })
+            }
+            while (!await wait(this.#engineCommands.queryLoadingComplete())) {
+                await wait(Wait.timeSpan(TimeSpan.millis(100)))
+            }
+            if (startPosition !== 0) {this.setPosition(startPosition)}
+            await wait(this.play())
+            const channels = await wait(this.#protocol.render(config))
+            if (abortSignal?.aborted) {throw Errors.AbortError}
             const numberOfFrames = channels[0].length
             const audioData = AudioData.create(this.#sampleRate, numberOfFrames, this.#numberOfChannels)
             for (let channelIndex = 0; channelIndex < this.#numberOfChannels; channelIndex++) {
                 audioData.frames[channelIndex].set(channels[channelIndex])
             }
-            resolve(audioData)
-        }).catch(reason => {
-            polling.terminate()
-            if (!cancelled) {
-                this.terminate()
-                reject(reason)
-            }
-        })
-        return promise
+            progress.setValue(1.0)
+            return audioData
+        } finally {
+            abortSignal?.removeEventListener("abort", cancel)
+            const cleanup = tryCatch(() => polling.terminate())
+            if (cleanup.status === "failure") {console.warn("Offline polling cleanup failed")}
+            this.terminate()
+        }
     }
 }

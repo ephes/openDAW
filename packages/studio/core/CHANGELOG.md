@@ -5,6 +5,16 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Own offline abort listeners without overwriting caller handlers, honor pre-abort and pending loading cancellation, and release synchronous cached sample/soundfont subscriptions.
+
+- Release offline worker, message channels, MIDI and live-stream subscriptions after initialization failures; release render polling on loading and play failures.
+
+- Release flatten copies, dialogs and renderers on preparation/import failures; restore export loop state on failure without overwriting newer loop edits.
+
+- Cancel flatten before publication, stop its renderer, remove abort listeners, and refuse stale results after live graph edits with a retry message.
+
+- Flatten the full endpoint union of selected audio regions and preserve unselected overlaps in the replacement and undo.
+
 - Correlate OAuth callbacks with random per-attempt state/provider, ignore replays, and redact codes/tokens/provider failures from diagnostics.
 
 - Publish soundfont metadata only after validated SF2 completion, preserve complete UUIDs and own failure cleanup; serialize sample metadata edits with deletion and reject stale edits.
