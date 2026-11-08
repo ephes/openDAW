@@ -106,7 +106,48 @@ export namespace DawProjectImport {
         if (contentType === "notes") return Option.wrap(CaptureMidiBox.create(boxGraph, UUID.generate()))
         return Option.None
     }
+    const noteCoordinates = (clip: ClipSchema) => {
+        const position = asDefined(clip.time, "Time not defined")
+        const duration = asDefined(clip.duration, "Duration not defined")
+        const playStart = clip.playStart ?? 0
+        const loopStart = clip.loopStart ?? 0
+        const loopEnd = clip.loopEnd
+        assert(Number.isFinite(position) && Number.isFinite(duration) && duration * PPQN.Quarter >= 1,
+            "Unsupported note clip extent")
+        assert(Number.isFinite(playStart) && playStart >= 0, "Unsupported note playStart")
+        if (loopEnd !== undefined || clip.loopStart !== undefined) {
+            assert(loopEnd !== undefined && Number.isFinite(loopStart) && Number.isFinite(loopEnd)
+                && loopStart >= 0 && (loopEnd - loopStart) * PPQN.Quarter >= 1 && playStart < loopEnd,
+            "Unsupported nonpositive note loop or playStart outside loop end")
+            const leadIn = Math.min(duration, Math.max(0, loopStart - playStart))
+            assert(Math.trunc(leadIn * PPQN.Quarter) >= 1 || Math.trunc((duration - leadIn) * PPQN.Quarter) >= 1,
+                "Unsupported sub-pulse note clip pieces")
+        }
+        return {position, duration, playStart, loopStart, loopEnd}
+    }
+
+    const validateContent = (clip: ClipSchema, content: TimelineSchema): void => {
+        if (isInstanceOf(content, ClipsSchema)) {
+            assert(content.clips.length === 1 && content.clips[0].content?.length === 1,
+                "Unsupported nested Clips: expected one clip with one content")
+            // The supported wrapper uses the outer clip's playback coordinates.
+            validateContent(clip, asDefined(content.clips[0].content)[0])
+        } else if (isInstanceOf(content, NotesSchema)) {
+            noteCoordinates(clip)
+        }
+    }
+
+    // Admission happens before creating boxes, so unsupported nesting never imports partially.
+    const validateTimeline = (timeline: TimelineSchema): void => {
+        if (isInstanceOf(timeline, LanesSchema)) {
+            timeline.lanes?.forEach(validateTimeline)
+        } else if (isInstanceOf(timeline, ClipsSchema)) {
+            timeline.clips.forEach(clip => clip.content?.forEach(content => validateContent(clip, content)))
+        }
+    }
+
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
+        if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
         const boxGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
         boxGraph.beginTransaction()
 
@@ -376,33 +417,50 @@ export namespace DawProjectImport {
             }
 
             const readNoteRegionContent = (clip: ClipSchema, notes: NotesSchema, trackBox: TrackBox): void => {
-                const collectionBox = NoteEventCollectionBox.create(boxGraph, UUID.generate())
-                NoteRegionBox.create(boxGraph, UUID.generate(), box => {
-                    const position = asDefined(clip.time, "Time not defined")
-                    const duration = asDefined(clip.duration, "Duration not defined")
-                    const loopOffset = clip.playStart ?? 0
-                    const loopDuration = clip.loopEnd ?? duration - loopOffset
-                    box.position.setValue(position * PPQN.Quarter)
-                    box.duration.setValue(duration * PPQN.Quarter)
-                    box.label.setValue(clip.name ?? "")
-                    box.loopOffset.setValue(loopOffset * PPQN.Quarter)
-                    box.loopDuration.setValue(loopDuration * PPQN.Quarter)
-                    box.mute.setValue(clip.enable === false)
-                    box.hue.setValue(isUndefined(clip.color)
-                        ? ColorCodes.forTrackType(trackBox.type.getValue())
-                        : Color.hexToHsl(clip.color).h)
-                    box.events.refer(collectionBox.owners)
-                    box.regions.refer(trackBox.regions)
-                })
-                notes.notes?.forEach(note => {
-                    NoteEventBox.create(boxGraph, UUID.generate(), box => {
-                        box.position.setValue(note.time * PPQN.Quarter)
-                        box.duration.setValue(note.duration * PPQN.Quarter)
-                        box.pitch.setValue(note.key)
-                        box.velocity.setValue(note.vel ?? 1.0)
-                        box.events.refer(collectionBox.events)
+                const {position, duration, playStart, loopStart, loopEnd} = noteCoordinates(clip)
+                const create = (at: number, length: number, sourceStart: number, span: number, offset: number) => {
+                    const lengthInPulses = Math.trunc(length * PPQN.Quarter)
+                    const spanInPulses = Math.trunc(span * PPQN.Quarter)
+                    if (lengthInPulses < 1 || spanInPulses < 1) {return}
+                    const collectionBox = NoteEventCollectionBox.create(boxGraph, UUID.generate())
+                    NoteRegionBox.create(boxGraph, UUID.generate(), box => {
+                        box.position.setValue(at * PPQN.Quarter)
+                        box.duration.setValue(lengthInPulses)
+                        box.label.setValue(clip.name ?? "")
+                        box.loopOffset.setValue(offset * PPQN.Quarter)
+                        box.loopDuration.setValue(spanInPulses)
+                        box.mute.setValue(clip.enable === false)
+                        box.hue.setValue(isUndefined(clip.color)
+                            ? ColorCodes.forTrackType(trackBox.type.getValue())
+                            : Color.hexToHsl(clip.color).h)
+                        box.events.refer(collectionBox.owners)
+                        box.regions.refer(trackBox.regions)
                     })
-                })
+                    notes.notes?.forEach(note => {
+                        // A trim/loop boundary must not invent note-ons for held notes.
+                        const start = note.time
+                        const end = Math.min(note.time + note.duration, sourceStart + span)
+                        const durationInPulses = Math.trunc((end - start) * PPQN.Quarter)
+                        if (start < sourceStart || durationInPulses < 1) {return}
+                        NoteEventBox.create(boxGraph, UUID.generate(), box => {
+                            box.position.setValue((start - sourceStart) * PPQN.Quarter)
+                            box.duration.setValue(durationInPulses)
+                            box.pitch.setValue(note.key)
+                            box.velocity.setValue(note.vel ?? 1.0)
+                            box.events.refer(collectionBox.events)
+                        })
+                    })
+                }
+                if (loopEnd === undefined) {
+                    create(position, duration, playStart, duration, 0)
+                } else {
+                    const leadIn = Math.min(duration, Math.max(0, loopStart - playStart))
+                    if (leadIn > 0) {create(position, leadIn, playStart, leadIn, 0)}
+                    if (duration > leadIn) {
+                        create(position + leadIn, duration - leadIn, loopStart, loopEnd - loopStart,
+                            Math.max(0, playStart - loopStart))
+                    }
+                }
             }
 
             const readAnyRegionContent = async (clip: ClipSchema, warpsSchema: WarpsSchema, trackBox: TrackBox): Promise<unknown> => {
