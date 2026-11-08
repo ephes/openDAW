@@ -167,3 +167,9 @@ Need to expose `setFrozenAudio` on the `Engine` interface so the service can cal
 9. Verify track returns to normal appearance and live processing resumes
 10. **Sidechain test**: Set up a compressor on Track B sidechained to Track A. Try to freeze Track A → should show blocking dialog
 11. Freeze Track B instead (which receives the sidechain) → should succeed
+
+### Pending freeze requests
+
+Concurrent requests for the same unit share one render. Failed renders can be retried.
+BPM and tempo automation changes invalidate pending results as well as frozen audio;
+freeze again after the tempo edit.

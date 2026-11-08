@@ -67,3 +67,9 @@ Attempting to freeze such a track shows an info dialog explaining the restrictio
 - Channel strip adjustments (volume, pan, sends) remain fully functional on frozen tracks, so you can continue mixing
 - If you need to edit regions or change devices on a frozen track, unfreeze first
 - After tempo changes, remember to re-freeze tracks that were automatically unfrozen
+
+### Pending freeze requests
+
+Concurrent requests for the same unit share one render. Failed renders can be retried.
+BPM and tempo automation changes invalidate pending results as well as frozen audio;
+freeze again after the tempo edit.
