@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cancel flatten before publication, stop its renderer, remove abort listeners, and refuse stale results after live graph edits with a retry message.
+
 - Flatten the full endpoint union of selected audio regions and preserve unselected overlaps in the replacement and undo.
 
 - Correlate OAuth callbacks with random per-attempt state/provider, ignore replays, and redact codes/tokens/provider failures from diagnostics.
