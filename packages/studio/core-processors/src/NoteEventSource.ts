@@ -39,12 +39,15 @@ export namespace NoteLifecycleEvent {
     let $id: int = 0 | 0
 }
 
+// Live keyboard/audition provenance survives MIDI-effect active-note projections.
+export type ActiveNoteEvent = NoteEvent & {readonly external?: boolean}
+
 export interface NoteEventSource {
     // find all notes that start in a given interval and returns them moved into global time space
     processNotes(from: ppqn, to: ppqn, flags: int /*BlockFlag*/): IterableIterator<NoteLifecycleEvent>
 
     // find all active local notes at a given position
-    iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<NoteEvent>
+    iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<ActiveNoteEvent>
 }
 
 export interface NoteEventTarget {
