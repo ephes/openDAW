@@ -86,20 +86,23 @@ export class ProjectMigration {
             })
         }
         // 2nd pass. We need to run on a copy, because we might add more boxes during the migration
-        boxGraph.boxes().slice().forEach(box => box.accept<BoxVisitor>({
-            visitAudioRegionBox: (box: AudioRegionBox) => migrateAudioRegionBox(boxGraph, box, bpmValue),
-            visitAudioClipBox: (box: AudioClipBox) => migrateAudioClipBox(boxGraph, box),
-            visitAudioPitchStretchBox: (box: AudioPitchStretchBox) => migrateWarpMarkers(boxGraph, box),
-            visitAudioTimeStretchBox: (box: AudioTimeStretchBox) => migrateWarpMarkers(boxGraph, box),
-            visitTimelineBox: (box: TimelineBox) => migrateTimelineBox(boxGraph, box),
-            visitMIDIOutputDeviceBox: (box: MIDIOutputDeviceBox) => migrateMIDIOutputDeviceBox(boxGraph, box, outputMidiDevices),
-            visitZeitgeistDeviceBox: (box: ZeitgeistDeviceBox) => migrateZeitgeistDeviceBox(boxGraph, box, grooveTarget),
-            visitValueEventBox: (box: ValueEventBox) => migrateValueEventBox(boxGraph, box),
-            visitAudioUnitBox: (box: AudioUnitBox) => migrateAudioUnitBox(boxGraph, box),
-            visitRevampDeviceBox: (box: RevampDeviceBox) => migrateRevampDeviceBox(boxGraph, box),
-            visitVaporisateurDeviceBox: (box: VaporisateurDeviceBox) => migrateVaporisateurDeviceBox(boxGraph, box),
-            visitValueEventCollectionBox: (box: ValueEventCollectionBox) => migrateValueEventCollection(boxGraph, box),
-            visitDelayDeviceBox: (box: DelayDeviceBox) => migrateDelayDeviceBox(boxGraph, box)
-        }))
+        for (const box of boxGraph.boxes().slice()) {
+            if (!box.isAttached()) {continue}
+            box.accept<BoxVisitor>({
+                visitAudioRegionBox: (box: AudioRegionBox) => migrateAudioRegionBox(boxGraph, box, bpmValue),
+                visitAudioClipBox: (box: AudioClipBox) => migrateAudioClipBox(boxGraph, box),
+                visitAudioPitchStretchBox: (box: AudioPitchStretchBox) => migrateWarpMarkers(boxGraph, box),
+                visitAudioTimeStretchBox: (box: AudioTimeStretchBox) => migrateWarpMarkers(boxGraph, box),
+                visitTimelineBox: (box: TimelineBox) => migrateTimelineBox(boxGraph, box),
+                visitMIDIOutputDeviceBox: (box: MIDIOutputDeviceBox) => migrateMIDIOutputDeviceBox(boxGraph, box, outputMidiDevices),
+                visitZeitgeistDeviceBox: (box: ZeitgeistDeviceBox) => migrateZeitgeistDeviceBox(boxGraph, box, grooveTarget),
+                visitValueEventBox: (box: ValueEventBox) => migrateValueEventBox(boxGraph, box),
+                visitAudioUnitBox: (box: AudioUnitBox) => migrateAudioUnitBox(boxGraph, box),
+                visitRevampDeviceBox: (box: RevampDeviceBox) => migrateRevampDeviceBox(boxGraph, box),
+                visitVaporisateurDeviceBox: (box: VaporisateurDeviceBox) => migrateVaporisateurDeviceBox(boxGraph, box),
+                visitValueEventCollectionBox: (box: ValueEventCollectionBox) => migrateValueEventCollection(boxGraph, box),
+                visitDelayDeviceBox: (box: DelayDeviceBox) => migrateDelayDeviceBox(boxGraph, box)
+            })
+        }
     }
 }
