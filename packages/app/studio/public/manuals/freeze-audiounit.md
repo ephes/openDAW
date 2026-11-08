@@ -73,3 +73,7 @@ Attempting to freeze such a track shows an info dialog explaining the restrictio
 Concurrent requests for the same unit share one render. Failed renders can be retried.
 BPM and tempo automation changes invalidate pending results as well as frozen audio;
 freeze again after the tempo edit.
+
+Closing the project cancels pending freezes and prevents late audio publication.
+Tempo invalidation also cancels obsolete work. Render copies and progress dialogs
+are released after success, cancellation or failure.

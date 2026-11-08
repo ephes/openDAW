@@ -62,6 +62,7 @@ it.each(["bpm", "tempo"] as const)("discards a render invalidated by %s", async 
     const a = f.run()
     await vi.waitFor(() => expect(OfflineEngineRenderer.start).toHaveBeenCalled())
     f[kind]()
+    expect(vi.mocked(OfflineEngineRenderer.start).mock.calls[0][3]?.aborted).toBe(true)
     f.gate.resolve(AudioData.create(48000, 2, 8))
     await a
     expect(f.project.engine.setFrozenAudio).not.toHaveBeenCalled()
@@ -76,6 +77,7 @@ it("starts a current-generation request while a stale render is pending", async 
     vi.mocked(OfflineEngineRenderer.start).mockReturnValueOnce(nextGate.promise)
     const next = f.run()
     await vi.waitFor(() => expect(OfflineEngineRenderer.start).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(OfflineEngineRenderer.start).mock.calls[1][3]?.aborted).toBe(false)
     f.gate.resolve(AudioData.create(48000, 8, 2))
     await old
     expect(f.run()).toBe(next)
@@ -83,4 +85,46 @@ it("starts a current-generation request while a stale render is pending", async 
     nextGate.resolve(AudioData.create(48000, 8, 2))
     await next
     expect(f.project.engine.setFrozenAudio).toHaveBeenCalledTimes(1)
+})
+it.each(["resolve", "reject"] as const)("fences a late %s after termination", async outcome => {
+    const f = fixture()
+    const run = f.run()
+    await vi.waitFor(() => expect(OfflineEngineRenderer.start).toHaveBeenCalled())
+    const signal = vi.mocked(OfflineEngineRenderer.start).mock.calls[0][3]
+    f.manager.terminate()
+    expect(signal?.aborted).toBe(true)
+    if (outcome === "resolve") {f.gate.resolve(AudioData.create(48000, 8, 2))}
+    else {f.gate.reject(new Error("synthetic late failure"))}
+    await run
+    expect(f.project.engine.setFrozenAudio).not.toHaveBeenCalled()
+    expect(f.unit.box.subscribeDeletion).not.toHaveBeenCalled()
+    expect(RuntimeNotifier.info).not.toHaveBeenCalled()
+    expect(f.copied.terminate).toHaveBeenCalledTimes(1)
+    await f.run()
+    expect(OfflineEngineRenderer.start).toHaveBeenCalledTimes(1)
+})
+it("refuses work terminated before its deferred start", async () => {
+    const f = fixture()
+    const run = f.run()
+    f.manager.terminate()
+    await run
+    expect(f.project.copy).not.toHaveBeenCalled()
+})
+it.each(["success", "failure", "abort"] as const)("releases copy and dialog after %s", async outcome => {
+    const f = fixture()
+    const close = vi.fn()
+    vi.mocked(RuntimeNotifier.progress).mockReturnValueOnce({terminate: close} as never)
+    const run = f.run()
+    await vi.waitFor(() => expect(OfflineEngineRenderer.start).toHaveBeenCalled())
+    if (outcome === "success") {f.gate.resolve(AudioData.create(48000, 8, 2))}
+    else {f.gate.reject(outcome === "abort" ? new DOMException("aborted", "AbortError") : new Error("synthetic"))}
+    await run
+    expect(f.copied.terminate).toHaveBeenCalledTimes(1)
+    expect(close).toHaveBeenCalledTimes(1)
+})
+it("releases the copy if creating progress fails", async () => {
+    const f = fixture()
+    vi.mocked(RuntimeNotifier.progress).mockImplementationOnce(() => {throw new Error("synthetic dialog")})
+    await expect(f.run()).rejects.toThrow("synthetic dialog")
+    expect(f.copied.terminate).toHaveBeenCalledTimes(1)
 })

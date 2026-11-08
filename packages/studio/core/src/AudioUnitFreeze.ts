@@ -14,6 +14,8 @@ export class AudioUnitFreeze implements Terminable {
     readonly #terminator = new Terminator()
     readonly #frozenAudioUnits: Map<string, FrozenEntry> = new Map()
     readonly #pending = new Map<string, {generation: number, task: Promise<void>}>()
+    readonly #controllers = new Set<AbortController>()
+    #terminated = false
     #generation = 0
     readonly #notifier = new Notifier<UUID.Bytes>()
 
@@ -58,19 +60,26 @@ export class AudioUnitFreeze implements Terminable {
     }
 
     freeze(audioUnitBoxAdapter: AudioUnitBoxAdapter): Promise<void> {
+        if (this.#terminated) {return Promise.resolve()}
         const key = UUID.toString(audioUnitBoxAdapter.uuid)
         const pending = this.#pending.get(key)
         if (pending?.generation === this.#generation) {return pending.task}
         if (this.isFrozen(audioUnitBoxAdapter)) {return Promise.resolve()}
         const generation = this.#generation
+        const abortController = new AbortController()
+        this.#controllers.add(abortController)
         // Defer work until the pending owner has been registered.
-        const task = Promise.resolve().then(() => this.#freeze(audioUnitBoxAdapter, generation))
-            .finally(() => {if (this.#pending.get(key)?.task === task) {this.#pending.delete(key)}})
+        const task = Promise.resolve().then(() => this.#freeze(audioUnitBoxAdapter, generation, abortController))
+            .finally(() => {
+                this.#controllers.delete(abortController)
+                if (this.#pending.get(key)?.task === task) {this.#pending.delete(key)}
+            })
         this.#pending.set(key, {generation, task})
         return task
     }
 
-    async #freeze(audioUnitBoxAdapter: AudioUnitBoxAdapter, generation: number): Promise<void> {
+    async #freeze(audioUnitBoxAdapter: AudioUnitBoxAdapter, generation: number, abortController: AbortController): Promise<void> {
+        if (this.#terminated || abortController.signal.aborted) {return}
         const {engine} = this.#project
         if (this.hasSidechainDependents(audioUnitBoxAdapter)) {
             await RuntimeNotifier.info({
@@ -92,29 +101,32 @@ export class AudioUnitFreeze implements Terminable {
             }
         }
         const copiedProject = this.#project.copy()
-        const abortController = new AbortController()
         const progress = new DefaultObservableValue(0.0)
-        const dialog = RuntimeNotifier.progress({
-            headline: "Freezing AudioUnit...",
-            progress,
-            cancel: () => abortController.abort()
-        })
-        const renderResult = await Promises.tryCatch(
-            OfflineEngineRenderer.start(
+        let dialog: ReturnType<typeof RuntimeNotifier.progress> | undefined
+        let renderResult: Awaited<ReturnType<typeof Promises.tryCatch<AudioData>>>
+        try {
+            dialog = RuntimeNotifier.progress({
+                headline: "Freezing AudioUnit...",
+                progress,
+                cancel: () => abortController.abort()
+            })
+            renderResult = await Promises.tryCatch(OfflineEngineRenderer.start(
                 copiedProject,
                 Option.wrap(exportConfiguration),
                 progress,
                 abortController.signal,
                 engine.sampleRate
             ))
+        } finally {
+            try {dialog?.terminate()} finally {copiedProject.terminate()}
+        }
+        if (this.#terminated || abortController.signal.aborted) {return}
         if (renderResult.status === "rejected") {
-            dialog.terminate()
             if (!Errors.isAbort(renderResult.error)) {
                 await RuntimeNotifier.info({headline: "Freeze Failed", message: String(renderResult.error)})
             }
             return
         }
-        dialog.terminate()
         if (generation !== this.#generation) {return}
         const audioData = renderResult.value
         engine.setFrozenAudio(audioUnitBoxAdapter.uuid, audioData)
@@ -145,6 +157,9 @@ export class AudioUnitFreeze implements Terminable {
     }
 
     terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
+        this.#controllers.forEach(controller => controller.abort())
         this.#terminator.terminate()
         for (const [key, entry] of this.#frozenAudioUnits) {
             entry.deletionSubscription.terminate()
@@ -155,6 +170,7 @@ export class AudioUnitFreeze implements Terminable {
 
     #unfreezeAll(): void {
         this.#generation++
+        this.#controllers.forEach(controller => controller.abort())
         const keys = Array.from(this.#frozenAudioUnits.keys())
         for (const key of keys) {
             this.#removeFrozen(UUID.parse(key), key)
