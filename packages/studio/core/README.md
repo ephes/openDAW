@@ -233,3 +233,15 @@ No-stretch audio with absolute durations exports through constant-tempo beat
 conversion. No-stretch audio in either time base, and all absolute audio, cannot
 export with tempo automation. Any audio region with a nonzero waveform offset is
 refused, including pitch/time stretch; beat positions remain beat positions.
+
+### Software MIDI ownership
+
+Software keyboard presses each own one release. Unmatched releases are ignored;
+changing channel releases all owned presses on the previous channel. Note numbers
+must be integers 0–127 and channels integers 0–15; invalid input is refused before
+state changes. Held-note counts do not wrap at 256 presses.
+
+The listener observable counts actual EventTarget registrations (type, callback and
+capture), plus one slot for a non-null onmidimessage handler. Duplicate adds and
+absent removals do not change it. Once dispatch and AbortSignal cancellation retire
+the registration; replacing the property handler retains one slot.
