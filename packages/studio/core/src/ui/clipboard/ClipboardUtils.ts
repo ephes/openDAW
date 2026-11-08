@@ -1,13 +1,25 @@
 import {ByteArrayInput, ByteArrayOutput, Option, Predicate, Procedure, UUID} from "@opendaw/lib-std"
 import {Box, BoxGraph, PointerField, SpecialDecoder} from "@opendaw/lib-box"
+import {CLIPBOARD_MAX_BYTES} from "./ClipboardLimits"
 import {BoxIO} from "@opendaw/studio-boxes"
 
 type UUIDMapper = { source: UUID.Bytes, target: UUID.Bytes }
 
 export namespace ClipboardUtils {
+    const checkEnvelopeSize = (data: ArrayBufferLike): void => {
+        if (data.byteLength > CLIPBOARD_MAX_BYTES) {throw new Error("Clipboard payload exceeds byte limit")}
+    }
+
+    const readLength = (input: ByteArrayInput): number => {
+        const length = input.readInt()
+        if (length < 0 || length > input.remaining()) {throw new Error("Invalid clipboard binary length")}
+        return length
+    }
+
     export const extractMetadata = (data: ArrayBufferLike): ArrayBufferLike => {
         const input = new ByteArrayInput(data)
-        const metadataLength = input.readInt()
+        checkEnvelopeSize(data)
+        const metadataLength = readLength(input)
         const metadataBytes = new Int8Array(metadataLength)
         input.readBytes(metadataBytes)
         return metadataBytes.buffer
@@ -44,14 +56,25 @@ export namespace ClipboardUtils {
                                                               mapPointer: SpecialDecoder["map"]
                                                               modifyBox?: Procedure<T>
                                                               excludeBox?: Predicate<Box>
+                                                              validateBoxes?: Procedure<ReadonlyArray<Box>>
                                                           }): ReadonlyArray<T> => {
         const input = new ByteArrayInput(data)
-        input.skip(input.readInt())
-        const graphDataLength = input.readInt()
+        checkEnvelopeSize(data)
+        input.skip(readLength(input))
+        const graphDataLength = readLength(input)
+        if (graphDataLength !== input.remaining()) {throw new Error("Invalid clipboard graph length")}
+        // BoxGraph's general decoder allocates each record. Admit all record lengths first.
+        const graphStart = input.position
+        const count = readLength(input)
+        if (count > Math.floor(input.remaining() / 4)) {throw new Error("Invalid clipboard box count")}
+        for (let i = 0; i < count; i++) {input.skip(readLength(input))}
+        if (input.remaining() !== 0) {throw new Error("Invalid clipboard graph records")}
+        input.position = graphStart
         const graphData = new Int8Array(graphDataLength)
         input.readBytes(graphData)
         const clipboardGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
         clipboardGraph.fromArrayBuffer(graphData.buffer, false)
+        options.validateBoxes?.(clipboardGraph.boxes())
         const skippedExternalUuids = UUID.newSet<UUID.Bytes>(uuid => uuid)
         clipboardGraph.boxes().forEach(box => {
             if (box.resource === "preserved" && targetGraph.findBox(box.address.uuid).nonEmpty()) {

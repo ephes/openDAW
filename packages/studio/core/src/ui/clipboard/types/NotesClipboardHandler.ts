@@ -1,8 +1,8 @@
-import {ByteArrayInput, ByteArrayOutput, Editing, Option, Procedure, Provider, Selection} from "@opendaw/lib-std"
+import {ByteArrayInput, ByteArrayOutput, Editing, Option, Procedure, Provider, Selection, UUID} from "@opendaw/lib-std"
 import {Address, Box, BoxGraph} from "@opendaw/lib-box"
 import {ppqn} from "@opendaw/lib-dsp"
 import {Pointers} from "@opendaw/studio-enums"
-import {NoteEventBox} from "@opendaw/studio-boxes"
+import {NoteEventBox, NoteEventRepeatBox} from "@opendaw/studio-boxes"
 import {BoxAdapters, NoteEventBoxAdapter} from "@opendaw/studio-adapters"
 import {ClipboardEntry, ClipboardHandler} from "../ClipboardManager"
 import {ClipboardUtils} from "../ClipboardUtils"
@@ -80,6 +80,27 @@ export namespace NotesClipboard {
                         entry.data,
                         boxGraph,
                         {
+                            validateBoxes: boxes => {
+                                const notes = boxes.filter((box): box is NoteEventBox => box instanceof NoteEventBox)
+                                if (notes.length === 0) {throw new Error("Clipboard contains no notes")}
+                                for (const box of boxes) {
+                                    if (box instanceof NoteEventBox) {
+                                        // Notes belong to the destination collection, never an imported root.
+                                        const address = box.events.targetAddress.unwrap("Missing note collection")
+                                        if (boxes.some(candidate => UUID.equals(candidate.address.uuid, address.uuid)) ||
+                                            address.fieldKeys.length !== 1 || address.fieldKeys[0] !== 1) {
+                                            throw new Error("Invalid clipboard note collection")
+                                        }
+                                    } else if (box instanceof NoteEventRepeatBox) {
+                                        const address = box.event.targetAddress.unwrap("Missing note feature owner")
+                                        if (!notes.some(note => note.address.equals(address))) {
+                                            throw new Error("Invalid clipboard note feature owner")
+                                        }
+                                    } else {
+                                        throw new Error("Unsupported notes clipboard box")
+                                    }
+                                }
+                            },
                             mapPointer: pointer => pointer.pointerType === Pointers.NoteEvents
                                 ? Option.wrap(targetAddress)
                                 : Option.None,

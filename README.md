@@ -223,6 +223,16 @@ shared rules allow the project's public namespace-merging convention; other
 recommended source rules remain enabled. See [the baseline lint plan](plans/baseline-lint-green.md)
 for configuration rationale and the narrowly documented generic type boundaries.
 
+### Clipboard admission
+
+Studio clipboard envelopes admit at most 8 MiB of decoded binary data (including
+metadata and graph headers); encoded text is bounded before base64 decoding.
+Malformed or over-budget openDAW envelopes are refused without replaying the
+in-memory fallback. Plain text or an unavailable OS clipboard may still use that
+fallback. Binary metadata, graph and box-record lengths must fit the admitted
+bytes before allocation. Notes paste accepts note events and their owned repeat
+features only, reconnecting notes to the destination collection.
+
 ### Flow Charts
 
 <img width="6551" height="7057" alt="image" src="https://github.com/user-attachments/assets/266a9fb2-4b72-4752-bcf1-85fda2ff2cf1" />
