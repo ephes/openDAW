@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Migrate delay automation through region/clip tracks exactly once per event; copy collections shared across parameter targets per delay, unlinking those mirrors to preserve their values. Verify all legacy choices and Vaporisateur pointer/version transitions across serialization.
+
 - Preflight legacy AudioFit geometry before mutation; decode timing fields independently and refuse ambiguous nonmusical legacy timing.
 
 - Refuse nonzero MP3/FLAC encoder exits before reading output; attempt all temporary deletions without replacing conversion outcomes.

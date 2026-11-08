@@ -55,3 +55,21 @@ ambiguous and refused rather than guessed. Modern seconds-based timing, includin
 small normal float32 loop-offset residues, is preserved without bit decoding. Valid AudioFit retains proportional audible duration
 and loop offset while becoming seconds-based. Synthetic mixed/all-legacy/modern
 fixtures verify repeat migration and unchanged state on refusal.
+
+
+## Device graph compatibility (O5)
+
+Serialized synthetic delay projects cover all 17 historical musical choices in
+static and normalized region/clip automation, including shared collections and
+unrelated feedback automation. The fixture exposed missing track traversal in the
+old migration: parameter incoming pointers are tracks, not directly value events.
+Migration now follows only the public track → value region/clip → collection →
+event graph. Collections shared with other parameter targets are copied for the
+current delay before remapping, preserving event timing, legacy slopes and curve
+boxes; same-target region/clip owners retain their shared collection. This prevents
+both double remapping across delays and changes to unrelated automation. Adapter-visible durations and targets survive save/reopen
+and a second migration. Vaporisateur v0/v1 fixtures preserve all four moved fields,
+with one automation track and three MIDI pointers per field, volume adjustment
+exactly once and oscillator B silent. Fixture serialization temporarily enables
+only selected deprecated getters to emulate their old schema; decoding, migration
+and adapters are real. No Vaporisateur production behavior change was required.
