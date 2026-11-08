@@ -144,3 +144,14 @@ MenuItem.default({label: "Flatten", selectable: region.canFlatten(selection.sele
 1. Type-check all modified packages with `npx tsc --noEmit`
 2. Existing stem export should still work (`useInstrumentOutput` defaults to `false`)
 3. Manual test: select multiple audio regions on same track → right-click → Flatten → progress dialog appears → new single region created with rendered audio
+
+## Selection extent and publication
+
+Flatten renders from the earliest selected start to the greatest selected complete
+endpoint, including nested and equal-start regions. Unselected overlaps are excluded
+from the copied render graph and retained in the live graph. Only selected source
+regions are replaced, in one undoable edit.
+
+Contributor process: these repairs were developed with Codex, using synthetic PCM
+and graph fixtures, regression failures against the prior implementation, local
+build/lint/tests and an independent Claude review gate.

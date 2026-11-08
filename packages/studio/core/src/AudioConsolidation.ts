@@ -19,9 +19,8 @@ export namespace AudioConsolidation {
         if (regions.length === 0) {return}
         const sorted = regions.toSorted(RegionCollection.Comparator)
         const first = Arrays.getFirst(sorted, "No first region")
-        const last = Arrays.getLast(sorted, "No last region")
         const rangeMin = first.position
-        const rangeMax = last.complete
+        const rangeMax = sorted.reduce((end, region) => Math.max(end, region.complete), first.complete)
         const trackBoxAdapter = first.trackBoxAdapter.unwrap("Has no trackAdapter")
         const audioUnitUuid = UUID.toString(trackBoxAdapter.audioUnit.address.uuid)
         const sampleRate = sampleService.audioContext.sampleRate
@@ -39,7 +38,8 @@ export namespace AudioConsolidation {
         }
         const selectedUuids = UUID.newSet<UUID.Bytes>(uuid => uuid)
         sorted.forEach(region => selectedUuids.add(region.uuid))
-        const allRegionsInRange = [...trackBoxAdapter.regions.collection.iterateRange(rangeMin, rangeMax)]
+        const allRegionsInRange = trackBoxAdapter.regions.collection.asArray()
+            .filter(region => region.position < rangeMax && region.complete > rangeMin)
         const nonSelectedUuids = allRegionsInRange
             .filter(region => !selectedUuids.hasKey(region.uuid))
             .map(region => region.uuid)
@@ -94,7 +94,7 @@ export namespace AudioConsolidation {
             Workers.Transients, project.boxGraph, audioData, sampleUuid, sample.name)
         project.editing.modify(() => {
             const audioFileBox = audioFileBoxModifier()
-            allRegionsInRange.forEach(region => region.box.delete())
+            sorted.forEach(region => region.box.delete())
             AudioContentFactory.createNotStretchedRegion({
                 boxGraph: project.boxGraph,
                 targetTrack: trackBoxAdapter.box,
