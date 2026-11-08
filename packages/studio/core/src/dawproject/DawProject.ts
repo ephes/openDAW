@@ -34,7 +34,6 @@ export namespace DawProject {
         const metaDataXml = metadataFile ? new TextDecoder().decode(await readZipEntry(metadataFile, limits.metadata, budget)) : undefined
         const metaData = isDefined(metaDataXml) ? Xml.parse(metaDataXml, MetaDataSchema) : Xml.element({}, MetaDataSchema)
         const projectXml = new TextDecoder().decode(await readZipEntry(asDefined(zip.file("project.xml"), "No project.xml found"), limits.project ?? Math.min(limits.media, 33_554_432), budget))
-        console.debug(projectXml)
         const project = Xml.parse(projectXml, ProjectSchema)
         const resourceFiles = Object.entries(zip.files).filter(([_, file]) =>
             !file.dir && !file.name.endsWith(".xml"))
@@ -75,9 +74,6 @@ export namespace DawProject {
         })
         const metaDataXml = Xml.pretty(Xml.toElement("MetaData", metaData))
         const projectXml = Xml.pretty(Xml.toElement("Project", projectSchema))
-        console.debug("encode")
-        console.debug(metaDataXml)
-        console.debug(projectXml)
         zip.file("metadata.xml", metaDataXml)
         zip.file("project.xml", projectXml)
         return zip.generateAsync({type: "arraybuffer"})

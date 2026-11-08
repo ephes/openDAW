@@ -126,28 +126,51 @@ export namespace DawProjectImport {
         return {position, duration, playStart, loopStart, loopEnd}
     }
 
-    const validateContent = (clip: ClipSchema, content: TimelineSchema): void => {
+    const requireBeats = (unit: string): void => {
+        assert(unit === "beats", "Unsupported timeline time unit: expected beats")
+    }
+
+    const validateContent = (clip: ClipSchema, content: TimelineSchema, inheritedUnit: string): void => {
+        const unit = content.timeUnit ?? inheritedUnit
+        requireBeats(unit)
         if (isInstanceOf(content, ClipsSchema)) {
             assert(content.clips.length === 1 && content.clips[0].content?.length === 1,
                 "Unsupported nested Clips: expected one clip with one content")
             // The supported wrapper uses the outer clip's playback coordinates.
-            validateContent(clip, asDefined(content.clips[0].content)[0])
+            const nestedUnit = content.clips[0].contentTimeUnit ?? unit
+            requireBeats(nestedUnit)
+            validateContent(clip, asDefined(content.clips[0].content)[0], nestedUnit)
         } else if (isInstanceOf(content, NotesSchema)) {
             noteCoordinates(clip)
+        } else if (isInstanceOf(content, WarpsSchema)) {
+            const sourceUnit = content.contentTimeUnit ?? "seconds"
+            assert(sourceUnit === "seconds", "Unsupported warp source time unit: expected seconds")
+            content.content?.forEach(source => {
+                assert(isInstanceOf(source, AudioSchema) && (source.timeUnit ?? sourceUnit) === "seconds",
+                    "Unsupported audio source time unit: expected seconds")
+            })
         }
     }
 
     // Admission happens before creating boxes, so unsupported nesting never imports partially.
-    const validateTimeline = (timeline: TimelineSchema): void => {
+    const validateTimeline = (timeline: TimelineSchema, inheritedUnit = "beats"): void => {
+        const unit = timeline.timeUnit ?? inheritedUnit
+        requireBeats(unit)
         if (isInstanceOf(timeline, LanesSchema)) {
-            timeline.lanes?.forEach(validateTimeline)
+            timeline.lanes?.forEach(child => validateTimeline(child, unit))
         } else if (isInstanceOf(timeline, ClipsSchema)) {
-            timeline.clips.forEach(clip => clip.content?.forEach(content => validateContent(clip, content)))
+            timeline.clips.forEach(clip => {
+                const contentUnit = clip.contentTimeUnit ?? unit
+                requireBeats(contentUnit)
+                clip.content?.forEach(content => validateContent(clip, content, contentUnit))
+            })
         }
     }
 
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
         if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
+        if (schema.arrangement?.tempoAutomation !== undefined) {validateTimeline(schema.arrangement.tempoAutomation)}
+        if (schema.arrangement?.timeSignatureAutomation !== undefined) {validateTimeline(schema.arrangement.timeSignatureAutomation)}
         const boxGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
         boxGraph.beginTransaction()
 
@@ -410,7 +433,7 @@ export namespace DawProjectImport {
                             await createRegion(nested)
                         }
                     } else {
-                        console.warn("readAnyRegion > Unknown", content)
+                        console.warn("Unsupported DAWproject region content")
                     }
                 }
                 return Promise.all(clip.content?.map(createRegion) ?? [])
@@ -487,7 +510,7 @@ export namespace DawProjectImport {
                 const durationInPulses = duration * PPQN.Quarter
                 const loopDurationInPulses = loopDuration * PPQN.Quarter
                 if (loopDurationInPulses < 1) {
-                    console.warn(`Skipping clip '${clip.name}': loop duration too small (${loopDurationInPulses} ppqn)`)
+                    console.warn("Skipping DAWproject clip: loop duration too small")
                     return
                 }
                 const collectionBox = ValueEventCollectionBox.create(boxGraph, UUID.generate())
