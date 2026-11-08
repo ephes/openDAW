@@ -102,3 +102,97 @@ it.each([[-2, 20], [0, 20]])("excludes earlier/equal-start unselected overlap %j
     expect(f.copied.boxGraph.findBox(f.regions[0].uuid).isEmpty()).toBe(true)
     expect(f.graph.findBox(f.regions[0].uuid).nonEmpty()).toBe(true)
 })
+
+it("refuses pre-cancelled work before copying or creating a renderer", async () => {
+    const f = fixture()
+    const controller = new AbortController(); controller.abort()
+    await f.run(controller.signal)
+    expect(f.project.copy).not.toHaveBeenCalled()
+    expect(OfflineEngineRenderer.create).not.toHaveBeenCalled()
+    expect(f.sampleService.importFile).not.toHaveBeenCalled()
+    expect(f.project.trackUserCreatedSample).not.toHaveBeenCalled()
+})
+
+it.each(["create", "loading", "play", "step", "import", "modifier"] as const)("cancels during %s before publication", async stage => {
+    const f = fixture()
+    const controller = new AbortController()
+    const remove = vi.spyOn(controller.signal, "removeEventListener")
+    const gate = Promise.withResolvers<never>()
+    const target = stage === "create" ? vi.mocked(OfflineEngineRenderer.create)
+        : stage === "loading" ? f.renderer.waitForLoading
+        : stage === "play" ? f.renderer.play
+        : stage === "step" ? f.renderer.step
+        : stage === "import" ? f.sampleService.importFile : vi.mocked(AudioFileBoxFactory.createModifier)
+    target.mockReturnValueOnce(gate.promise)
+    const running = f.run(controller.signal)
+    await vi.waitFor(() => expect(target).toHaveBeenCalled())
+    controller.abort()
+    gate.reject(new DOMException("cancelled", "AbortError"))
+    await running
+    expect(f.project.trackUserCreatedSample).not.toHaveBeenCalled()
+    expect(f.regions.every(r => f.graph.findBox(r.uuid).nonEmpty())).toBe(true)
+    if (stage !== "create") {expect(f.renderer.stop).toHaveBeenCalledTimes(1)}
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function))
+})
+
+it.each(["move", "trim", "delete", "track", "routing"])("rejects stale flatten after %s edit", async change => {
+    const f = fixture()
+    const gate = Promise.withResolvers<Awaited<ReturnType<typeof f.renderer.step>>>()
+    f.renderer.step.mockReturnValueOnce(gate.promise)
+    const running = f.run()
+    await vi.waitFor(() => expect(f.renderer.step).toHaveBeenCalled())
+    f.editing.modify(() => {
+        if (change === "move") {f.boxes[0].startInSeconds.setValue(2)}
+        if (change === "trim") {f.boxes[0].endInSeconds.setValue(12)}
+        if (change === "delete") {f.boxes[0].delete()}
+        if (change === "track") {f.trackBox.delete()}
+        if (change === "routing") {f.trackBox.fileName.setValue("changed routing")}
+    })
+    const current = f.graph.toArrayBuffer()
+    gate.resolve([new Float32Array(160), new Float32Array(160)])
+    await running
+    expect(f.graph.toArrayBuffer()).toEqual(current)
+    expect(f.sampleService.importFile).not.toHaveBeenCalled()
+    expect(f.project.trackUserCreatedSample).not.toHaveBeenCalled()
+    expect(RuntimeNotifier.info).toHaveBeenCalledWith(expect.objectContaining({message: expect.stringContaining("retry")}))
+})
+
+it("settles cancellation while loading is still pending", async () => {
+    const f = fixture()
+    const controller = new AbortController()
+    f.renderer.waitForLoading.mockReturnValueOnce(new Promise(() => {}))
+    const running = f.run(controller.signal)
+    await vi.waitFor(() => expect(f.renderer.waitForLoading).toHaveBeenCalled())
+    controller.abort(); await running
+    expect(f.renderer.stop).toHaveBeenCalledTimes(1)
+    expect(f.renderer.terminate).toHaveBeenCalledTimes(1)
+    expect(f.sampleService.importFile).not.toHaveBeenCalled()
+})
+
+it("disposes a renderer returned after cancellation without publishing", async () => {
+    const f = fixture()
+    const controller = new AbortController()
+    const gate = Promise.withResolvers<OfflineEngineRenderer>()
+    vi.mocked(OfflineEngineRenderer.create).mockReturnValueOnce(gate.promise)
+    const running = f.run(controller.signal)
+    controller.abort(); await running
+    gate.resolve(f.renderer as unknown as OfflineEngineRenderer)
+    await vi.waitFor(() => expect(f.renderer.terminate).toHaveBeenCalledTimes(1))
+    expect(f.project.trackUserCreatedSample).not.toHaveBeenCalled()
+    expect(f.sampleService.importFile).not.toHaveBeenCalled()
+})
+
+
+it("releases operation resources before waiting for failure acknowledgement", async () => {
+    const f = fixture()
+    f.renderer.step.mockRejectedValueOnce(new Error("synthetic render failure"))
+    const notice = Promise.withResolvers<void>()
+    vi.mocked(RuntimeNotifier.info).mockReturnValueOnce(notice.promise as never)
+    const running = f.run()
+    await vi.waitFor(() => expect(RuntimeNotifier.info).toHaveBeenCalled())
+    try {
+        expect(f.renderer.terminate).toHaveBeenCalledTimes(1)
+        expect(f.copied.terminate).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(RuntimeNotifier.progress).mock.results[0].value.terminate).toHaveBeenCalledTimes(1)
+    } finally {notice.resolve(); await running}
+})

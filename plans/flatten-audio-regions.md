@@ -155,3 +155,18 @@ regions are replaced, in one undoable edit.
 Contributor process: these repairs were developed with Codex, using synthetic PCM
 and graph fixtures, regression failures against the prior implementation, local
 build/lint/tests and an independent Claude review gate.
+
+## Cancellation and concurrent edits
+
+Cancellation is checked before copying and after every awaited stage. It stops
+and terminates an owned renderer, removes the incoming abort listener, and
+prevents graph replacement and user-created-sample registration. An import
+already in flight may finish storing its sample; cancellation does not delete
+that library asset. A source edit during an in-flight import can likewise leave
+its completed library asset; edits already detected after rendering refuse import.
+A late renderer created after cancellation is terminated.
+
+Any live graph update during flatten conservatively refuses publication with a
+retry message, including tempo, automation and routing edits. This avoids replacing
+a newer source state. Retry after editing has stopped. The commit remains one
+synchronous undoable transaction.

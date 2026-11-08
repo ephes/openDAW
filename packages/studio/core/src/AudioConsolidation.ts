@@ -1,6 +1,5 @@
-import {Arrays, Errors, isDefined, Option, RuntimeNotifier, UUID} from "@opendaw/lib-std"
+import {Arrays, Errors, Option, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {AudioData, RegionCollection, WavFile} from "@opendaw/lib-dsp"
-import {Promises} from "@opendaw/lib-runtime"
 import {AudioRegionBoxAdapter, ExportConfiguration} from "@opendaw/studio-adapters"
 import {
     AudioContentFactory,
@@ -43,67 +42,98 @@ export namespace AudioConsolidation {
         const nonSelectedUuids = allRegionsInRange
             .filter(region => !selectedUuids.hasKey(region.uuid))
             .map(region => region.uuid)
-        const copiedProject = project.copy()
-        copiedProject.boxGraph.beginTransaction()
-        nonSelectedUuids.forEach(uuid => copiedProject.boxGraph.findBox(uuid).ifSome(box => box.delete()))
-        copiedProject.boxGraph.endTransaction()
         const abortController = new AbortController()
-        if (isDefined(abortSignal)) {
-            abortSignal.addEventListener("abort", () => abortController.abort())
+        const signal = abortController.signal
+        const incomingAbort = () => abortController.abort()
+        abortSignal?.addEventListener("abort", incomingAbort, {once: true})
+        if (abortSignal?.aborted) {abortController.abort()}
+        const checkCancelled = () => {if (signal.aborted) {throw Errors.AbortError}}
+        // Any graph edit can alter the render (including tempo, automation or routing).
+        // Refuse conservatively rather than overwrite edits made while flatten waits.
+        let sourceChanged = false
+        const sourceSubscription = project.boxGraph.subscribeToAllUpdates({onUpdate: () => {sourceChanged = true}})
+        const checkSource = () => {
+            if (sourceChanged || !trackBoxAdapter.box.isAttached() || sorted.some(region => !region.box.isAttached())) {
+                throw new Error("Source changed while flattening. Please retry with the current regions.")
+            }
         }
-        const dialog = RuntimeNotifier.progress({
-            headline: "Flattening Audio Regions...",
-            cancel: () => abortController.abort()
-        })
-        const renderResult = await Promises.tryCatch((async () => {
-            const renderer = await OfflineEngineRenderer.create(copiedProject, Option.wrap(exportConfiguration), sampleRate)
-            try {
-                await renderer.waitForLoading()
-                renderer.setPosition(rangeMin)
-                renderer.play()
-                await renderer.waitForLoading()
-                const channels = await renderer.step(numSamples)
-                const audioData = AudioData.create(sampleRate, numSamples, 2)
-                audioData.frames[0].set(channels[0])
-                audioData.frames[1].set(channels[1])
-                return audioData
-            } finally {
+        let failure: {error: unknown} | undefined
+        let copiedProject: Project | undefined
+        let renderer: OfflineEngineRenderer | undefined
+        let dialog: ReturnType<typeof RuntimeNotifier.progress> | undefined
+        const aborted = Promise.withResolvers<never>()
+        // Install a rejection observer even when cancellation arrives between stages.
+        void aborted.promise.catch(() => {})
+        const cancel = () => {
+            aborted.reject(Errors.AbortError)
+            if (renderer !== undefined) {
+                renderer.stop()
                 renderer.terminate()
+                renderer = undefined
             }
-        })())
-        if (renderResult.status === "rejected") {
-            dialog.terminate()
-            if (!Errors.isAbort(renderResult.error)) {
-                await RuntimeNotifier.info({headline: "Flatten Failed", message: String(renderResult.error)})
-            }
-            return
         }
-        const audioData = renderResult.value
-        dialog.message = "Importing sample..."
-        const importResult = await Promises.tryCatch(
-            sampleService.importFile({name: "flatten", arrayBuffer: WavFile.encodeFloats(audioData)}))
-        if (importResult.status === "rejected") {
-            dialog.terminate()
-            await RuntimeNotifier.info({headline: "Flatten Failed", message: String(importResult.error)})
-            return
+        signal.addEventListener("abort", cancel, {once: true})
+        const wait = async <T>(promise: Promise<T>): Promise<T> => {
+            const result = await Promise.race([promise, aborted.promise])
+            checkCancelled()
+            return result
         }
-        const sample = importResult.value
-        const sampleUuid = UUID.parse(sample.uuid)
-        dialog.terminate()
-        const audioFileBoxModifier = await AudioFileBoxFactory.createModifier(
-            Workers.Transients, project.boxGraph, audioData, sampleUuid, sample.name)
-        project.editing.modify(() => {
-            const audioFileBox = audioFileBoxModifier()
-            sorted.forEach(region => region.box.delete())
-            AudioContentFactory.createNotStretchedRegion({
-                boxGraph: project.boxGraph,
-                targetTrack: trackBoxAdapter.box,
-                audioFileBox,
-                sample,
-                position: rangeMin,
-                name: first.label
+        try {
+            checkCancelled()
+            copiedProject = project.copy()
+            copiedProject.boxGraph.beginTransaction()
+            nonSelectedUuids.forEach(uuid => copiedProject!.boxGraph.findBox(uuid).ifSome(box => box.delete()))
+            copiedProject.boxGraph.endTransaction()
+            dialog = RuntimeNotifier.progress({headline: "Flattening Audio Regions...", cancel: incomingAbort})
+            const creating = OfflineEngineRenderer.create(copiedProject, Option.wrap(exportConfiguration), sampleRate)
+                .then(created => {
+                    if (signal.aborted) {created.terminate(); throw Errors.AbortError}
+                    return renderer = created
+                })
+            const active = await wait(creating)
+            await wait(active.waitForLoading())
+            active.setPosition(rangeMin)
+            await wait(active.play())
+            await wait(active.waitForLoading())
+            const channels = await wait(active.step(numSamples))
+            const audioData = AudioData.create(sampleRate, numSamples, 2)
+            audioData.frames[0].set(channels[0])
+            audioData.frames[1].set(channels[1])
+            checkSource()
+            dialog.message = "Importing sample..."
+            const sample = await wait(sampleService.importFile({name: "flatten", arrayBuffer: WavFile.encodeFloats(audioData)}))
+            const sampleUuid = UUID.parse(sample.uuid)
+            const audioFileBoxModifier = await wait(AudioFileBoxFactory.createModifier(
+                Workers.Transients, project.boxGraph, audioData, sampleUuid, sample.name))
+            checkCancelled()
+            checkSource()
+            project.editing.modify(() => {
+                const audioFileBox = audioFileBoxModifier()
+                sorted.forEach(region => region.box.delete())
+                AudioContentFactory.createNotStretchedRegion({
+                    boxGraph: project.boxGraph,
+                    targetTrack: trackBoxAdapter.box,
+                    audioFileBox,
+                    sample,
+                    position: rangeMin,
+                    name: first.label
+                })
+                project.trackUserCreatedSample(sampleUuid)
             })
-            project.trackUserCreatedSample(sampleUuid)
-        })
+        } catch (error) {
+            if (!Errors.isAbort(error)) {
+                failure = {error}
+            }
+        } finally {
+            abortSignal?.removeEventListener("abort", incomingAbort)
+            signal.removeEventListener("abort", cancel)
+            sourceSubscription.terminate()
+            renderer?.terminate()
+            copiedProject?.terminate()
+            dialog?.terminate()
+        }
+        if (failure !== undefined) {
+            await RuntimeNotifier.info({headline: "Flatten Failed", message: String(failure.error)})
+        }
     }
 }
