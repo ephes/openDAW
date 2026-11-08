@@ -28,3 +28,17 @@ subscription, VFS writes, execution, output reads and cleanup all remain within
 one operation. Rejection releases the queue. A terminated cached worker can be
 loaded again. O1 and O2 are reviewed/merged together because sharing the worker
 requires this conversion ownership.
+
+
+## Encoder outcomes (O3)
+
+Both converters refuse nonzero encoder exit status with a fixed conversion error,
+without reading stale output. Every owned temporary deletion is attempted;
+failures emit a fixed diagnostic without filenames or raw errors and do not
+replace a successful output or the primary encoder/read failure. Synthetic tests
+exercise both deletion positions, both converters and subsequent retry.
+
+Cleanup diagnostics can include an absent temporary file after an early failure.
+The O3 review suggested distinguishing missing files; this is deferred because
+the public worker API does not provide a reliable structured not-found status.
+Both paths are still attempted so stale outputs are also removed.

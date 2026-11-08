@@ -20,12 +20,13 @@ export class FlacConverter implements FFmpegConverter<FlacOptions> {
                     inputData = await this.#worker.fetchFileData(source)
                 }
                 await this.#worker.ffmpeg.writeFile("input.wav", inputData)
-                await this.#worker.ffmpeg.exec([
+                const exitCode = await this.#worker.ffmpeg.exec([
                     "-y",
                     "-i", "input.wav",
                     "-compression_level", String(options?.compression ?? 8),
                     "output.flac"
                 ])
+                if (exitCode !== 0) throw new Error("FLAC conversion failed")
                 const outputData = await this.#worker.ffmpeg.readFile("output.flac")
                 if (typeof outputData === "string") {
                     return Promise.reject(outputData)
