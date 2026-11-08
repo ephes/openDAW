@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse freeze results after live source edits or deletion; compensate publication callback failures so retries remain usable.
+
 - Fence late freeze completions after project termination, cancel obsolete renders and release copied projects and dialogs on every outcome.
 
 - Coalesce concurrent freezes per unit and discard renders invalidated by BPM or tempo automation changes.

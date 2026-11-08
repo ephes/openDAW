@@ -77,3 +77,8 @@ freeze again after the tempo edit.
 Closing the project cancels pending freezes and prevents late audio publication.
 Tempo invalidation also cancels obsolete work. Render copies and progress dialogs
 are released after success, cancellation or failure.
+
+Any live graph edit during rendering (including notes, effects or routing) refuses
+the result with a retry message. Deleting the unit also prevents installation.
+Publication callback failures remove owned engine audio and deletion subscriptions;
+the unit can be frozen again. UI selection/arming changes already made are not undone.

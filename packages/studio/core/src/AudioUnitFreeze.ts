@@ -100,11 +100,16 @@ export class AudioUnitFreeze implements Terminable {
                 }
             }
         }
-        const copiedProject = this.#project.copy()
+        // Conservatively invalidate on any graph edit: notes, devices, routing and tempo
+        // can all affect this render, including dependencies outside the unit.
+        let sourceChanged = false
+        const sourceSubscription = this.#project.boxGraph.subscribeToAllUpdates({onUpdate: () => {sourceChanged = true}})
+        let copiedProject: Project | undefined
         const progress = new DefaultObservableValue(0.0)
         let dialog: ReturnType<typeof RuntimeNotifier.progress> | undefined
         let renderResult: Awaited<ReturnType<typeof Promises.tryCatch<AudioData>>>
         try {
+            copiedProject = this.#project.copy()
             dialog = RuntimeNotifier.progress({
                 headline: "Freezing AudioUnit...",
                 progress,
@@ -118,7 +123,8 @@ export class AudioUnitFreeze implements Terminable {
                 engine.sampleRate
             ))
         } finally {
-            try {dialog?.terminate()} finally {copiedProject.terminate()}
+            sourceSubscription.terminate()
+            try {dialog?.terminate()} finally {copiedProject?.terminate()}
         }
         if (this.#terminated || abortController.signal.aborted) {return}
         if (renderResult.status === "rejected") {
@@ -128,28 +134,54 @@ export class AudioUnitFreeze implements Terminable {
             return
         }
         if (generation !== this.#generation) {return}
+        if (sourceChanged || !audioUnitBoxAdapter.box.isAttached()) {
+            await RuntimeNotifier.info({headline: "Freeze Failed", message: "Source changed while freezing. Please retry with the current project."})
+            return
+        }
         const audioData = renderResult.value
-        engine.setFrozenAudio(audioUnitBoxAdapter.uuid, audioData)
-        const {regionSelection, userEditingManager} = this.#project
-        const frozenRegions = regionSelection.selected()
-            .filter(region => region.trackBoxAdapter
-                .mapOr(track => UUID.equals(track.audioUnit.address.uuid, audioUnitBoxAdapter.uuid), false))
-        if (frozenRegions.length > 0) {regionSelection.deselect(...frozenRegions)}
-        userEditingManager.timeline.get().ifSome(vertex => {
-            const regionUuid = vertex.box.address.uuid
-            for (const track of audioUnitBoxAdapter.tracks.values()) {
-                if (track.regions.collection.asArray().some(region => UUID.equals(region.uuid, regionUuid))) {
-                    userEditingManager.timeline.clear()
-                    break
-                }
-            }
-        })
-        this.#project.captureDevices.get(audioUnitBoxAdapter.uuid)
-            .ifSome(capture => capture.armed.setValue(false))
         const deletionSubscription = audioUnitBoxAdapter.box.subscribeDeletion(() =>
             this.#removeFrozen(audioUnitBoxAdapter.uuid, audioUnitUuid))
-        this.#frozenAudioUnits.set(audioUnitUuid, {audioData, deletionSubscription})
-        this.#notifier.notify(audioUnitBoxAdapter.uuid)
+        const entry = {audioData, deletionSubscription}
+        this.#frozenAudioUnits.set(audioUnitUuid, entry)
+        const checkLifetime = () => {
+            if (this.#terminated || abortController.signal.aborted) {throw Errors.AbortError}
+        }
+        let notificationStarted = false
+        try {
+            checkLifetime()
+            engine.setFrozenAudio(audioUnitBoxAdapter.uuid, audioData)
+            const {regionSelection, userEditingManager} = this.#project
+            const frozenRegions = regionSelection.selected()
+                .filter(region => region.trackBoxAdapter
+                    .mapOr(track => UUID.equals(track.audioUnit.address.uuid, audioUnitBoxAdapter.uuid), false))
+            if (frozenRegions.length > 0) {regionSelection.deselect(...frozenRegions)}
+            checkLifetime()
+            userEditingManager.timeline.get().ifSome(vertex => {
+                const regionUuid = vertex.box.address.uuid
+                for (const track of audioUnitBoxAdapter.tracks.values()) {
+                    if (track.regions.collection.asArray().some(region => UUID.equals(region.uuid, regionUuid))) {
+                        userEditingManager.timeline.clear()
+                        break
+                    }
+                }
+            })
+            checkLifetime()
+            this.#project.captureDevices.get(audioUnitBoxAdapter.uuid)
+                .ifSome(capture => capture.armed.setValue(false))
+            checkLifetime()
+            notificationStarted = true
+            this.#notifier.notify(audioUnitBoxAdapter.uuid)
+            checkLifetime()
+        } catch (error) {
+            if (this.#frozenAudioUnits.get(audioUnitUuid) === entry) {
+                this.#frozenAudioUnits.delete(audioUnitUuid)
+                try {deletionSubscription.terminate()} finally {engine.setFrozenAudio(audioUnitBoxAdapter.uuid, null)}
+            }
+            if (notificationStarted) {
+                try {this.#notifier.notify(audioUnitBoxAdapter.uuid)} catch {console.warn("Freeze rollback notification failed")}
+            }
+            if (!Errors.isAbort(error)) {throw error}
+        }
     }
 
     unfreeze(audioUnitBoxAdapter: AudioUnitBoxAdapter): void {
