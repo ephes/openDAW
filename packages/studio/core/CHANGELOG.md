@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fence late freeze completions after project termination, cancel obsolete renders and release copied projects and dialogs on every outcome.
+
 - Coalesce concurrent freezes per unit and discard renders invalidated by BPM or tempo automation changes.
 
 - Own offline abort listeners without overwriting caller handlers, honor pre-abort and pending loading cancellation, and release synchronous cached sample/soundfont subscriptions.
