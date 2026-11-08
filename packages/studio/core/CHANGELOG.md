@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fence MIDI learning permission completions and mapping creation against retired owners and deleted targets; release the followed controller subscription at termination.
+
 - Preserve software MIDI press/release ownership beyond 255 presses, ignore unmatched releases and validate note/channel domains.
 - Count actual software MIDI listeners, including property replacement, once dispatch and AbortSignal retirement.
 
