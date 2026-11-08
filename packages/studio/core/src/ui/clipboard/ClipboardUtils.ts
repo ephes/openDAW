@@ -6,6 +6,15 @@ import {BoxIO} from "@opendaw/studio-boxes"
 type UUIDMapper = { source: UUID.Bytes, target: UUID.Bytes }
 
 export namespace ClipboardUtils {
+    export const readTimeSpan = (input: ByteArrayInput): {min: number, max: number} => {
+        const min = input.readFloat()
+        const max = input.readFloat()
+        if (!Number.isFinite(min) || !Number.isFinite(max) || min > max || !Number.isFinite(max - min)) {
+            throw new Error("Invalid clipboard time span")
+        }
+        return {min, max}
+    }
+
     const checkEnvelopeSize = (data: ArrayBufferLike): void => {
         if (data.byteLength > CLIPBOARD_MAX_BYTES) {throw new Error("Clipboard payload exceeds byte limit")}
     }

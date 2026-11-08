@@ -86,20 +86,17 @@ export namespace ClipboardManager {
             return entry.nonEmpty()
         }
         const performPaste = async () => {
+            let entry: Option<AnyEntry>
             try {
                 const rawText = await Clipboard.readText()
-                const text = Option.wrap(rawText)
-                const entry = text.flatMap(readEntry)
-                if (entry.nonEmpty()) {
-                    if (!handler.canPaste(entry.unwrap(), noClient)) {return}
-                    handler.paste(entry.unwrap())
-                }
+                entry = Option.wrap(rawText).flatMap(readEntry)
             } catch (_error) {
-                fallbackEntry.ifSome(entry => {
-                    if (!handler.canPaste(entry, noClient)) {return}
-                    handler.paste(entry)
-                })
+                entry = fallbackEntry
             }
+            // Handler failures propagate to the existing unhandled-rejection error path.
+            entry.ifSome(entry => {
+                if (handler.canPaste(entry, noClient)) {handler.paste(entry)}
+            })
         }
         return Terminable.many(
             Events.subscribe(element, "copy", (event: ClipboardEvent) => {

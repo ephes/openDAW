@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve clipboard selection/cursor on failed graph installation, validate finite placement spans and region track metadata before editing, and avoid fallback replay after paste-handler errors.
+
 - Bound clipboard text and binary admission to 8 MiB before decoding/allocation, preflight nested graph lengths, and refuse unrelated boxes or invalid feature owners in notes paste.
 
 - Migrate delay automation through region/clip tracks exactly once per event; copy collections shared across parameter targets per delay, unlinking those mirrors to preserve their values. Verify all legacy choices and Vaporisateur pointer/version transitions across serialization.
