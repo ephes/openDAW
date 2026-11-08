@@ -195,3 +195,16 @@ Provider and communication errors render as text. Authentication diagnostics omi
 codes, bearer tokens and raw provider/handler errors. Dropbox retains PKCE.
 Cancel in the studio if a provider popup closes before redirect: strict COOP isolation
 severs its cross-origin window proxy, preventing reliable opener-side close observation.
+
+### DAWproject import boundaries
+
+Nested Clips supports only a single clip containing a single timeline at each level;
+ambiguous multi-clip or multi-content nesting is refused before box creation.
+The outer clip supplies placement and playback coordinates for this wrapper shape.
+Note loops use loopEnd minus loopStart, normalize note positions to the loop window,
+and preserve playback before loopStart as a separate lead-in region. Nonpositive
+loops and playStart at/past loopEnd are refused. Nonlooping note clips retain their
+trimmed extent without repeating. Notes beginning before a source window are omitted; note ends crossing its end are clipped.
+Segments and notes shorter than one integer playback pulse are omitted; a clip
+whose derived regions are all sub-pulse is refused. Admission also
+checks otherwise unread arrangement lanes, and refuses empty nested wrappers.

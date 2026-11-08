@@ -24,5 +24,6 @@
 * ~~Create the openDAW device if found~~
     * ~~Read preset~~
 * Create automation
-* Read event-offset and import loop settings
+* Note playback offsets and loop spans are imported, including pre-loop lead-ins.
+* Multi-clip/multi-content nesting is explicitly unsupported (see core README).
 * ~~Auto-select the first audio-unit~~

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse ambiguous nested DAWproject clips before import; preserve note loop start/span, lead-ins and trimmed nonlooping clips.
+
 - Refuse freeze results after live source edits or deletion; compensate publication callback failures so retries remain usable.
 
 - Fence late freeze completions after project termination, cancel obsolete renders and release copied projects and dialogs on every outcome.
