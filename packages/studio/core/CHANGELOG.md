@@ -16,6 +16,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 - Validate inherited DAWproject beat timeline and second-based media units before creating boxes; label exported warp sources as seconds.
 - Remove DAWproject XML/metadata console logging and omit names/content from structural import warnings.
 
+- Preserve audio play offsets and warp markers on export/import, require loaded export audio, and label warp source coordinates as seconds;
+  preserve imported linear source scale; refuse nonlinear warps and unsupported playback windows before graph mutation.
+- Refuse no-stretch audio export with tempo automation in both Musical and Seconds time bases, and waveform offsets in all audio modes.
+
 - Refuse ambiguous nested DAWproject clips before import; preserve note loop start/span, lead-ins and trimmed nonlooping clips.
 
 - Refuse freeze results after live source edits or deletion; compensate publication callback failures so retries remain usable.
