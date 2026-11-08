@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Release offline worker, message channels, MIDI and live-stream subscriptions after initialization failures; release render polling on loading and play failures.
+
 - Release flatten copies, dialogs and renderers on preparation/import failures; restore export loop state on failure without overwriting newer loop edits.
 
 - Cancel flatten before publication, stop its renderer, remove abort listeners, and refuse stale results after live graph edits with a retry message.
