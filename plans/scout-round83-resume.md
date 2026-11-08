@@ -88,3 +88,12 @@ These later scopes are intentionally unfinished. In particular B01's notes
 allowlist rejects before target box creation but does not yet restore external
 selection on a failed paste (B02), and ClipboardManager's existing handler-error
 catch can still replay fallback (also B02).
+
+## Finisher outcome (round 84)
+
+B01 reviewed by the Claude finisher (Opus): no Critical/Warning findings.
+Suggestions only: the notes allowlist hard-codes the collection `events` field
+key `1` (covered by the real copy/paste round trip), and oversized non-openDAW
+text now suppresses the in-memory fallback like an invalid envelope. Build,
+lint and the full test suite rerun before the `--no-ff` merge to `main`.
+B02-B05 remain open as listed above.
