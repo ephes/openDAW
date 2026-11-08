@@ -74,7 +74,7 @@ export namespace ValuesClipboard {
                 const pastedMin = min + positionOffset
                 const pastedMax = max + positionOffset
                 const existing = collection.events.asArray().slice()
-                const pasted = editing.modify(() => {
+                editing.modify(() => {
                     const boxes = ClipboardUtils.deserializeBoxes(
                         entry.data,
                         boxGraph,
@@ -100,10 +100,10 @@ export namespace ValuesClipboard {
                     const valueEventBoxes = boxes.filter((box): box is ValueEventBox => box instanceof ValueEventBox)
                     const pastedAdapters = valueEventBoxes.map(box => boxAdapters.adapterFor(box, ValueEventBoxAdapter))
                     const deleted = resolveIndexConflicts(existingAdapters, pastedAdapters, pastedMin, pastedMax)
-                    return pastedAdapters.filter(adapter => !deleted.has(adapter))
-                }).unwrap()
-                selection.deselectAll()
-                selection.select(...pasted)
+                    // Publish the selection last, inside the same history step, after all fallible work.
+                    selection.deselectAll()
+                    selection.select(...pastedAdapters.filter(adapter => !deleted.has(adapter)))
+                })
                 setPosition(pastedMax)
             }
         }

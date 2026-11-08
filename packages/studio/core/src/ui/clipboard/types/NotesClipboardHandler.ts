@@ -79,7 +79,7 @@ export namespace NotesClipboard {
                 const pasteComplete = Math.max(0, position) + (max - min)
                 if (!Number.isFinite(pasteComplete)) {throw new Error("Invalid paste span")}
                 const positionOffset = Math.max(0, position) - min
-                const pasted = editing.modify(() => {
+                editing.modify(() => {
                     const boxes = ClipboardUtils.deserializeBoxes(
                         entry.data,
                         boxGraph,
@@ -116,10 +116,10 @@ export namespace NotesClipboard {
                         }
                     )
                     const noteEventBoxes = boxes.filter((box): box is NoteEventBox => box instanceof NoteEventBox)
-                    return noteEventBoxes.map(box => boxAdapters.adapterFor(box, NoteEventBoxAdapter))
-                }).unwrap()
-                selection.deselectAll()
-                selection.select(...pasted)
+                    // Publish the selection last, inside the same history step, after all fallible work.
+                    selection.deselectAll()
+                    selection.select(...noteEventBoxes.map(box => boxAdapters.adapterFor(box, NoteEventBoxAdapter)))
+                })
                 setPosition(pasteComplete)
             }
         }

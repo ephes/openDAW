@@ -3,7 +3,9 @@
 Round 83 bundle B02 was rechecked against main at b7bab7a8; all three findings
 still applied. B01 admission protections were already merged and retained.
 
-Notes, values and regions publish their new selection and cursor only after
+Notes, values and regions publish their new selection as the last step inside
+the paste transaction, after all fallible decoding and creation work, so a paste
+and its selection undo as one history step; the cursor advances only after
 BoxEditing commits successfully. Graph decoding/creation remains transactional;
 a corrupt payload or an installation failure leaves external editor state alone.
 Value paste decodes and creates incoming boxes before deleting overlapping values.

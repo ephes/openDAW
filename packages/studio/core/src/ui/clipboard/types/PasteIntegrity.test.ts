@@ -2,7 +2,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {ByteArrayInput, ByteArrayOutput, Option, Selection, UUID} from "@opendaw/lib-std"
 import {BoxEditing, BoxGraph} from "@opendaw/lib-box"
 import {AudioUnitBox, BoxIO, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
-import {BoxAdapters, NoteEventBoxAdapter, ProjectSkeleton, TrackBoxAdapter, TrackType, ValueEventBoxAdapter, ValueEventCollectionBoxAdapter} from "@opendaw/studio-adapters"
+import {BoxAdapters, NoteEventBoxAdapter, ProjectSkeleton, TrackBoxAdapter, TrackType, ValueEventBoxAdapter, ValueEventCollectionBoxAdapter, VertexSelection} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {ClipboardUtils} from "../ClipboardUtils"
 import {NotesClipboard} from "./NotesClipboardHandler"
@@ -19,8 +19,8 @@ const metadata = (min: number, max: number) => {
     return output.toArrayBuffer()
 }
 
-const setup = (kind: "notes" | "values") => {
-    const {boxGraph: graph, mandatoryBoxes: {rootBox, primaryAudioBusBox}} =
+const setup = (kind: "notes" | "values", options: {vertexSelection?: boolean} = {}) => {
+    const {boxGraph: graph, mandatoryBoxes: {rootBox, primaryAudioBusBox, userInterfaceBoxes}} =
         ProjectSkeleton.empty({createDefaultUser: true, createOutputMaximizer: false})
     const editing = new BoxEditing(graph)
     const collection = editing.modify(() => {
@@ -54,11 +54,23 @@ const setup = (kind: "notes" | "values") => {
     editing.modify(() => incoming.delete())
     const adapter = {box: original, position: 15, index: 0} as NoteEventBoxAdapter & ValueEventBoxAdapter
     let selected = [adapter]
-    const selection = {
-        selected: () => selected.slice(), nonEmpty: () => selected.length > 0,
-        deselectAll: vi.fn(() => {selected = []}),
-        select: vi.fn((...items: typeof selected) => {selected.push(...items)})
-    } as unknown as Selection<NoteEventBoxAdapter> & Selection<ValueEventBoxAdapter>
+    const vertexSelection = options.vertexSelection === true
+        ? Option.wrap(new VertexSelection(editing, graph).switch(userInterfaceBoxes[0].selection))
+        : Option.None
+    vertexSelection.ifSome(vertices => vertices.select(original))
+    const selection = (vertexSelection.match<unknown>({
+        none: () => ({
+            selected: () => selected.slice(), nonEmpty: () => selected.length > 0,
+            deselectAll: vi.fn(() => {selected = []}),
+            select: vi.fn((...items: typeof selected) => {selected.push(...items)})
+        }),
+        some: vertices => ({
+            selected: () => vertices.selected(), nonEmpty: () => vertices.nonEmpty(),
+            deselectAll: () => vertices.deselectAll(),
+            select: (...items: ReadonlyArray<{box: NoteEventBox | ValueEventBox}>) =>
+                vertices.select(...items.map(item => item.box))
+        })
+    }) as unknown) as Selection<NoteEventBoxAdapter> & Selection<ValueEventBoxAdapter>
     let position = 10
     const setPosition = vi.fn((value: number) => {position = value})
     const context = {
@@ -69,7 +81,7 @@ const setup = (kind: "notes" | "values") => {
     const handler = kind === "notes" ? NotesClipboard.createHandler(context) : ValuesClipboard.createHandler({
         ...context, collection: {events: {asArray: () => [adapter]}} as unknown as ValueEventCollectionBoxAdapter
     })
-    return {handler, graph, selection, adapter, incoming, data, setPosition, getPosition: () => position}
+    return {handler, graph, editing, collection, selection, adapter, incoming, data, setPosition, getPosition: () => position}
 }
 
 describe.each(["notes", "values"] as const)("%s paste integrity", kind => {
@@ -105,6 +117,24 @@ describe.each(["notes", "values"] as const)("%s paste integrity", kind => {
         expect(new Uint8Array(graph.toArrayBuffer())).toEqual(before)
         expect(selection.selected()).toEqual([adapter])
         expect(setPosition).not.toHaveBeenCalled()
+    })
+
+    it("records paste and its selection as a single undo step", () => {
+        const {handler, editing, collection, selection, data} = setup(kind, {vertexSelection: true})
+        const ids = (items: ReadonlyArray<{address: {uuid: UUID.Bytes}}>) =>
+            items.map(item => UUID.toString(item.address.uuid)).sort()
+        const events = () => ids(collection.events.pointerHub.incoming().map(pointer => pointer.box))
+        const selected = () => ids(selection.selected() as unknown as ReadonlyArray<{address: {uuid: UUID.Bytes}}>)
+        const eventsBefore = events()
+        const selectedBefore = selected()
+        expect(selectedBefore).toHaveLength(1)
+        handler.paste({type: kind, data})
+        expect(events()).not.toEqual(eventsBefore)
+        expect(selected()).toHaveLength(1)
+        expect(selected()).not.toEqual(selectedBefore)
+        expect(editing.undo()).toBe(true)
+        expect(events()).toEqual(eventsBefore)
+        expect(selected()).toEqual(selectedBefore)
     })
 
     it("selects the pasted events and advances the cursor on success", () => {

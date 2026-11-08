@@ -161,7 +161,7 @@ export namespace RegionsClipboard {
                     if (!targetTrack || targetTrack.type !== trackInfo.type) {return}
                     sourceTrackToTarget.add({uuid: trackInfo.uuid, target: targetTrack})
                 }
-                const pasted = editing.modify(() => {
+                editing.modify(() => {
                     const overlapSolvers = sourceTrackToTarget.values()
                         .map(({target}) => overlapResolver.fromRange(target, pastePosition, pasteComplete))
                     const boxes = ClipboardUtils.deserializeBoxes(
@@ -190,10 +190,10 @@ export namespace RegionsClipboard {
                     overlapSolvers.forEach(solver => solver())
                     const regionBoxes = boxes.filter(UnionBoxTypes.isRegionBox)
                     const adapters = regionBoxes.map(box => RegionAdapters.for(boxAdapters, box))
-                    return adapters
-                }).unwrap()
-                selection.deselectAll()
-                selection.select(...pasted)
+                    // Publish the selection last, inside the same history step, after all fallible work.
+                    selection.deselectAll()
+                    selection.select(...adapters)
+                })
                 setPosition(pasteComplete)
             }
         }
