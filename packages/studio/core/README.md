@@ -208,3 +208,13 @@ trimmed extent without repeating. Notes beginning before a source window are omi
 Segments and notes shorter than one integer playback pulse are omitted; a clip
 whose derived regions are all sub-pulse is refused. Admission also
 checks otherwise unread arrangement lanes, and refuses empty nested wrappers.
+
+DAWproject arrangement timing defaults to beats. Inherited lane/clip/notes and
+automation units must all be beats; seconds-based or mixed timeline timing is
+refused before box creation. Warp output timing is beats, while warp source/media
+coordinates are seconds (implicit source unit defaults to seconds). Export labels
+warp source seconds correctly. Legacy exports labeling source seconds as beats
+need correction before import; the importer does not guess.
+
+DAWproject decode/encode console diagnostics exclude XML bodies, metadata, names,
+comments and resource paths. Import warnings use fixed structural categories.

@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Validate inherited DAWproject beat timeline and second-based media units before creating boxes; label exported warp sources as seconds.
+- Remove DAWproject XML/metadata console logging and omit names/content from structural import warnings.
+
 - Refuse ambiguous nested DAWproject clips before import; preserve note loop start/span, lead-ins and trimmed nonlooping clips.
 
 - Refuse freeze results after live source edits or deletion; compensate publication callback failures so retries remain usable.

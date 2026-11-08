@@ -1,8 +1,10 @@
-import {expect, it, vi} from "vitest"
+import {afterEach, expect, it, vi} from "vitest"
+import {UUID} from "@opendaw/lib-std"
+import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {ProjectSchema} from "@opendaw/lib-dawproject"
 import {LoopableRegion, PPQN} from "@opendaw/lib-dsp"
-import {NoteEventBox, NoteRegionBox} from "@opendaw/studio-boxes"
+import {AudioFileBox, AudioRegionBox, NoteEventBox, NoteRegionBox} from "@opendaw/studio-boxes"
 import {DawProjectImport} from "./DawProjectImporter"
 import {DawProject} from "./DawProject"
 
@@ -10,12 +12,12 @@ const resources: DawProject.ResourceProvider = {
     fromPath: vi.fn(() => {throw new Error("Unexpected resource read")}),
     fromUUID: vi.fn(() => {throw new Error("Unexpected resource read")})
 }
-const schema = (clips: string) => Xml.parse(`<Project version="1.0">
+const schema = (clips: string, rootAttributes = "", laneAttributes = "", clipsAttributes = "") => Xml.parse(`<Project version="1.0">
     <Structure>
         <Track id="notes" contentType="notes"><Channel id="channel" role="regular" destination="master"/></Track>
         <Track id="output" contentType="audio"><Channel id="master" role="master"/></Track>
     </Structure>
-    <Arrangement><Lanes><Lanes track="notes"><Clips>${clips}</Clips></Lanes></Lanes></Arrangement>
+    <Arrangement><Lanes ${rootAttributes}><Lanes track="notes" ${laneAttributes}><Clips ${clipsAttributes}>${clips}</Clips></Lanes></Lanes></Arrangement>
 </Project>`, ProjectSchema)
 const notes = '<Notes><Note time="2" duration="0.5" channel="0" key="60"/><Note time="4" duration="0.5" channel="0" key="64"/><Note time="11" duration="0.5" channel="0" key="67"/></Notes>'
 const read = (clips: string) => DawProjectImport.read(schema(clips), resources)
@@ -91,4 +93,59 @@ it.each([0.25 / PPQN.Quarter, 1 - 0.25 / PPQN.Quarter])("omits sub-pulse split p
 it("refuses clips whose split pieces would all vanish at pulse resolution", async () => {
     await expect(read(`<Clip time="0" duration="${1.5 / PPQN.Quarter}" loopStart="${0.75 / PPQN.Quarter}" loopEnd="2">${notes}</Clip>`))
         .rejects.toThrow(/sub-pulse note clip/)
+})
+
+afterEach(() => vi.restoreAllMocks())
+it.each(["", 'timeUnit="beats"'])("imports exact beat timing with inherited %s", async attributes => {
+    const project = schema(`<Clip time="2" duration="8">${notes}</Clip>`, attributes)
+    const {skeleton} = await DawProjectImport.read(project, resources)
+    const region = skeleton.boxGraph.boxes().find(box => box instanceof NoteRegionBox) as NoteRegionBox
+    expect(region.position.getValue()).toBe(2 * PPQN.Quarter)
+    expect(region.duration.getValue()).toBe(8 * PPQN.Quarter)
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof NoteEventBox).map(box => box.position.getValue()).sort((a, b) => a - b))
+        .toEqual([2, 4].map(value => value * PPQN.Quarter))
+})
+it.each([
+    ['timeUnit="seconds"', "", "", "", notes],
+    ["", 'timeUnit="seconds"', "", "", notes],
+    ["", "", 'timeUnit="seconds"', "", notes],
+    ["", "", "", 'contentTimeUnit="seconds"', notes],
+    ["", "", "", "", notes.replace("<Notes>", '<Notes timeUnit="seconds">')],
+    ['timeUnit="seconds"', 'timeUnit="beats"', "", "", notes]
+])("refuses inherited or mixed units before graph mutation", async (root, lane, clips, clip, content) => {
+    const project = schema(`<Clip time="2" duration="8" ${clip}>${content}</Clip>`, root, lane, clips)
+    const begin = vi.spyOn(BoxGraph.prototype, "beginTransaction")
+    await expect(DawProjectImport.read(project, resources)).rejects.toThrow(/Unsupported timeline time unit/)
+    expect(begin).not.toHaveBeenCalled()
+})
+it("refuses seconds-based tempo automation before graph mutation", async () => {
+    const xml = Xml.pretty(Xml.toElement("Project", schema(`<Clip time="0" duration="8">${notes}</Clip>`)))
+        .replace("<Arrangement>", '<Arrangement><TempoAutomation timeUnit="seconds"><RealPoint time="1" value="120"/></TempoAutomation>')
+    const project = Xml.parse(xml, ProjectSchema)
+    const begin = vi.spyOn(BoxGraph.prototype, "beginTransaction")
+    await expect(DawProjectImport.read(project, resources)).rejects.toThrow(/Unsupported timeline time unit/)
+    expect(begin).not.toHaveBeenCalled()
+})
+
+const audioProject = (warpAttributes: string, audioAttributes: string) => schema(`<Clip time="2" duration="4"><Warps ${warpAttributes}>
+    <Warp time="0" contentTime="0"/><Warp time="8" contentTime="4"/>
+    <Audio duration="4" channels="1" sampleRate="4" ${audioAttributes}><File path="synthetic.wav"/></Audio>
+</Warps></Clip>`)
+it.each([["", ""], ['timeUnit="beats" contentTimeUnit="seconds"', 'timeUnit="seconds"']])("distinguishes beat warp timing from second source timing", async (warpAttributes, audioAttributes) => {
+    const resource = {uuid: UUID.generate(), path: "synthetic.wav", name: "synthetic.wav", buffer: new ArrayBuffer(0)}
+    const {skeleton} = await DawProjectImport.read(audioProject(warpAttributes, audioAttributes), {fromPath: () => resource, fromUUID: () => resource})
+    const region = skeleton.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
+    expect(region.position.getValue()).toBe(2 * PPQN.Quarter)
+    expect(region.duration.getValue()).toBe(4 * PPQN.Quarter)
+    expect(region.loopDuration.getValue()).toBe(8 * PPQN.Quarter)
+    expect((region.file.targetVertex.unwrap().box as AudioFileBox).endInSeconds.getValue()).toBe(4)
+})
+it.each([
+    ['timeUnit="seconds" contentTimeUnit="seconds"', ""],
+    ['contentTimeUnit="beats"', ""],
+    ['contentTimeUnit="seconds"', 'timeUnit="beats"']
+])("refuses unsupported warp/media units before graph mutation", async (warpAttributes, audioAttributes) => {
+    const begin = vi.spyOn(BoxGraph.prototype, "beginTransaction")
+    await expect(DawProjectImport.read(audioProject(warpAttributes, audioAttributes), resources)).rejects.toThrow(/Unsupported .*time unit/)
+    expect(begin).not.toHaveBeenCalled()
 })

@@ -208,7 +208,7 @@ export namespace DawProjectExporter {
                     color: Color.hslToHex(region.hue.getValue(), 1.0, 0.60),
                     content: [Xml.element({
                         content: audioElement.mapOr(element => [element], []),
-                        contentTimeUnit: "beats",
+                        contentTimeUnit: TimeUnit.SECONDS,
                         warps: [
                             Xml.element({
                                 time: 0.0,
