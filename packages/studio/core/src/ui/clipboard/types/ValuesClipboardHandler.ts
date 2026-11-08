@@ -67,19 +67,14 @@ export namespace ValuesClipboard {
                 if (entry.type !== "values" || !getEnabled()) {return}
                 const position = getPosition()
                 const {min, max} = decodeMetadata(ClipboardUtils.extractMetadata(entry.data))
+                if (!Number.isFinite(position)) {throw new Error("Invalid paste position")}
+                const pasteComplete = Math.max(0, position) + (max - min)
+                if (!Number.isFinite(pasteComplete)) {throw new Error("Invalid paste span")}
                 const positionOffset = Math.max(0, position) - min
                 const pastedMin = min + positionOffset
                 const pastedMax = max + positionOffset
-                editing.modify(() => {
-                    selection.deselectAll()
-                    const existingAdapters: Array<ValueEventBoxAdapter> = []
-                    for (const adapter of collection.events.asArray()) {
-                        if (pastedMin < adapter.position && adapter.position < pastedMax) {
-                            adapter.box.delete()
-                        } else {
-                            existingAdapters.push(adapter)
-                        }
-                    }
+                const existing = collection.events.asArray().slice()
+                const pasted = editing.modify(() => {
                     const boxes = ClipboardUtils.deserializeBoxes(
                         entry.data,
                         boxGraph,
@@ -94,12 +89,22 @@ export namespace ValuesClipboard {
                             }
                         }
                     )
+                    const existingAdapters: Array<ValueEventBoxAdapter> = []
+                    for (const adapter of existing) {
+                        if (pastedMin < adapter.position && adapter.position < pastedMax) {
+                            adapter.box.delete()
+                        } else {
+                            existingAdapters.push(adapter)
+                        }
+                    }
                     const valueEventBoxes = boxes.filter((box): box is ValueEventBox => box instanceof ValueEventBox)
                     const pastedAdapters = valueEventBoxes.map(box => boxAdapters.adapterFor(box, ValueEventBoxAdapter))
                     const deleted = resolveIndexConflicts(existingAdapters, pastedAdapters, pastedMin, pastedMax)
-                    selection.select(...pastedAdapters.filter(adapter => !deleted.has(adapter)))
-                    setPosition(pastedMax)
-                })
+                    return pastedAdapters.filter(adapter => !deleted.has(adapter))
+                }).unwrap()
+                selection.deselectAll()
+                selection.select(...pasted)
+                setPosition(pastedMax)
             }
         }
     }
@@ -113,7 +118,9 @@ export namespace ValuesClipboard {
 
     const decodeMetadata = (buffer: ArrayBufferLike): { min: ppqn, max: ppqn } => {
         const input = new ByteArrayInput(buffer)
-        return {min: input.readFloat(), max: input.readFloat()}
+        const span = ClipboardUtils.readTimeSpan(input)
+        if (input.remaining() !== 0) {throw new Error("Invalid clipboard time metadata")}
+        return span
     }
 
     // At pastedMin: push all pasted after existing → keep first (existing, index 0) and last (pasted, index 1)

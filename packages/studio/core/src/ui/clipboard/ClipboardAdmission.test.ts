@@ -82,3 +82,31 @@ describe("clipboard text admission", () => {
         expect(vi.mocked(handler.paste).mock.calls[0][0].data.byteLength).toBe(MAX_BYTES)
     })
 })
+
+describe("paste handler errors", () => {
+    const pasteProcedure = async (collect: Parameters<typeof ContextMenu.subscribe>[1]) => {
+        const trigger = vi.spyOn(MenuItem.prototype, "setTriggerProcedure")
+        const item = await menu(collect)
+        return {run: () => trigger.mock.calls.at(-1)![0](item)}
+    }
+
+    it("propagates a handler error once without replaying fallback", async () => {
+        const {handler, collect} = await setup()
+        vi.spyOn(Clipboard, "readText").mockResolvedValue("OPENDAW:2:notes:Ag==")
+        const error = new Error("synthetic handler failure")
+        vi.mocked(handler.paste).mockImplementationOnce(() => {throw error})
+        const {run} = await pasteProcedure(collect)
+        await expect(run()).rejects.toBe(error)
+        expect(handler.paste).toHaveBeenCalledOnce()
+        expect(new Uint8Array(vi.mocked(handler.paste).mock.calls[0][0].data)).toEqual(new Uint8Array([2]))
+    })
+
+    it("still pastes fallback once when clipboard permission is denied", async () => {
+        const {handler, collect} = await setup()
+        vi.spyOn(Clipboard, "readText").mockRejectedValue(new Error("synthetic denied read"))
+        const {run} = await pasteProcedure(collect)
+        await run()
+        expect(handler.paste).toHaveBeenCalledOnce()
+        expect(new Uint8Array(vi.mocked(handler.paste).mock.calls[0][0].data)).toEqual(new Uint8Array([1]))
+    })
+})

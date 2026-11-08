@@ -231,7 +231,12 @@ Malformed or over-budget openDAW envelopes are refused without replaying the
 in-memory fallback. Plain text or an unavailable OS clipboard may still use that
 fallback. Binary metadata, graph and box-record lengths must fit the admitted
 bytes before allocation. Notes paste accepts note events and their owned repeat
-features only, reconnecting notes to the destination collection.
+features only, reconnecting notes to the destination collection. Notes, automation
+values and regions require finite ordered placement spans; region track metadata
+must use valid track types and unique source tracks/offsets within the destination
+track list. Failed graph installation preserves the editor selection and cursor.
+Handler errors surface once through the error path; only clipboard-read failures
+may replay the in-memory fallback.
 
 ### Flow Charts
 

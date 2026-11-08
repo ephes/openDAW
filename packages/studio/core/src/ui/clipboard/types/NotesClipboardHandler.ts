@@ -30,7 +30,9 @@ export namespace NotesClipboard {
 
     const decodeMetadata = (buffer: ArrayBufferLike): { min: ppqn, max: ppqn } => {
         const input = new ByteArrayInput(buffer)
-        return {min: input.readFloat(), max: input.readFloat()}
+        const span = ClipboardUtils.readTimeSpan(input)
+        if (input.remaining() !== 0) {throw new Error("Invalid clipboard time metadata")}
+        return span
     }
 
     export const createHandler = ({
@@ -73,9 +75,11 @@ export namespace NotesClipboard {
                 if (entry.type !== "notes" || !getEnabled()) {return}
                 const position = getPosition()
                 const {min, max} = decodeMetadata(ClipboardUtils.extractMetadata(entry.data))
+                if (!Number.isFinite(position)) {throw new Error("Invalid paste position")}
+                const pasteComplete = Math.max(0, position) + (max - min)
+                if (!Number.isFinite(pasteComplete)) {throw new Error("Invalid paste span")}
                 const positionOffset = Math.max(0, position) - min
-                editing.modify(() => {
-                    selection.deselectAll()
+                const pasted = editing.modify(() => {
                     const boxes = ClipboardUtils.deserializeBoxes(
                         entry.data,
                         boxGraph,
@@ -112,9 +116,11 @@ export namespace NotesClipboard {
                         }
                     )
                     const noteEventBoxes = boxes.filter((box): box is NoteEventBox => box instanceof NoteEventBox)
-                    selection.select(...noteEventBoxes.map(box => boxAdapters.adapterFor(box, NoteEventBoxAdapter)))
-                    setPosition(Math.max(0, position) + (max - min))
-                })
+                    return noteEventBoxes.map(box => boxAdapters.adapterFor(box, NoteEventBoxAdapter))
+                }).unwrap()
+                selection.deselectAll()
+                selection.select(...pasted)
+                setPosition(pasteComplete)
             }
         }
     }

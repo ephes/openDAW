@@ -57,17 +57,29 @@ export namespace RegionsClipboard {
 
     const decodeMetadata = (buffer: ArrayBufferLike): RegionsMetadata => {
         const input = new ByteArrayInput(buffer)
-        const minPosition = input.readFloat()
-        const maxPosition = input.readFloat()
+        const {min: minPosition, max: maxPosition} = ClipboardUtils.readTimeSpan(input)
         const count = input.readInt()
+        if (count <= 0 || count > Math.floor(input.remaining() / 24)) {
+            throw new Error("Invalid clipboard track count")
+        }
         const tracks: TrackInfo[] = []
+        const offsets = new Set<number>()
+        const sourceTracks = UUID.newSet<UUID.Bytes>(uuid => uuid)
         for (let i = 0; i < count; i++) {
             const uuid = new Uint8Array(16) as UUID.Bytes
             input.readBytes(new Int8Array(uuid.buffer))
             const offset = input.readInt()
             const type = input.readInt() as TrackType
+            if (offset < 0 || offsets.has(offset) ||
+                ![TrackType.Undefined, TrackType.Notes, TrackType.Audio, TrackType.Value].includes(type) ||
+                sourceTracks.hasKey(uuid)) {
+                throw new Error("Invalid clipboard track metadata")
+            }
+            sourceTracks.add(uuid)
+            offsets.add(offset)
             tracks.push({uuid, offset, type})
         }
+        if (input.remaining() !== 0) {throw new Error("Invalid clipboard track metadata")}
         return {minPosition, maxPosition, tracks}
     }
 
@@ -132,6 +144,10 @@ export namespace RegionsClipboard {
                 if (entry.type !== "regions" || !getEnabled()) {return}
                 const position = getPosition()
                 const metadata = decodeMetadata(ClipboardUtils.extractMetadata(entry.data))
+                if (!Number.isFinite(position)) {throw new Error("Invalid paste position")}
+                const pastePosition = Math.max(0, position)
+                const pasteComplete = pastePosition + (metadata.maxPosition - metadata.minPosition)
+                if (!Number.isFinite(pasteComplete)) {throw new Error("Invalid paste span")}
                 const positionOffset = Math.max(0, position) - metadata.minPosition
                 const allTracks = getTracks()
                 const focusedTrack = getFocusedTrack()
@@ -145,10 +161,7 @@ export namespace RegionsClipboard {
                     if (!targetTrack || targetTrack.type !== trackInfo.type) {return}
                     sourceTrackToTarget.add({uuid: trackInfo.uuid, target: targetTrack})
                 }
-                editing.modify(() => {
-                    selection.deselectAll()
-                    const pastePosition = Math.max(0, position)
-                    const pasteComplete = pastePosition + (metadata.maxPosition - metadata.minPosition)
+                const pasted = editing.modify(() => {
                     const overlapSolvers = sourceTrackToTarget.values()
                         .map(({target}) => overlapResolver.fromRange(target, pastePosition, pasteComplete))
                     const boxes = ClipboardUtils.deserializeBoxes(
@@ -177,9 +190,11 @@ export namespace RegionsClipboard {
                     overlapSolvers.forEach(solver => solver())
                     const regionBoxes = boxes.filter(UnionBoxTypes.isRegionBox)
                     const adapters = regionBoxes.map(box => RegionAdapters.for(boxAdapters, box))
-                    selection.select(...adapters)
-                    setPosition(pasteComplete)
-                })
+                    return adapters
+                }).unwrap()
+                selection.deselectAll()
+                selection.select(...pasted)
+                setPosition(pasteComplete)
             }
         }
     }
