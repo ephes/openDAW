@@ -190,3 +190,16 @@ Script installation and initialization failures release them before rejecting.
 The returned renderer owns the same resources and terminates idempotently.
 Loading-query and play failures also release render polling and the worker,
 without sending a render request or replacing the initiating error.
+
+## Offline cancellation and loader subscriptions
+
+Render uses an owned abort event listener, leaves caller handlers intact and removes
+it at settlement. Already-aborted signals reject before polling or loading starts.
+Cancellation races loading, play and rendering so it rejects even if a worker reply
+is pending. Stop and termination are idempotent for the operation; a late abort
+after settlement does nothing.
+
+Audio and soundfont terminal callbacks can run synchronously during subscribe.
+The offline renderer retires their returned subscriptions after synchronous delivery
+and uses scoped resource ownership for later delivery and renderer termination,
+without changing the loader API. Repeated cached errors do not accumulate observers.

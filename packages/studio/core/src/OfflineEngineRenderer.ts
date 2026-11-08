@@ -2,7 +2,6 @@ import {
     DefaultObservableValue,
     Errors,
     int,
-    isDefined,
     Nullable,
     Option,
     panic,
@@ -89,27 +88,41 @@ export class OfflineEngineRenderer {
                 ready: (): void => {},
                 fetchAudio: (uuid: UUID.Bytes): Promise<AudioData> => new Promise((resolve, reject) => {
                     const handler = source.sampleManager.getOrCreate(uuid)
+                    const lifetime = terminator.spawn()
+                    let settled = false
                     const subscription = handler.subscribe(state => {
+                        if (settled) {return}
                         if (state.type === "error") {
+                            settled = true
                             reject(new Error(state.reason))
-                            subscription.terminate()
+                            lifetime.terminate()
                         } else if (state.type === "loaded") {
+                            settled = true
                             resolve(handler.data.unwrap())
-                            subscription.terminate()
+                            lifetime.terminate()
                         }
                     })
+                    if (settled) {subscription.terminate()}
+                    else {lifetime.own(subscription)}
                 }),
                 fetchSoundfont: (uuid: UUID.Bytes): Promise<SoundFont2> => new Promise((resolve, reject) => {
                     const handler = source.soundfontManager.getOrCreate(uuid)
+                    const lifetime = terminator.spawn()
+                    let settled = false
                     const subscription = handler.subscribe(state => {
+                        if (settled) {return}
                         if (state.type === "error") {
+                            settled = true
                             reject(new Error(state.reason))
-                            subscription.terminate()
+                            lifetime.terminate()
                         } else if (state.type === "loaded") {
+                            settled = true
                             resolve(handler.soundfont.unwrap())
-                            subscription.terminate()
+                            lifetime.terminate()
                         }
                     })
+                    if (settled) {subscription.terminate()}
+                    else {lifetime.own(subscription)}
                 }),
                 fetchNamWasm: async (): Promise<ArrayBuffer> => {
                     const url = new URL("@opendaw/nam-wasm/nam.wasm", import.meta.url)
@@ -273,6 +286,7 @@ export class OfflineEngineRenderer {
     readonly #sampleRate: int
     readonly #numberOfChannels: int
 
+    #stopped = false
     #terminated = false
     #totalFrames: int = 0
 
@@ -301,13 +315,15 @@ export class OfflineEngineRenderer {
     get totalFrames(): int {return this.#totalFrames}
 
     async play(): Promise<void> {
+        this.#stopped = false
         this.#engineCommands.play()
         await this.#engineCommands.queryLoadingComplete()
     }
 
     stop(): void {
-        this.#engineCommands.stop(true)
-        this.#protocol.stop()
+        if (this.#terminated || this.#stopped) {return}
+        this.#stopped = true
+        try {this.#engineCommands.stop(true)} finally {this.#protocol.stop()}
     }
 
     setPosition(position: ppqn): void {
@@ -323,7 +339,12 @@ export class OfflineEngineRenderer {
     terminate(): void {
         if (this.#terminated) {return}
         this.#terminated = true
-        try {this.#terminator.terminate()} finally {this.#worker.terminate()}
+        while (this.#terminator.nonEmpty()) {
+            const cleanup = tryCatch(() => this.#terminator.terminate())
+            if (cleanup.status === "failure") {console.warn("Offline renderer cleanup failed")}
+        }
+        const cleanup = tryCatch(() => this.#worker.terminate())
+        if (cleanup.status === "failure") {console.warn("Offline worker cleanup failed")}
     }
 
     async step(samples: int): Promise<Float32Array[]> {
@@ -338,56 +359,50 @@ export class OfflineEngineRenderer {
                  progress: DefaultObservableValue<number>,
                  abortSignal?: AbortSignal
     ): Promise<AudioData> {
-        const {promise, reject, resolve} = Promise.withResolvers<AudioData>()
-        let cancelled = false
-        const span = endPosition - startPosition
-        const polling = span > 0
-            ? AnimationFrame.add(() => {
-                this.#reader.tryRead()
-                progress.setValue(Math.min(1.0,
-                    Math.max(0, this.#engineStateIO.object.position - startPosition) / span))
-            })
-            : Terminable.Empty
-        if (isDefined(abortSignal)) {
-            abortSignal.onabort = () => {
-                polling.terminate()
-                this.stop()
-                this.terminate()
-                cancelled = true
-                reject(Errors.AbortError)
-            }
+        let polling: Terminable = Terminable.Empty
+        const aborted = Promise.withResolvers<never>()
+        void aborted.promise.catch(() => {})
+        const cancel = () => {
+            aborted.reject(Errors.AbortError)
+            const cleanup = tryCatch(() => this.stop())
+            if (cleanup.status === "failure") {console.warn("Offline stop failed")}
+            this.terminate()
+        }
+        const wait = async <T>(promise: Promise<T>): Promise<T> => {
+            const result = await Promise.race([promise, aborted.promise])
+            if (abortSignal?.aborted) {throw Errors.AbortError}
+            return result
         }
         try {
-            while (!await this.#engineCommands.queryLoadingComplete()) {
-                await Wait.timeSpan(TimeSpan.millis(100))
+            if (abortSignal?.aborted) {throw Errors.AbortError}
+            abortSignal?.addEventListener("abort", cancel, {once: true})
+            const span = endPosition - startPosition
+            if (span > 0) {
+                polling = AnimationFrame.add(() => {
+                    this.#reader.tryRead()
+                    progress.setValue(Math.min(1.0,
+                        Math.max(0, this.#engineStateIO.object.position - startPosition) / span))
+                })
+            }
+            while (!await wait(this.#engineCommands.queryLoadingComplete())) {
+                await wait(Wait.timeSpan(TimeSpan.millis(100)))
             }
             if (startPosition !== 0) {this.setPosition(startPosition)}
-            await this.play()
-        } catch (error) {
-            const cleanup = tryCatch(() => polling.terminate())
-            if (cleanup.status === "failure") {console.warn("Offline polling cleanup failed")}
-            const rendererCleanup = tryCatch(() => this.terminate())
-            if (rendererCleanup.status === "failure") {console.warn("Offline renderer cleanup failed")}
-            throw error
-        }
-        this.#protocol.render(config).then(channels => {
-            polling.terminate()
-            if (cancelled) {return}
-            progress.setValue(1.0)
-            this.terminate()
+            await wait(this.play())
+            const channels = await wait(this.#protocol.render(config))
+            if (abortSignal?.aborted) {throw Errors.AbortError}
             const numberOfFrames = channels[0].length
             const audioData = AudioData.create(this.#sampleRate, numberOfFrames, this.#numberOfChannels)
             for (let channelIndex = 0; channelIndex < this.#numberOfChannels; channelIndex++) {
                 audioData.frames[channelIndex].set(channels[channelIndex])
             }
-            resolve(audioData)
-        }).catch(reason => {
-            polling.terminate()
-            if (!cancelled) {
-                this.terminate()
-                reject(reason)
-            }
-        })
-        return promise
+            progress.setValue(1.0)
+            return audioData
+        } finally {
+            abortSignal?.removeEventListener("abort", cancel)
+            const cleanup = tryCatch(() => polling.terminate())
+            if (cleanup.status === "failure") {console.warn("Offline polling cleanup failed")}
+            this.terminate()
+        }
     }
 }
