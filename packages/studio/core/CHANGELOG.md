@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve audio play offsets and warp markers on export/import, require loaded export audio, and label warp source coordinates as seconds;
+  preserve imported linear source scale; refuse nonlinear warps and unsupported playback windows before graph mutation.
+
 - Refuse ambiguous nested DAWproject clips before import; preserve note loop start/span, lead-ins and trimmed nonlooping clips.
 
 - Refuse freeze results after live source edits or deletion; compensate publication callback failures so retries remain usable.
