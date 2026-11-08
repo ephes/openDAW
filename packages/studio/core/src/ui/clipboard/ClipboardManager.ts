@@ -1,5 +1,6 @@
 import {Client, Option, Subscription, Terminable} from "@opendaw/lib-std"
 import {Clipboard, Events, ReservedShortcuts} from "@opendaw/lib-dom"
+import {CLIPBOARD_MAX_BYTES, CLIPBOARD_MAX_TEXT_LENGTH} from "./ClipboardLimits"
 import {ContextMenu} from "./ContextMenu"
 import {MenuItem} from "../menu/MenuItems"
 import {StudioPreferences} from "../../StudioPreferences"
@@ -34,18 +35,36 @@ export namespace ClipboardManager {
     }
 
     const decode = (text: string): Option<AnyEntry> => {
-        const parts = text.split(":")
-        if (parts.length < 4 || parts[0] !== CLIPBOARD_HEADER) {return Option.None}
-        const version = parseInt(parts[1], 10)
-        if (version !== CLIPBOARD_VERSION) {return Option.None}
+        // Check the total encoded size before slicing or invoking the decoder.
+        const prefix = `${CLIPBOARD_HEADER}:${CLIPBOARD_VERSION}:`
+        if (text.length > CLIPBOARD_MAX_TEXT_LENGTH || !text.startsWith(prefix)) {
+            return Option.None
+        }
+        const typeStart = prefix.length
+        const separator = text.indexOf(":", typeStart)
+        if (separator <= typeStart || separator - typeStart > 64) {return Option.None}
+        const base64 = text.slice(separator + 1)
+        const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0
+        const decodedLength = base64.length / 4 * 3 - padding
+        if (base64.length % 4 !== 0 || decodedLength > CLIPBOARD_MAX_BYTES ||
+            !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {return Option.None}
         return Option.tryCatch(() => {
-            const type = parts[2]
-            const base64 = parts.slice(3).join(":")
+            const type = text.slice(typeStart, separator)
             const binary = atob(base64)
+            if (binary.length !== decodedLength) {throw new Error("Invalid clipboard size")}
             const bytes = new Uint8Array(binary.length)
             for (let i = 0; i < binary.length; i++) {bytes[i] = binary.charCodeAt(i)}
             return {type, data: bytes.buffer} as AnyEntry
         })
+    }
+
+    // Invalid native envelopes must not replay an unrelated fallback.
+    const readEntry = (text: string): Option<AnyEntry> => {
+        const entry = decode(text)
+        if (entry.nonEmpty() || text.length > CLIPBOARD_MAX_TEXT_LENGTH || text.startsWith(CLIPBOARD_HEADER + ":")) {
+            return entry
+        }
+        return fallbackEntry
     }
 
     export const install = <E extends AnyEntry>(element: HTMLElement, handler: ClipboardHandler<E>): Subscription => {
@@ -70,15 +89,10 @@ export namespace ClipboardManager {
             try {
                 const rawText = await Clipboard.readText()
                 const text = Option.wrap(rawText)
-                const entry = text.flatMap(decode)
+                const entry = text.flatMap(readEntry)
                 if (entry.nonEmpty()) {
                     if (!handler.canPaste(entry.unwrap(), noClient)) {return}
                     handler.paste(entry.unwrap())
-                } else {
-                    fallbackEntry.ifSome(entry => {
-                        if (!handler.canPaste(entry, noClient)) {return}
-                        handler.paste(entry)
-                    })
                 }
             } catch (_error) {
                 fallbackEntry.ifSome(entry => {
@@ -114,19 +128,12 @@ export namespace ClipboardManager {
                 if (Events.isTextInput(document.activeElement)) {return}
                 if (!element.contains(document.activeElement) && document.activeElement !== document.body) {return}
                 const text = event.clipboardData?.getData("text/plain") ?? ""
-                const entry = decode(text)
+                const entry = readEntry(text)
                 if (entry.nonEmpty()) {
                     if (!handler.canPaste(entry.unwrap(), noClient)) {return}
                     event.preventDefault()
                     event.stopImmediatePropagation()
                     handler.paste(entry.unwrap())
-                } else {
-                    fallbackEntry.ifSome(entry => {
-                        if (!handler.canPaste(entry, noClient)) {return}
-                        event.preventDefault()
-                        event.stopImmediatePropagation()
-                        handler.paste(entry)
-                    })
                 }
             }),
             Events.subscribe(document, "keydown", (event: KeyboardEvent) => {
@@ -150,10 +157,8 @@ export namespace ClipboardManager {
                 if (!StudioPreferences.settings.editing["show-clipboard-menu"]) {return}
                 const {client} = collector
                 const text = await Option.async(Clipboard.readText())
-                const entry = text.flatMap(decode)
-                const canPaste = entry.map(entry => handler.canPaste(entry, client))
-                    .unwrapOrElse(() => fallbackEntry
-                        .map(entry => handler.canPaste(entry, client)).unwrapOrElse(false))
+                const entry = text.match({some: readEntry, none: () => fallbackEntry})
+                const canPaste = entry.map(entry => handler.canPaste(entry, client)).unwrapOrElse(false)
                 collector.addItems(
                     MenuItem.default({
                         label: "Cut",

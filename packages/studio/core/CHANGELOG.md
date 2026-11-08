@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound clipboard text and binary admission to 8 MiB before decoding/allocation, preflight nested graph lengths, and refuse unrelated boxes or invalid feature owners in notes paste.
+
 - Migrate delay automation through region/clip tracks exactly once per event; copy collections shared across parameter targets per delay, unlinking those mirrors to preserve their values. Verify all legacy choices and Vaporisateur pointer/version transitions across serialization.
 
 - Preflight legacy AudioFit geometry before mutation; decode timing fields independently and refuse ambiguous nonmusical legacy timing.
