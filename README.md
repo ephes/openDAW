@@ -297,3 +297,19 @@ Dependency-floor assertions and synthetic unclosed-reference/help/table smoke te
 `npm test --workspace=@opendaw/app-studio`. This targeted patch does not resolve
 unrelated audit findings. Snapshot on 2026-11-07: the full locked graph reports 60 affected packages
 (31 moderate, 25 high, 4 critical); no markdown-it findings remain.
+
+## Dependency audit
+
+On 2026-11-10 the lockfile alone (`npm update --package-lock-only` for the named
+packages, no `package.json` change) moved these to patched releases within
+their ranges: axios, brace-expansion, follow-redirects, form-data, handlebars,
+immutable, ip-address, nanoid, postcss, protobufjs, source-map-js, zod and
+tsx's esbuild. `npm ci`, `npm run build`, `npm test` and `npm run lint` pass.
+The locked graph went from 62 affected packages (31 moderate, 27 high, 4
+critical) to 48 (30 moderate, 15 high, 3 critical); the runtime graph
+(`--omit=dev`) keeps one high finding, dompurify in monaco-editor. The
+remaining high and critical findings need major upgrades: lerna 10 (dev
+tooling: tar, nx, sigstore, pacote, node-gyp, js-yaml, minimatch), vitest 5
+(tinypool, vite) and monaco-editor 0.57 (dompurify). `npm audit fix` would
+also clear `@nx/devkit`, but only by moving lerna's nx toolchain back from 20
+to 18/19, so that one is left as is.
