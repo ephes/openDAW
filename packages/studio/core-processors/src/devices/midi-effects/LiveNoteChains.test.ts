@@ -90,7 +90,7 @@ it("feeds held keyboard input through two arpeggios while stopped and excludes t
     const seqContext = {subscribeProcessPhase: () => ({terminate() {}})} as unknown as EngineContext
     const sequencer = new NoteSequencer(seqContext, {uuid: UUID.generate()} as AudioUnitBoxAdapter)
     sequencer.pushRawNoteOn(64, 0.8)
-    const timeline = note(0, Infinity)
+    const timeline = {...note(0, Infinity), pitch: 72}
     const mixed: NoteEventSource = {
         *processNotes(a, b, flags) {yield* sequencer.processNotes(a, b, flags)},
         *iterateActiveNotesAt(p, onlyExternal) {

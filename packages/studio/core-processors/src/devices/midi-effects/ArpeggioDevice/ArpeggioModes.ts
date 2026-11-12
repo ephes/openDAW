@@ -3,6 +3,9 @@ import {ppqn} from "@opendaw/lib-dsp"
 import {ActiveNoteEvent, NoteLifecycleEvent} from "../../../NoteEventSource"
 
 export type Stack = ReadonlyArray<Omit<ActiveNoteEvent, "position">>
+export namespace Stack {
+    export const PitchComparator = (a: Stack[number], b: Stack[number]): number => a.pitch - b.pitch || a.cent - b.cent
+}
 export type VelocityMatrix = { mult: unitValue, add: unitValue }
 export namespace VelocityMatrix {
     export const create = (): VelocityMatrix => ({mult: 1.0, add: 0.0})
@@ -28,7 +31,7 @@ export const ArpeggioModes: ReadonlyArray<Mode> = Object.freeze([{
         const octave = Math.floor((stepIndex % amount) / count)
         const event = stack[localIndex]
         return {...NoteLifecycleEvent.start(
-            position, duration, event.pitch + octave * 12, VelocityMatrix.apply(velocityMatrix, event.velocity)),
+            position, duration, event.pitch + octave * 12, VelocityMatrix.apply(velocityMatrix, event.velocity), event.cent),
             external: event.external}
     }
 }, {
@@ -45,7 +48,7 @@ export const ArpeggioModes: ReadonlyArray<Mode> = Object.freeze([{
         const octave = (octaves - 1) - Math.floor((stepIndex % amount) / count)
         const event = stack[localIndex]
         return {...NoteLifecycleEvent.start(
-            position, duration, event.pitch + octave * 12, VelocityMatrix.apply(velocityMatrix, event.velocity)),
+            position, duration, event.pitch + octave * 12, VelocityMatrix.apply(velocityMatrix, event.velocity), event.cent),
             external: event.external}
     }
 }, {
@@ -65,7 +68,7 @@ export const ArpeggioModes: ReadonlyArray<Mode> = Object.freeze([{
         const octave = Math.floor(processIndex / count)
         const event = stack[localIndex]
         return {...NoteLifecycleEvent.start(
-            position, duration, event.pitch + octave * 12, VelocityMatrix.apply(velocityMatrix, event.velocity)),
+            position, duration, event.pitch + octave * 12, VelocityMatrix.apply(velocityMatrix, event.velocity), event.cent),
             external: event.external}
     }
 }])
