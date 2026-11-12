@@ -3,6 +3,7 @@ import {
     Arrays,
     assert,
     Editing,
+    Exec,
     int,
     Maybe,
     Notifier,
@@ -124,9 +125,9 @@ export class BoxEditing implements Editing {
         for (const step of reversed) {
             const result = tryCatch(() => step.inverse(this.#graph))
             if (result.status === "failure") {
-                if (this.#graph.inTransaction()) {this.#graph.abortTransaction()}
-                applied.toReversed().forEach(completed => completed.forward(this.#graph))
+                this.#compensate(applied.toReversed().map(completed => () => completed.forward(this.#graph)))
                 this.#historyIndex++
+                this.#notifier.notify()
                 RuntimeNotifier.info({headline: "Undo Failed", message: "This history step is no longer valid due to changes from other participants."})
                 return false
             }
@@ -144,9 +145,9 @@ export class BoxEditing implements Editing {
         for (const step of modifications) {
             const result = tryCatch(() => step.forward(this.#graph))
             if (result.status === "failure") {
-                if (this.#graph.inTransaction()) {this.#graph.abortTransaction()}
-                applied.toReversed().forEach(completed => completed.inverse(this.#graph))
+                this.#compensate(applied.toReversed().map(completed => () => completed.inverse(this.#graph)))
                 this.#historyIndex--
+                this.#notifier.notify()
                 RuntimeNotifier.info({headline: "Redo Failed", message: "This history step is no longer valid due to changes from other participants."})
                 return false
             }
@@ -264,13 +265,19 @@ export class BoxEditing implements Editing {
         const subscription = this.#graph.subscribeToAllUpdates({
             onUpdate: (update: Update) => updates.push(update)
         })
-        this.#graph.beginTransaction()
-        let settled = false
         const cleanup = () => {
             subscription.terminate()
             this.#modifying = false
             this.#inProcess = false
         }
+        const wasInTransaction = this.#graph.inTransaction()
+        const begin = tryCatch(() => this.#graph.beginTransaction())
+        if (begin.status === "failure") {
+            if (!wasInTransaction && this.#graph.inTransaction()) {tryCatch(() => this.#graph.abortTransaction())}
+            cleanup()
+            throw begin.error
+        }
+        let settled = false
         return {
             approve: () => {
                 if (settled) {return}
@@ -314,6 +321,14 @@ export class BoxEditing implements Editing {
         this.#pending.reverse().forEach(modification => modification.inverse(this.#graph))
         this.#pending.length = 0
         this.#notifier.notify()
+    }
+
+    #compensate(steps: ReadonlyArray<Exec>): void {
+        const abortOpenTransaction = () => {if (this.#graph.inTransaction()) {this.#graph.abortTransaction()}}
+        tryCatch(abortOpenTransaction)
+        steps.forEach(step => {
+            if (tryCatch(step).status === "failure") {tryCatch(abortOpenTransaction)}
+        })
     }
 
     disable(): void {
