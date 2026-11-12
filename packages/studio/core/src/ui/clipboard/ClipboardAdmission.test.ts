@@ -110,3 +110,66 @@ describe("paste handler errors", () => {
         expect(new Uint8Array(vi.mocked(handler.paste).mock.calls[0][0].data)).toEqual(new Uint8Array([1]))
     })
 })
+
+describe("pending paste owner lifetime", () => {
+    const deferredRead = () => {
+        let resolve: (text: string) => void = () => {}
+        vi.spyOn(Clipboard, "readText").mockReturnValue(new Promise<string>(settle => {resolve = settle}))
+        return (text: string) => resolve(text)
+    }
+
+    it("drops a paste whose clipboard read settles after the owner is uninstalled", async () => {
+        const {handler, collect} = await setup()
+        vi.spyOn(Clipboard, "readText").mockResolvedValue("OPENDAW:2:notes:Ag==")
+        const trigger = vi.spyOn(MenuItem.prototype, "setTriggerProcedure")
+        const item = await menu(collect)
+        const release = deferredRead()
+        const pending = trigger.mock.calls.at(-1)![0](item)
+        installs.splice(0).forEach(install => install.terminate())
+        release("OPENDAW:2:notes:Ag==")
+        await pending
+        expect(handler.paste).not.toHaveBeenCalled()
+    })
+
+    it("does not query a retired owner when the menu read settles late", async () => {
+        const {handler, collect} = await setup()
+        const canPaste = vi.spyOn(handler, "canPaste")
+        const release = deferredRead()
+        const items: MenuItem[] = []
+        const collector: ContextMenu.Collector = {client, addItems: (...added) => {items.push(...added); return collector}}
+        const collecting = collect(collector)
+        installs.splice(0).forEach(install => install.terminate())
+        release("OPENDAW:2:notes:Ag==")
+        await collecting
+        expect(canPaste).not.toHaveBeenCalled()
+        expect(items).toHaveLength(0)
+    })
+
+    it("ignores stale menu actions after the owner is uninstalled", async () => {
+        const {handler, collect} = await setup()
+        const copy = vi.spyOn(handler, "copy")
+        vi.spyOn(Clipboard, "readText").mockResolvedValue("OPENDAW:2:notes:Ag==")
+        const trigger = vi.spyOn(MenuItem.prototype, "setTriggerProcedure")
+        await menu(collect)
+        const [cut, copyProcedure, paste] = trigger.mock.calls.slice(-3).map(([procedure]) => procedure)
+        installs.splice(0).forEach(install => install.terminate())
+        copy.mockClear()
+        expect(copyProcedure({} as MenuItem)).toBe(false)
+        expect(cut({} as MenuItem)).toBe(false)
+        await paste({} as MenuItem)
+        expect(copy).not.toHaveBeenCalled()
+        expect(handler.paste).not.toHaveBeenCalled()
+    })
+
+    it("still pastes when the read settles while installed", async () => {
+        const {handler, collect} = await setup()
+        vi.spyOn(Clipboard, "readText").mockResolvedValue("OPENDAW:2:notes:Ag==")
+        const trigger = vi.spyOn(MenuItem.prototype, "setTriggerProcedure")
+        const item = await menu(collect)
+        const release = deferredRead()
+        const pending = trigger.mock.calls.at(-1)![0](item)
+        release("OPENDAW:2:notes:Ag==")
+        await pending
+        expect(handler.paste).toHaveBeenCalledOnce()
+    })
+})

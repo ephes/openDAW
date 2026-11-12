@@ -69,23 +69,25 @@ export namespace ClipboardManager {
 
     export const install = <E extends AnyEntry>(element: HTMLElement, handler: ClipboardHandler<E>): Subscription => {
         const noClient: Client = {clientX: 0, clientY: 0}
+        let installed = true
         const writeEntry = (entry: E): void => {
             fallbackEntry = Option.wrap(entry)
             Clipboard.writeText(encode(entry))
         }
         const performCopy = (): boolean => {
-            if (!handler.canCopy(noClient)) {return false}
+            if (!installed || !handler.canCopy(noClient)) {return false}
             const entry = handler.copy()
             entry.ifSome(writeEntry)
             return entry.nonEmpty()
         }
         const performCut = (): boolean => {
-            if (!handler.canCut(noClient)) {return false}
+            if (!installed || !handler.canCut(noClient)) {return false}
             const entry = handler.cut()
             entry.ifSome(writeEntry)
             return entry.nonEmpty()
         }
         const performPaste = async () => {
+            if (!installed) {return}
             let entry: Option<AnyEntry>
             try {
                 const rawText = await Clipboard.readText()
@@ -93,12 +95,15 @@ export namespace ClipboardManager {
             } catch (_error) {
                 entry = fallbackEntry
             }
+            // The owner may have been uninstalled while the clipboard read was pending.
+            if (!installed) {return}
             // Handler failures propagate to the existing unhandled-rejection error path.
             entry.ifSome(entry => {
                 if (handler.canPaste(entry, noClient)) {handler.paste(entry)}
             })
         }
         return Terminable.many(
+            Terminable.create(() => installed = false),
             Events.subscribe(element, "copy", (event: ClipboardEvent) => {
                 if (Events.isTextInput(document.activeElement)) {return}
                 if (!handler.canCopy(noClient)) {return}
@@ -154,6 +159,7 @@ export namespace ClipboardManager {
                 if (!StudioPreferences.settings.editing["show-clipboard-menu"]) {return}
                 const {client} = collector
                 const text = await Option.async(Clipboard.readText())
+                if (!installed) {return}
                 const entry = text.match({some: readEntry, none: () => fallbackEntry})
                 const canPaste = entry.map(entry => handler.canPaste(entry, client)).unwrapOrElse(false)
                 collector.addItems(

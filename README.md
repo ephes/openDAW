@@ -237,6 +237,8 @@ must use valid track types and unique source tracks/offsets within the destinati
 track list. Failed graph installation preserves the editor selection and cursor.
 Handler errors surface once through the error path; only clipboard-read failures
 may replay the in-memory fallback.
+A paste or clipboard menu whose clipboard read settles after its editor has
+closed is dropped instead of acting on the closed editor.
 
 ### Flow Charts
 

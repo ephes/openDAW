@@ -42,6 +42,7 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
 
     #filterChannel: Option<byte> = Option.None
     #stream: Option<Subscription> = Option.None
+    #terminated: boolean = false
 
     #captureEvents: Array<RawNoteEvent> = []
     #captureMode: "stopped" | "playing" = "stopped"
@@ -81,6 +82,7 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
             this.#notifier.subscribe((signal: NoteSignal) => manager.project.engine.noteSignal(signal)),
             this.#notifier.subscribe((signal: NoteSignal) => this.#bufferNote(signal)),
             Terminable.create(() => {
+                this.#terminated = true
                 this.#stopStream()
                 this.#stopCapture()
             })
@@ -256,6 +258,8 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
     }
 
     async #updateStream() {
+        // Queued updates may run after a disarm or termination.
+        if (this.#terminated || !this.armed.getValue()) {return}
         const inputs = MidiDevices.inputDevices()
         const explicit = this.deviceId.getValue().match({
             none: () => inputs,
