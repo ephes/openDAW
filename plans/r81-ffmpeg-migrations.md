@@ -93,7 +93,5 @@ reject the fixture. Repeat migration compares semantic graph JSON, since binary
 serialization carries nonsemantic creation counters that change on decode.
 
 O6 local build, lint, typechecking and full tests passed, including the original-code
-and independent repair-bypass sensitivity checks. Its required Opus review is
-pending: the provider refused authentication because the OAuth token was revoked,
-and the harness failed while formatting that provider error. O6 remains on its
-feature branch and must not merge until the required review succeeds.
+and independent repair-bypass sensitivity checks. The Opus review reported only
+suggestions.
