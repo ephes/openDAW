@@ -6,7 +6,7 @@ import {EventProcessor} from "../../EventProcessor"
 import {Block, BlockFlag, Processor} from "../../processing"
 import {AutomatableParameter} from "../../AutomatableParameter"
 import {ActiveNoteEvent, NoteEventSource, NoteEventTarget, NoteLifecycleEvent} from "../../NoteEventSource"
-import {ArpeggioModes, Mode, VelocityMatrix} from "./ArpeggioDevice/ArpeggioModes"
+import {ArpeggioModes, Mode, Stack, VelocityMatrix} from "./ArpeggioDevice/ArpeggioModes"
 
 import {MidiEffectProcessor} from "../../MidiEffectProcessor"
 
@@ -81,7 +81,7 @@ export class ArpeggioDeviceProcessor extends EventProcessor implements MidiEffec
             for (const _ of source.processNotes(from, to, flags)) {/* No work is needed in this branch. */} // advance source
             const onlyExternal = !Bits.every(flags, BlockFlag.transporting)
             for (const {position, index} of Fragmentor.iterateWithIndex(from, to, this.#rate)) {
-                const stack = Array.from(source.iterateActiveNotesAt(position, onlyExternal))
+                const stack = Array.from(source.iterateActiveNotesAt(position, onlyExternal)).sort(Stack.PitchComparator)
                 if (stack.length === 0) {continue}
                 const stepIndex = Math.floor(index / this.#repeat)
                 const duration = Math.max(1, Math.floor(this.#rate * this.#gate))

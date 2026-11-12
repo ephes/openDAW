@@ -108,7 +108,7 @@ skyboundzoo, JHINZ, Mark Dammer, fork-kun, Martin Eigel
 * Crusher (degenerates audio signal)
 * Cheap Reverb (FreeVerb variation)
 * Revamp (graphical equalizer with spectrum analyser)
-* Arpeggio (plays the notes of a chord one after another)
+* Arpeggio (plays the notes of a chord one after another in pitch order)
 * Pitch (offsets midi note pitches)
 * Zeitgeist (transforms time)
 * Velocity (manipulates velocities of incoming notes)

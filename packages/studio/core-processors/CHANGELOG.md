@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Arpeggio keeps the cent detune of held notes and orders its stack by pitch, independent of note insertion order.
+
 - Preserve shared groove subscriptions, warp active-note endpoints, and retain live-input provenance through nested arpeggios. Zeitgeist, Pitch and Velocity no longer modify retained upstream active notes.
 
 - Cover FreeVerb clear/reuse, stereo/dry mixing and partitioned processing; complete monophonic held-note reset coverage.
