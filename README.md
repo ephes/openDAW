@@ -240,6 +240,13 @@ may replay the in-memory fallback.
 A paste or clipboard menu whose clipboard read settles after its editor has
 closed is dropped instead of acting on the closed editor.
 
+### MIDI recording
+
+MIDI recording compensates the browser-reported output latency. When the browser
+reports no usable value (missing, non-finite or negative), notes are written
+without latency compensation instead of being shifted. A pitch retriggered while
+still held keeps recording until all of its presses are released.
+
 ### Flow Charts
 
 <img width="6551" height="7057" alt="image" src="https://github.com/user-attachments/assets/266a9fb2-4b72-4752-bcf1-85fda2ff2cf1" />

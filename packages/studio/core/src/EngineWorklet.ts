@@ -41,6 +41,7 @@ import {Engine} from "./Engine"
 import {MonitoringRouter} from "./MonitoringRouter"
 import {Project} from "./project"
 import {MIDIReceiver} from "./midi"
+import {AudioUtils} from "./AudioUtils"
 import {HRClockWorker} from "./HRClockWorker"
 import type {SoundFont2} from "soundfont2"
 
@@ -167,7 +168,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
 
         const {port, sab} =
             this.#terminator.own(MIDIReceiver.create(
-                () => context instanceof AudioContext ? context.outputLatency * 1000 : 20,
+                () => context instanceof AudioContext ? AudioUtils.outputLatencySeconds(context.outputLatency) * 1000 : 20,
                 (deviceId, data, relativeTimeInMs) =>
                     this.#project.receivedMIDIFromEngine(deviceId, data, relativeTimeInMs)))
         this.#commands.setupMIDI(port, sab)

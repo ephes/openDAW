@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Default unknown or invalid output latency to zero for MIDI recording and MIDI output timing (was ten seconds/NaN); keep retriggered recorded notes running until their last release.
+
 - Drop clipboard pastes and menu actions that settle after their editor uninstalled; fence queued MIDI capture streams against disarm and termination.
 
 - Fence MIDI learning permission completions and mapping creation against retired owners and deleted targets; release the followed controller subscription at termination.
