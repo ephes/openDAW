@@ -2,6 +2,7 @@ import {
     asDefined,
     asInstanceOf,
     Errors,
+    int,
     isNotNull,
     Nullable,
     Option,
@@ -13,7 +14,7 @@ import {
     Terminator,
     UUID
 } from "@opendaw/lib-std"
-import {Address, Field, PrimitiveField, PrimitiveValues} from "@opendaw/lib-box"
+import {Address, Field, Int32Field, PrimitiveField, PrimitiveValues, StringField} from "@opendaw/lib-box"
 import {MidiData} from "@opendaw/lib-midi"
 import {Pointers} from "@opendaw/studio-enums"
 import {Project} from "../project"
@@ -21,10 +22,13 @@ import {MidiDevices} from "./MidiDevices"
 import {AnimationFrame} from "@opendaw/lib-dom"
 import {MIDIControllerBox} from "@opendaw/studio-boxes"
 
-interface MIDIConnection {
-    box: MIDIControllerBox
+interface MIDIRoute {
     handleEvent: Procedure<MIDIMessageEvent>
     subscription: Subscription
+}
+
+interface MIDIConnection extends MIDIRoute {
+    box: MIDIControllerBox
 }
 
 // will be part of MIDI preferences. Should not filter for the device-id
@@ -39,8 +43,10 @@ export class MIDILearning implements Terminable {
 
     #optMIDIContollers: Option<Field<Pointers.MIDIControllers>> = Option.None
     #optFieldSubscription: Option<Subscription> = Option.None
+    #optLearnLifecycle: Option<Terminable> = Option.None
     #terminated = false
     #generation = 0
+    #learnAttempt = 0
 
     constructor(project: Project) {
         this.#project = project
@@ -85,11 +91,14 @@ export class MIDILearning implements Terminable {
         if (!MidiDevices.canRequestMidiAccess()) {return}
         const owner = this.#optMIDIContollers.unwrap()
         const generation = this.#generation
+        const attempt = ++this.#learnAttempt
+        this.#retireLearning()
         const isCurrent = () => !this.#terminated && generation === this.#generation
-            && owner.isAttached() && field.isAttached()
+            && attempt === this.#learnAttempt && owner.isAttached() && field.isAttached()
         await MidiDevices.requestPermission()
         if (!isCurrent()) {return}
         const learnLifecycle = this.#terminator.spawn()
+        this.#optLearnLifecycle = Option.wrap(learnLifecycle)
         const abortController = new AbortController()
         learnLifecycle.own({terminate: () => abortController.abort(Errors.AbortError)})
         learnLifecycle.own(MidiDevices.subscribeMessageEvents((event: MIDIMessageEvent) => {
@@ -132,16 +141,33 @@ export class MIDILearning implements Terminable {
         this.#terminator.terminate()
     }
 
-    #registerMIDIControllerBox({
-                                   parameter: {targetAddress},
-                                   controlId,
-                                   deviceId,
-                                   deviceChannel
-                               }: MIDIControllerBox): {
-        subscription: Subscription,
-        handleEvent: Procedure<MIDIMessageEvent>
-    } {
-        const address = targetAddress.unwrap("No parameter address")
+    #registerMIDIControllerBox({parameter, deviceChannel, controlId, deviceId}: MIDIControllerBox): MIDIRoute {
+        let retired = false
+        let optRoute: Option<MIDIRoute> = Option.None
+        const connect = () => {
+            optRoute.ifSome(route => route.subscription.terminate())
+            optRoute = Option.None
+            if (retired) {return}
+            optRoute = parameter.targetAddress.map(address =>
+                this.#routeMIDIControl(address, deviceChannel.getValue(), controlId, deviceId))
+        }
+        connect()
+        const parameterSubscription = parameter.subscribe(connect)
+        const channelSubscription = deviceChannel.subscribe(connect)
+        return {
+            subscription: {
+                terminate: () => {
+                    retired = true
+                    parameterSubscription.terminate()
+                    channelSubscription.terminate()
+                    connect()
+                }
+            },
+            handleEvent: (event: MIDIMessageEvent) => optRoute.ifSome(route => route.handleEvent(event))
+        }
+    }
+
+    #routeMIDIControl(address: Address, deviceChannel: int, controlId: Int32Field, deviceId: StringField): MIDIRoute {
         const adapter = this.#project.parameterFieldAdapters.get(address)
         const {editing} = this.#project
         const registration = adapter.registerMidiControl()
@@ -168,7 +194,7 @@ export class MIDILearning implements Terminable {
                 }
             }
         }
-        const channel = deviceChannel.getValue() === -1 ? undefined : deviceChannel.getValue()
+        const channel = deviceChannel === -1 ? undefined : deviceChannel
         const subscription = MidiDevices.subscribeMessageEvents(handleEvent, channel)
         return {
             subscription: {
@@ -179,6 +205,11 @@ export class MIDILearning implements Terminable {
                 }
             }, handleEvent
         }
+    }
+
+    #retireLearning(): void {
+        this.#optLearnLifecycle.ifSome(lifecycle => lifecycle.terminate())
+        this.#optLearnLifecycle = Option.None
     }
 
     #killAllConnections(): void {
