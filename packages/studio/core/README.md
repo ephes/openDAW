@@ -1,4 +1,13 @@
 This package is part of the openDAW SDK
+
+### MIDI learning lifetime
+
+MIDI permission completion only starts learning while the same followed user and
+target parameter remain attached. Following a user again invalidates pending
+permission requests. Retired projects ignore later permission completions and
+cannot resume following controller changes. A target deleted during learning
+cannot receive a new controller mapping.
+
 ### Cloud backup recovery
 
 Backup holds a browser Web Lock per provider for the whole lifecycle (including lock
