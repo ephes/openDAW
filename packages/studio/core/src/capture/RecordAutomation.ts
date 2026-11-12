@@ -35,6 +35,24 @@ export namespace RecordAutomation {
         parameterFieldAdapters: ParameterFieldAdapters
     }
 
+    type LoopBounds = { from: ppqn, to: ppqn }
+
+    const recordingLoop = ({engine, timelineBox: {loopArea}}: Project): Option<LoopBounds> =>
+        loopArea.enabled.getValue() && engine.preferences.settings.recording.allowTakes
+            ? Option.wrap({from: loopArea.from.getValue(), to: loopArea.to.getValue()})
+            : Option.None
+
+    const quantizeStart = (position: ppqn, loop: Option<LoopBounds>): ppqn => {
+        const start = quantizeFloor(position, PPQN.SemiQuaver)
+        return loop.mapOr(({from, to}) => position >= from && position < to ? Math.max(from, start) : start, start)
+    }
+
+    const durationLimit = (startPosition: ppqn, loop: Option<LoopBounds>): ppqn =>
+        loop.mapOr(({to}) => startPosition < to ? to - startPosition : Infinity, Infinity)
+
+    const quantizeDuration = (rawDuration: ppqn, limit: ppqn, minimum: ppqn): ppqn =>
+        Math.min(limit, Math.max(minimum, quantizeCeil(Math.min(limit, rawDuration), PPQN.SemiQuaver)))
+
     const findOrCreateTrack = (
         {project, parameterFieldAdapters}: RecorderContext,
         adapter: AutomatableParameterFieldAdapter
@@ -63,20 +81,22 @@ export namespace RecordAutomation {
         startPos: ppqn,
         previousUnitValue: unitValue,
         value: unitValue,
-        floating: boolean
+        floating: boolean,
+        loop: Option<LoopBounds>
     ): RecordingState => {
         const {boxGraph} = project
         const trackBox = trackBoxAdapter.box
+        const initialDuration = Math.min(PPQN.SemiQuaver, durationLimit(startPos, loop))
         project.selection.deselect(
             ...trackBoxAdapter.regions.collection.asArray()
                 .filter(region => region.isSelected)
                 .map(region => region.box))
-        RegionClipResolver.fromRange(trackBoxAdapter, startPos, startPos + PPQN.SemiQuaver)()
+        RegionClipResolver.fromRange(trackBoxAdapter, startPos, startPos + initialDuration)()
         const collectionBox = ValueEventCollectionBox.create(boxGraph, UUID.generate())
         const regionBox = ValueRegionBox.create(boxGraph, UUID.generate(), box => {
             box.position.setValue(startPos)
-            box.duration.setValue(PPQN.SemiQuaver)
-            box.loopDuration.setValue(PPQN.SemiQuaver)
+            box.duration.setValue(initialDuration)
+            box.loopDuration.setValue(initialDuration)
             box.hue.setValue(ColorCodes.forTrackType(TrackType.Value))
             box.label.setValue(adapter.name)
             box.events.refer(collectionBox.owners)
@@ -163,8 +183,8 @@ export namespace RecordAutomation {
     const finalizeState = (project: Project, state: RecordingState, finalPosition: ppqn): void => {
         const {boxGraph} = project
         if (!state.regionBox.isAttached()) {return}
-        const finalDuration = Math.max(0,
-            quantizeCeil(finalPosition - state.startPosition, PPQN.SemiQuaver))
+        const finalDuration = quantizeDuration(finalPosition - state.startPosition,
+            durationLimit(state.startPosition, recordingLoop(project)), 0)
         if (finalDuration <= 0) {
             state.regionBox.delete()
             return
@@ -192,21 +212,15 @@ export namespace RecordAutomation {
         project: Project,
         activeRecordings: SortedSet<Address, RecordingState>,
         currentPosition: ppqn,
-        loopEnabled: boolean,
-        loopTo: ppqn
+        loop: Option<LoopBounds>
     ): void => {
         const {editing} = project
         editing.modify(() => {
             for (const state of activeRecordings.values()) {
                 if (!state.regionBox.isAttached()) {continue}
                 const oldDuration = state.regionBox.duration.getValue()
-                const maxDuration = loopEnabled
-                    ? loopTo - state.startPosition
-                    : Infinity
-                const newDuration = Math.max(PPQN.SemiQuaver,
-                    quantizeCeil(
-                        Math.min(maxDuration, currentPosition - state.startPosition),
-                        PPQN.SemiQuaver))
+                const newDuration = quantizeDuration(currentPosition - state.startPosition,
+                    durationLimit(state.startPosition, loop), PPQN.SemiQuaver)
                 if (newDuration > oldDuration) {
                     RegionClipResolver.fromRange(
                         state.trackBoxAdapter,
@@ -223,16 +237,16 @@ export namespace RecordAutomation {
         project: Project,
         ctx: RecorderContext,
         activeRecordings: SortedSet<Address, RecordingState>,
-        loopFrom: ppqn,
-        loopTo: ppqn
+        loop: Option<LoopBounds>
     ): void => {
         const {editing, boxGraph} = project
+        const {from: loopFrom, to: loopTo} = loop.unwrap()
         editing.modify(() => {
             const snapshot = [...activeRecordings.values()]
             for (const state of snapshot) {
                 if (!state.regionBox.isAttached()) {continue}
-                const finalDuration = Math.max(PPQN.SemiQuaver,
-                    quantizeCeil(loopTo - state.startPosition, PPQN.SemiQuaver))
+                const finalDuration = quantizeDuration(loopTo - state.startPosition,
+                    durationLimit(state.startPosition, loop), PPQN.SemiQuaver)
                 const oldDuration = state.regionBox.duration.getValue()
                 if (finalDuration > oldDuration) {
                     RegionClipResolver.fromRange(
@@ -251,10 +265,9 @@ export namespace RecordAutomation {
                 state.regionBox.loopDuration.setValue(finalDuration)
                 simplifyRecordedEvents(project, state)
                 project.selection.deselect(state.regionBox)
-                const newStartPos = quantizeFloor(loopFrom, PPQN.SemiQuaver)
                 const newState = createRegion(
-                    ctx, state.trackBoxAdapter, state.adapter, newStartPos,
-                    state.lastValue, state.lastValue, state.floating)
+                    ctx, state.trackBoxAdapter, state.adapter, quantizeStart(loopFrom, loop),
+                    state.lastValue, state.lastValue, state.floating, loop)
                 activeRecordings.removeByKey(state.adapter.address)
                 activeRecordings.add(newState)
             }
@@ -262,7 +275,7 @@ export namespace RecordAutomation {
     }
 
     export const start = (project: Project): Terminable => {
-        const {editing, engine, parameterFieldAdapters, timelineBox} = project
+        const {editing, engine, parameterFieldAdapters} = project
         const ctx: RecorderContext = {project, parameterFieldAdapters}
         const activeRecordings: SortedSet<Address, RecordingState> =
             Address.newSet<RecordingState>(state => state.adapter.address)
@@ -277,10 +290,10 @@ export namespace RecordAutomation {
                 editing.modify(() => {
                     const trackOpt = findOrCreateTrack(ctx, adapter)
                     if (trackOpt.isEmpty()) {return}
-                    const startPos = quantizeFloor(position, PPQN.SemiQuaver)
+                    const loop = recordingLoop(project)
                     const floating = adapter.valueMapping.floating()
-                    const state = createRegion(
-                        ctx, trackOpt.unwrap(), adapter, startPos, previousUnitValue, value, floating)
+                    const state = createRegion(ctx, trackOpt.unwrap(), adapter,
+                        quantizeStart(position, loop), previousUnitValue, value, floating, loop)
                     activeRecordings.add(state)
                 })
             } else {
@@ -296,17 +309,16 @@ export namespace RecordAutomation {
             })
         }
         const handlePosition = (): void => {
+            const currentPosition = engine.position.getValue()
+            const previousPosition = lastPosition
+            lastPosition = currentPosition
             if (!engine.isRecording.getValue()) {return}
             if (activeRecordings.size() === 0) {return}
-            const currentPosition = engine.position.getValue()
-            const loopEnabled = timelineBox.loopArea.enabled.getValue()
-            const loopFrom = timelineBox.loopArea.from.getValue()
-            const loopTo = timelineBox.loopArea.to.getValue()
-            if (loopEnabled && currentPosition < lastPosition) {
-                handleLoopWrap(project, ctx, activeRecordings, loopFrom, loopTo)
+            const loop = recordingLoop(project)
+            if (loop.nonEmpty() && currentPosition < previousPosition) {
+                handleLoopWrap(project, ctx, activeRecordings, loop)
             }
-            lastPosition = currentPosition
-            updateRegionDurations(project, activeRecordings, currentPosition, loopEnabled, loopTo)
+            updateRegionDurations(project, activeRecordings, currentPosition, loop)
         }
         const handleTermination = (): void => {
             if (activeRecordings.size() === 0) {return}

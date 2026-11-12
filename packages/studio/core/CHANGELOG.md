@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep recorded automation regions inside non-quantized loop bounds (no 16th-grid overshoot past the loop end or before the loop start). Track the playhead continuously so only a real recording loop wrap (loop enabled and takes allowed) splits automation regions; with takes disabled regions keep growing past the loop end.
+
 - Fence MIDI learning permission completions and mapping creation against retired owners and deleted targets; release the followed controller subscription at termination.
 
 - Skip deleted boxes in the migration snapshot to prevent orphan curves; verify coincident-event cleanup and duplicate audio-marker repairs through real adapter save/reopen journeys.
