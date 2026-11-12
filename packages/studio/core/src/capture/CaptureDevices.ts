@@ -14,6 +14,8 @@ export class CaptureDevices implements Terminable {
     readonly #captureSubscriptions: SortedSet<UUID.Bytes, CaptureSubscription>
     readonly #changeNotifier = new Notifier<void>
 
+    #terminated = false
+
     constructor(project: Project) {
         this.#project = project
         this.#captures = UUID.newSet<Capture>(({uuid}) => uuid)
@@ -23,17 +25,15 @@ export class CaptureDevices implements Terminable {
                 const uuid = box.address.uuid
                 const audioUnitBox = asInstanceOf(box, AudioUnitBox)
                 const subscription = audioUnitBox.capture.catchupAndSubscribe(pointer => {
-                    this.#captures.removeByKeyIfExist(uuid)?.terminate()
-                    pointer.targetVertex.ifSome(({box}) => {
-                        const capture: Maybe<Capture> = box.accept<BoxVisitor<Capture>>({
-                            visitCaptureMidiBox: (box: CaptureMidiBox) => new CaptureMidi(this, audioUnitBox, box),
-                            visitCaptureAudioBox: (box: CaptureAudioBox) => new CaptureAudio(this, audioUnitBox, box)
-                        })
-                        if (isDefined(capture)) {
-                            this.#captures.add(capture)
-                            this.#changeNotifier.notify()
-                        }
-                    })
+                    if (this.#terminated) {return}
+                    const removed = this.#captures.removeByKeyIfExist(uuid)
+                    removed?.terminate()
+                    const capture: Maybe<Capture> = pointer.targetVertex.mapOr(({box}) => box.accept<BoxVisitor<Capture>>({
+                        visitCaptureMidiBox: (box: CaptureMidiBox) => new CaptureMidi(this, audioUnitBox, box),
+                        visitCaptureAudioBox: (box: CaptureAudioBox) => new CaptureAudio(this, audioUnitBox, box)
+                    }), undefined)
+                    if (isDefined(capture)) {this.#captures.add(capture)}
+                    if (isDefined(removed) || isDefined(capture)) {this.#changeNotifier.notify()}
                 })
                 this.#captureSubscriptions.add({uuid, subscription})
             },
@@ -71,7 +71,11 @@ export class CaptureDevices implements Terminable {
     }
 
     terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
         this.#subscription.terminate()
+        this.#captureSubscriptions.forEach(({subscription}) => subscription.terminate())
+        this.#captureSubscriptions.clear()
         this.#captures.forEach(capture => capture.terminate())
         this.#captures.clear()
     }

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire per-audio-unit capture subscriptions when `CaptureDevices` terminates and notify change observers when a capture is detached.
+
 - Fence MIDI learning permission completions and mapping creation against retired owners and deleted targets; release the followed controller subscription at termination.
 
 - Skip deleted boxes in the migration snapshot to prevent orphan curves; verify coincident-event cleanup and duplicate audio-marker repairs through real adapter save/reopen journeys.
