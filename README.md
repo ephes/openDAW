@@ -237,6 +237,20 @@ must use valid track types and unique source tracks/offsets within the destinati
 track list. Failed graph installation preserves the editor selection and cursor.
 Handler errors surface once through the error path; only clipboard-read failures
 may replay the in-memory fallback.
+A paste or clipboard menu whose clipboard read settles after its editor has
+closed is dropped instead of acting on the closed editor.
+
+### MIDI recording
+
+MIDI recording compensates the browser-reported output latency. When the browser
+reports no usable value (missing, non-finite or negative), notes are written
+without latency compensation instead of being shifted. A pitch retriggered while
+still held keeps recording until all of its presses are released.
+
+Armed MIDI captures keep a retrospective history of the most recent 8192 note
+events (about 4096 notes); older events are dropped. Live input presses are
+owned per input, channel and pitch: a release only ends a press from the same
+input and channel, and closing the input stream releases each held press once.
 
 ### Flow Charts
 

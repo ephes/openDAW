@@ -34,6 +34,8 @@ export type CaptureResult = { mode: "stopped" | "playing", origin: number, notes
 
 const MIN_NOTE_DURATION: ppqn = PPQN.fromSignature(1, 128)
 
+export const CAPTURE_MIDI_MAX_EVENTS = 8192
+
 export class CaptureMidi extends Capture<CaptureMidiBox> {
     readonly #streamGenerator: Func<void, Promise<void>>
     readonly #notifier = new Notifier<NoteSignal>()
@@ -42,6 +44,7 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
 
     #filterChannel: Option<byte> = Option.None
     #stream: Option<Subscription> = Option.None
+    #terminated: boolean = false
 
     #captureEvents: Array<RawNoteEvent> = []
     #captureMode: "stopped" | "playing" = "stopped"
@@ -81,6 +84,7 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
             this.#notifier.subscribe((signal: NoteSignal) => manager.project.engine.noteSignal(signal)),
             this.#notifier.subscribe((signal: NoteSignal) => this.#bufferNote(signal)),
             Terminable.create(() => {
+                this.#terminated = true
                 this.#stopStream()
                 this.#stopCapture()
             })
@@ -200,10 +204,18 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
             const delta = this.#computeCaptureDelta()
             this.#captureEvents.push({type: "on", pitch: signal.pitch, velocity: signal.velocity, delta})
             this.#captureNoteOnCount.setValue(this.#captureNoteOnCount.getValue() + 1)
+            this.#trimCapture()
         } else if (NoteSignal.isOff(signal)) {
             const delta = this.#computeCaptureDelta()
             this.#captureEvents.push({type: "off", pitch: signal.pitch, delta})
+            this.#trimCapture()
         }
+    }
+
+    #trimCapture(): void {
+        if (this.#captureEvents.length <= CAPTURE_MIDI_MAX_EVENTS) {return}
+        const dropped = this.#captureEvents.shift()
+        if (isDefined(dropped) && dropped.type === "on") {this.#captureNoteOnCount.setValue(this.#captureNoteOnCount.getValue() - 1)}
     }
 
     #computeCaptureDelta(): number {
@@ -256,6 +268,8 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
     }
 
     async #updateStream() {
+        // Queued updates may run after a disarm or termination.
+        if (this.#terminated || !this.armed.getValue()) {return}
         const inputs = MidiDevices.inputDevices()
         const explicit = this.deviceId.getValue().match({
             none: () => inputs,
@@ -268,34 +282,29 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
                 return filtered
             }
         })
-        const activeNotes = new Int8Array(128)
+        // Presses are owned per input, channel and pitch; releases only match their own presses.
+        const activeNotes = explicit.map(() => new Uint32Array(16 * 128))
         this.#stream.ifSome(terminable => terminable.terminate())
         this.#stream = Option.wrap(Terminable.many(
-            ...explicit.map(input => Events.subscribe(input, "midimessage", (event: MIDIMessageEvent) => {
+            ...explicit.map((input, inputIndex) => Events.subscribe(input, "midimessage", (event: MIDIMessageEvent) => {
                 const data = event.data
                 if (isDefined(data) &&
                     this.#filterChannel.mapOr(channel => MidiData.readChannel(data) === channel, true)) {
-                    const pitch = MidiData.readPitch(data)
+                    const counts = activeNotes[inputIndex]
+                    const key = MidiData.readChannel(data) * 128 + MidiData.readPitch(data)
                     if (MidiData.isNoteOn(data)) {
-                        activeNotes[pitch]++
+                        counts[key]++
                         this.#notifier.notify(NoteSignal.fromEvent(event, this.uuid))
-                    } else if (MidiData.isNoteOff(data) && activeNotes[pitch] > 0) {
-                        activeNotes[pitch]--
+                    } else if (MidiData.isNoteOff(data) && counts[key] > 0) {
+                        counts[key]--
                         this.#notifier.notify(NoteSignal.fromEvent(event, this.uuid))
                     }
                 }
             })),
-            Terminable.create(() => activeNotes.forEach((count, index) => {
-                if (count > 0) {
-                    for (let channel = 0; channel < 16; channel++) {
-                        const event = new MessageEvent("midimessage", {data: MidiData.noteOff(channel, index)})
-                        const signal = NoteSignal.fromEvent(event, this.uuid)
-                        for (let i = 0; i < count; i++) {
-                            this.#notifier.notify(signal)
-                        }
-                    }
-                }
-            }))))
+            Terminable.create(() => activeNotes.forEach(counts => counts.forEach((count, key) => {
+                const signal = NoteSignal.off(this.uuid, key % 128)
+                for (let index = 0; index < count; index++) {this.#notifier.notify(signal)}
+            })))))
     }
 
     #stopStream(): void {

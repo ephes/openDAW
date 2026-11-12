@@ -17,6 +17,7 @@ import {ColorCodes, NoteSignal, TrackType, UnionBoxTypes} from "@opendaw/studio-
 import {Project} from "../project"
 import {Capture} from "./Capture"
 import {RecordTrack} from "./RecordTrack"
+import {AudioUtils} from "../AudioUtils"
 
 export namespace RecordMidi {
     type RecordMidiContext = {
@@ -47,7 +48,9 @@ export namespace RecordMidi {
         const terminator = new Terminator()
         const activeNotes = new Map<byte, ActiveNote>()
         const pendingNotes = new Map<byte, byte>()
-        const latency = PPQN.secondsToPulses(audioContext.outputLatency ?? 10.0, timelineBox.bpm.getValue())
+        const heldNotes = new Map<byte, int>()
+        const latency = PPQN.secondsToPulses(
+            AudioUtils.outputLatencySeconds(audioContext.outputLatency), timelineBox.bpm.getValue())
         let currentTake: Option<TakeData> = Option.None
         let lastPosition: ppqn = 0
         let positionOffset: ppqn = 0
@@ -192,6 +195,7 @@ export namespace RecordMidi {
             const writePosition = position.getValue() + latency
             if (NoteSignal.isOn(signal)) {
                 const {pitch, velocity} = signal
+                heldNotes.set(pitch, (heldNotes.get(pitch) ?? 0) + 1)
                 if (currentTake.isEmpty()) {
                     pendingNotes.set(pitch, velocity)
                     return
@@ -211,6 +215,13 @@ export namespace RecordMidi {
                     activeNotes.set(pitch, {event, take, creationOffset: positionOffset})
                 }, false)
             } else if (NoteSignal.isOff(signal)) {
+                // A retriggered pitch keeps recording until its last press is released.
+                const held = (heldNotes.get(signal.pitch) ?? 0) - 1
+                if (held > 0) {
+                    heldNotes.set(signal.pitch, held)
+                    return
+                }
+                heldNotes.delete(signal.pitch)
                 if (pendingNotes.has(signal.pitch)) {
                     pendingNotes.delete(signal.pitch)
                 } else {
