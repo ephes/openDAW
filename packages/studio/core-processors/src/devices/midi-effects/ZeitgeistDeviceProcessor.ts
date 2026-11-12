@@ -73,7 +73,10 @@ export class ZeitgeistDeviceProcessor extends EventProcessor implements MidiEffe
         }
     }
 
-    reset(): void {this.eventInput.clear()}
+    reset(): void {
+        this.eventInput.clear()
+        this.#noteBroadcaster.clear()
+    }
 
     parameterChanged(_parameter: AutomatableParameter): void {}
 

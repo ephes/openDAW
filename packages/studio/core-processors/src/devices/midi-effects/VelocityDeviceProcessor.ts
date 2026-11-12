@@ -59,8 +59,10 @@ export class VelocityDeviceProcessor extends EventProcessor implements MidiEffec
             if (NoteLifecycleEvent.isStart(event)) {
                 this.#noteBroadcaster.noteOn(event.pitch)
                 const velocity = this.#adapter.computeVelocity(event.position, event.velocity)
-                this.#velocities[this.#velocityIndex++] =
-                    Math.round(event.velocity * 127) | (Math.round(velocity * 127) << 8) | (1 << 16) // last byte keep reading
+                if (this.#velocityIndex < this.#velocities.length - 1) {
+                    this.#velocities[this.#velocityIndex++] =
+                        Math.round(event.velocity * 127) | (Math.round(velocity * 127) << 8) | (1 << 16) // last byte keep reading
+                }
                 yield Objects.overwrite(event, {velocity})
             } else {
                 this.#noteBroadcaster.noteOff(event.pitch)
@@ -78,7 +80,10 @@ export class VelocityDeviceProcessor extends EventProcessor implements MidiEffec
         }
     }
 
-    reset(): void {this.eventInput.clear()}
+    reset(): void {
+        this.eventInput.clear()
+        this.#noteBroadcaster.clear()
+    }
 
     processEvents(_block: Block, _from: ppqn, _to: ppqn): void {}
 

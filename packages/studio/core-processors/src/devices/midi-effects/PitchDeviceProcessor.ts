@@ -80,6 +80,7 @@ export class PitchDeviceProcessor extends EventProcessor implements MidiEffectPr
     reset(): void {
         this.eventInput.clear()
         this.#startShifts.clear()
+        this.#noteBroadcaster.clear()
     }
 
     processEvents(_block: Block, _from: ppqn, _to: ppqn): void {}
