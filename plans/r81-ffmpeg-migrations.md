@@ -73,3 +73,25 @@ with one automation track and three MIDI pointers per field, volume adjustment
 exactly once and oscillator B silent. Fixture serialization temporarily enables
 only selected deprecated getters to emulate their old schema; decoding, migration
 and adapters are real. No Vaporisateur production behavior change was required.
+
+
+## Graph cleanup and reopen integrity (O6)
+
+The actual two-pass ProjectMigration is exercised with coincident value events,
+distinct legacy curve slopes and selection ownership links. Both UUID visitation
+orders are covered. A deleted interior event must not be visited later from the
+saved snapshot: that previously created a curve pointing at a detached event.
+The second pass now skips detached boxes. Endpoint events, curves and links
+survive, dependent selections are removed, no live orphan remains, and adapter
+midpoint values match an independent endpoint/slope oracle.
+
+Serialized audio fixtures contain duplicate transient and warp positions for both
+pitch and time stretch. Decode → migration → real sorted adapters → save → reopen
+retains the first incoming marker identity and every distinct marker. Existing
+repair logic required no change. Bypassing each repair must make adapter sorting
+reject the fixture. Repeat migration compares semantic graph JSON, since binary
+serialization carries nonsemantic creation counters that change on decode.
+
+O6 local build, lint, typechecking and full tests passed, including the original-code
+and independent repair-bypass sensitivity checks. The Opus review reported only
+suggestions.
