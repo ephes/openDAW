@@ -5,7 +5,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Unlock the graph and discard staged edges when a box constructor throws, release a modification process whose transaction cannot begin, run every end-transaction observer before rethrowing the first failure, and settle undo/redo when compensation fails.
+- Unlock the graph and discard staged edges when a box constructor throws, release a modification process whose transaction cannot begin, isolate end-transaction observers and report their failures asynchronously instead of failing a committed transaction, and settle undo/redo when compensation fails.
 
 - Mark saved history dirty when appended edits change its step, discard abandoned redo branches, and make modification approve/revert settle once.
 

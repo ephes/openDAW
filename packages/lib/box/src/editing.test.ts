@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, it} from "vitest"
+import {beforeEach, describe, expect, it, vi} from "vitest"
 import {BooleanField, BoxGraph, Field} from "./"
 import {PointerField, UnreferenceableType} from "./pointer"
 import {Box, BoxConstruct} from "./box"
@@ -1014,8 +1014,13 @@ describe("graph and history failure settlement", () => {
         graph.endTransaction()
         expect(graph.boxes()).toHaveLength(6)
     })
-    it("runs every end-transaction observer and settles listeners when one throws", () => {
-        const {graph} = setup()
+    it("runs every end-transaction observer and reports failures without failing the commit", () => {
+        const {graph, editing, a} = setup()
+        const reported: Array<unknown> = []
+        const reject = vi.spyOn(Promise, "reject").mockImplementation((reason: unknown) => {
+            reported.push(reason)
+            return Promise.resolve() as Promise<never>
+        })
         const calls: Array<string> = []
         const boom = new Error("observer failed")
         graph.subscribeTransaction({onBeginTransaction: () => {}, onEndTransaction: () => calls.push("end")})
@@ -1025,12 +1030,18 @@ describe("graph and history failure settlement", () => {
             calls.push("second")
             graph.subscribeEndTransaction(() => calls.push("nested"))
         })
-        expect(() => graph.endTransaction()).toThrow(boom)
+        expect(() => graph.endTransaction()).not.toThrow()
         expect(calls).toEqual(["second", "nested", "end"])
         expect(graph.inTransaction()).toBe(false)
-        graph.beginTransaction()
-        graph.endTransaction()
+        editing.modify(() => {
+            a.bool.setValue(true)
+            graph.subscribeEndTransaction(() => {throw boom})
+        })
+        reject.mockRestore()
+        expect(reported).toEqual([boom, boom])
         expect(calls).toEqual(["second", "nested", "end", "end"])
+        expect(editing.undo()).toBe(true)
+        expect(a.bool.getValue()).toBe(false)
     })
     it("releases a modification process whose transaction cannot begin", () => {
         const {graph, editing, a} = setup()

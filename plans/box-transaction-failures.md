@@ -14,8 +14,11 @@ Failures inside graph and history operations must leave the graph usable.
   a transaction this call entered is aborted; another owner's is left alone.
 - `#finalizeTransaction`: one throwing end-transaction observer dropped the rest
   of its batch and skipped `onEndTransaction` and the rollback flag reset. Every
-  observer now runs in isolation; the first failure is rethrown after
-  finalization. The transaction itself stays committed.
+  observer now runs in isolation. Because the transaction is already committed,
+  failures are reported as unhandled promise rejections (visible to the app's
+  error handler, and safe in the audio worklet) instead of being thrown from
+  `endTransaction`. Otherwise `BoxEditing` would treat a committed edit as failed
+  and leave it out of the undo history.
 - `undo`/`redo`: when a step failed and compensation of applied steps also threw,
   the error escaped with the graph still in a transaction and the history index
   moved. Compensation now aborts open transactions per step, continues best

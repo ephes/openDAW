@@ -298,11 +298,11 @@ export class BoxGraph<BoxMap = any> {
             })
         this.#pointerTransactionState.clear()
         this.#inTransaction = false
-        const failures: Array<unknown> = []
         while (this.#finalizeTransactionObservers.length > 0) {
             this.#finalizeTransactionObservers.splice(0).forEach(observer => {
                 const result = tryCatch(observer)
-                if (result.status === "failure") {failures.push(result.error)}
+                // The transaction is committed: report asynchronously instead of failing endTransaction.
+                if (result.status === "failure") {void Promise.reject(result.error)}
             })
             if (this.#finalizeTransactionObservers.length > 0) {
                 console.debug(`${this.#finalizeTransactionObservers.length} new observers while notifying`)
@@ -310,7 +310,6 @@ export class BoxGraph<BoxMap = any> {
         }
         this.#transactionListeners.proxy.onEndTransaction(this.#rollingBack)
         this.#rollingBack = false
-        if (failures.length > 0) {throw failures[0]}
     }
 
     #rollback(): void {
