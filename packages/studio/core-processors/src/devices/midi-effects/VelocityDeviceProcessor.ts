@@ -1,11 +1,11 @@
 import {assert, int, Objects, Option, Terminable, UUID} from "@opendaw/lib-std"
 import {NoteBroadcaster, VelocityDeviceBoxAdapter} from "@opendaw/studio-adapters"
-import {Event, NoteEvent, ppqn} from "@opendaw/lib-dsp"
+import {Event, ppqn} from "@opendaw/lib-dsp"
 import {EngineContext} from "../../EngineContext"
 import {EventProcessor} from "../../EventProcessor"
 import {Block, Processor} from "../../processing"
 import {AutomatableParameter} from "../../AutomatableParameter"
-import {NoteEventSource, NoteLifecycleEvent} from "../../NoteEventSource"
+import {ActiveNoteEvent, NoteEventSource, NoteLifecycleEvent} from "../../NoteEventSource"
 import {MidiEffectProcessor} from "../../MidiEffectProcessor"
 
 export class VelocityDeviceProcessor extends EventProcessor implements MidiEffectProcessor {
@@ -69,13 +69,11 @@ export class VelocityDeviceProcessor extends EventProcessor implements MidiEffec
         }
     }
 
-    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<NoteEvent> {
+    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<ActiveNoteEvent> {
         if (this.#source.isEmpty()) {return}
         for (const event of this.#source.unwrap().iterateActiveNotesAt(position, onlyExternal)) {
             if (event.type === "note-event") {
-                yield Objects.overwrite(event, {
-                    velocity: this.#adapter.computeVelocity(event.position, event.velocity)
-                })
+                yield {...event, velocity: this.#adapter.computeVelocity(event.position, event.velocity)}
             }
         }
     }

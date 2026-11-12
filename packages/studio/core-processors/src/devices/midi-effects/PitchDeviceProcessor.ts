@@ -1,11 +1,11 @@
 import {assert, int, isDefined, Objects, Option, Terminable, UUID} from "@opendaw/lib-std"
 import {NoteBroadcaster, PitchDeviceBoxAdapter} from "@opendaw/studio-adapters"
-import {Event, NoteEvent, ppqn} from "@opendaw/lib-dsp"
+import {Event, ppqn} from "@opendaw/lib-dsp"
 import {EngineContext} from "../../EngineContext"
 import {EventProcessor} from "../../EventProcessor"
 import {Block, Processor} from "../../processing"
 import {AutomatableParameter} from "../../AutomatableParameter"
-import {NoteEventSource, NoteLifecycleEvent} from "../../NoteEventSource"
+import {ActiveNoteEvent, NoteEventSource, NoteLifecycleEvent} from "../../NoteEventSource"
 import {MidiEffectProcessor} from "../../MidiEffectProcessor"
 
 export class PitchDeviceProcessor extends EventProcessor implements MidiEffectProcessor {
@@ -64,15 +64,15 @@ export class PitchDeviceProcessor extends EventProcessor implements MidiEffectPr
         }
     }
 
-    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<NoteEvent> {
+    * iterateActiveNotesAt(position: ppqn, onlyExternal: boolean): IterableIterator<ActiveNoteEvent> {
         if (this.#source.isEmpty()) {return}
         for (const event of this.#source.unwrap().iterateActiveNotesAt(position, onlyExternal)) {
             if (event.type === "note-event") {
                 const {cent, octaves, semiTones} = this.#adapter.namedParameter
-                yield Objects.overwrite(event, {
+                yield {...event,
                     pitch: event.pitch + octaves.valueAt(event.position) * 12 + semiTones.valueAt(event.position),
                     cent: event.cent + cent.valueAt(event.position)
-                })
+                }
             }
         }
     }

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve shared groove subscriptions, warp active-note endpoints, and retain live-input provenance through nested arpeggios. Zeitgeist, Pitch and Velocity no longer modify retained upstream active notes.
+
 - Cover FreeVerb clear/reuse, stereo/dry mixing and partitioned processing; complete monophonic held-note reset coverage.
 
 - Accent only the measure downbeat when metronome beats are subdivided; add frozen playback, chunk dispatch and solo-routing regressions.
