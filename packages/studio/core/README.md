@@ -8,6 +8,12 @@ permission requests. Retired projects ignore later permission completions and
 cannot resume following controller changes. A target deleted during learning
 cannot receive a new controller mapping.
 
+Only one learning attempt is active at a time. Starting another closes the
+previous learning dialog, and only the latest attempt can create a mapping.
+A learned controller follows its box: retargeting its parameter pointer or
+changing its device channel moves the live routing (and the MIDI indicator
+registration) to the new parameter or channel.
+
 ### Cloud backup recovery
 
 Backup holds a browser Web Lock per provider for the whole lifecycle (including lock

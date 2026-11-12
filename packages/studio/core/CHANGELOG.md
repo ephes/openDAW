@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep a single active MIDI learning attempt: a new attempt retires the previous dialog and listener and invalidates pending permission requests. Learned controllers follow parameter retargets and device-channel changes.
+
 - Fence MIDI learning permission completions and mapping creation against retired owners and deleted targets; release the followed controller subscription at termination.
 
 - Skip deleted boxes in the migration snapshot to prevent orphan curves; verify coincident-event cleanup and duplicate audio-marker repairs through real adapter save/reopen journeys.
