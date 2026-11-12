@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire per-audio-unit capture subscriptions when `CaptureDevices` terminates and notify change observers when a capture is detached.
+
 - Keep a single active MIDI learning attempt: a new attempt retires the previous dialog and listener and invalidates pending permission requests. Learned controllers follow parameter retargets and device-channel changes.
 
 - Own live MIDI capture presses per input, channel and pitch (no 127-press wrap, one release per held press on stream close); bound retrospective MIDI capture history to 8192 events.
