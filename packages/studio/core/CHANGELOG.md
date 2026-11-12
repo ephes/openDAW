@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire active automation recordings whose region or event collection was deleted so later writes start a new region. Bound automation simplification so every dropped event stays within the tolerance of the final segment.
+
 - Fence MIDI learning permission completions and mapping creation against retired owners and deleted targets; release the followed controller subscription at termination.
 
 - Skip deleted boxes in the migration snapshot to prevent orphan curves; verify coincident-event cleanup and duplicate audio-marker repairs through real adapter save/reopen journeys.

@@ -10,6 +10,7 @@ import {
     ParameterWriteEvent,
     TrackBoxAdapter,
     TrackType,
+    ValueEventBoxAdapter,
     ValueEventCollectionBoxAdapter
 } from "@opendaw/studio-adapters"
 import {Project} from "../project"
@@ -117,21 +118,26 @@ export namespace RecordAutomation {
         if (!state.floating) {return}
         const adapter = boxAdapters.adapterFor(state.collectionBox, ValueEventCollectionBoxAdapter)
         const events = [...adapter.events.asArray()]
-        const keep: typeof events = []
+        const keep: Array<{ event: ValueEventBoxAdapter, dropped: ReadonlyArray<ValueEventBoxAdapter> }> = []
         for (const event of events) {
+            let dropped: ReadonlyArray<ValueEventBoxAdapter> = []
             while (keep.length >= 2) {
-                const a = keep[keep.length - 2]
-                const b = keep[keep.length - 1]
+                const a = keep[keep.length - 2].event
+                const {event: b, dropped: droppedBefore} = keep[keep.length - 1]
                 if (a.position === b.position || b.position === event.position) {break}
                 if (a.interpolation.type !== "linear" || b.interpolation.type !== "linear") {break}
-                const t = (b.position - a.position) / (event.position - a.position)
-                const expected = a.value + t * (event.value - a.value)
-                if (Math.abs(b.value - expected) > Epsilon) {break}
+                const covered = [...droppedBefore, b, ...dropped]
+                const withinEnvelope = covered.every(point => {
+                    const t = (point.position - a.position) / (event.position - a.position)
+                    return Math.abs(point.value - (a.value + t * (event.value - a.value))) <= Epsilon
+                })
+                if (!withinEnvelope) {break}
                 keep.pop()
                 adapter.events.remove(b)
                 b.box.delete()
+                dropped = covered
             }
-            keep.push(event)
+            keep.push({event, dropped})
         }
     }
 
@@ -187,6 +193,11 @@ export namespace RecordAutomation {
         state.regionBox.loopDuration.setValue(finalDuration)
         simplifyRecordedEvents(project, state)
     }
+
+    const retireDetached = (activeRecordings: SortedSet<Address, RecordingState>): void =>
+        activeRecordings.values()
+            .filter(({regionBox, collectionBox}) => !regionBox.isAttached() || !collectionBox.isAttached())
+            .forEach(({adapter}) => activeRecordings.removeByKey(adapter.address))
 
     const updateRegionDurations = (
         project: Project,
@@ -270,6 +281,7 @@ export namespace RecordAutomation {
         const handleWrite = ({adapter, previousUnitValue}: ParameterWriteEvent): void => {
             if (!engine.isRecording.getValue()) {return}
             if (!parameterFieldAdapters.isTouched(adapter.address)) {return}
+            retireDetached(activeRecordings)
             const position = engine.position.getValue()
             const value = adapter.getUnitValue()
             const existingState = activeRecordings.opt(adapter.address)
@@ -297,6 +309,7 @@ export namespace RecordAutomation {
         }
         const handlePosition = (): void => {
             if (!engine.isRecording.getValue()) {return}
+            retireDetached(activeRecordings)
             if (activeRecordings.size() === 0) {return}
             const currentPosition = engine.position.getValue()
             const loopEnabled = timelineBox.loopArea.enabled.getValue()
