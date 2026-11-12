@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Own live MIDI capture presses per input, channel and pitch (no 127-press wrap, one release per held press on stream close); bound retrospective MIDI capture history to 8192 events.
+
 - Default unknown or invalid output latency to zero for MIDI recording and MIDI output timing (was ten seconds/NaN); keep retriggered recorded notes running until their last release.
 
 - Drop clipboard pastes and menu actions that settle after their editor uninstalled; fence queued MIDI capture streams against disarm and termination.

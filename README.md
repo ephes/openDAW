@@ -247,6 +247,11 @@ reports no usable value (missing, non-finite or negative), notes are written
 without latency compensation instead of being shifted. A pitch retriggered while
 still held keeps recording until all of its presses are released.
 
+Armed MIDI captures keep a retrospective history of the most recent 8192 note
+events (about 4096 notes); older events are dropped. Live input presses are
+owned per input, channel and pitch: a release only ends a press from the same
+input and channel, and closing the input stream releases each held press once.
+
 ### Flow Charts
 
 <img width="6551" height="7057" alt="image" src="https://github.com/user-attachments/assets/266a9fb2-4b72-4752-bcf1-85fda2ff2cf1" />
