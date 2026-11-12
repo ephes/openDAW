@@ -134,9 +134,14 @@ export class BoxGraph<BoxMap = any> {
         this.#assertTransaction()
         assert(!this.#constructingBox, "Cannot construct box while other box is constructing")
         if (isDefined(constructor)) {
+            const deferred = this.#deferredPointerUpdates.length
             this.#constructingBox = true
-            constructor(box)
+            const result = tryCatch(() => constructor(box))
             this.#constructingBox = false
+            if (result.status === "failure") {
+                this.#discardConstruction(box, deferred)
+                throw result.error
+            }
         }
         const added = this.#boxes.add(box)
         assert(added, () => `${box.name} ${box.address.toString()} already staged`)
@@ -233,6 +238,14 @@ export class BoxGraph<BoxMap = any> {
         }
     }
 
+    #discardConstruction(box: Box, deferred: int): void {
+        this.#deferredPointerUpdates.splice(deferred).toReversed().forEach(({pointerField, update}) => {
+            if (update.newAddress.nonEmpty()) {this.#edges.disconnect(pointerField)}
+            update.oldAddress.ifSome(address => this.#edges.connect(pointerField, address))
+        })
+        this.#edges.unwatchVerticesOf(box)
+    }
+
     #processPointerVertexUpdate(pointerField: PointerField, update: PointerUpdate): void {
         const {oldAddress, newAddress} = update
         pointerField.resolvedTo(newAddress.flatMap(address => this.findVertex(address)))
@@ -285,14 +298,19 @@ export class BoxGraph<BoxMap = any> {
             })
         this.#pointerTransactionState.clear()
         this.#inTransaction = false
+        const failures: Array<unknown> = []
         while (this.#finalizeTransactionObservers.length > 0) {
-            this.#finalizeTransactionObservers.splice(0).forEach(observer => observer())
+            this.#finalizeTransactionObservers.splice(0).forEach(observer => {
+                const result = tryCatch(observer)
+                if (result.status === "failure") {failures.push(result.error)}
+            })
             if (this.#finalizeTransactionObservers.length > 0) {
                 console.debug(`${this.#finalizeTransactionObservers.length} new observers while notifying`)
             }
         }
         this.#transactionListeners.proxy.onEndTransaction(this.#rollingBack)
         this.#rollingBack = false
+        if (failures.length > 0) {throw failures[0]}
     }
 
     #rollback(): void {

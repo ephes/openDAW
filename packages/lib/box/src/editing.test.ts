@@ -5,6 +5,7 @@ import {Box, BoxConstruct} from "./box"
 import {NoPointers, VertexVisitor} from "./vertex"
 import {Maybe, Option, panic, Procedure, safeExecute, UUID} from "@opendaw/lib-std"
 import {BoxEditing} from "./editing"
+import {PrimitiveUpdate} from "./updates"
 
 enum PointerType {A, B}
 
@@ -979,5 +980,107 @@ describe("saved append and modification process ownership", () => {
         expect(graph.inTransaction()).toBe(true)
         next.approve()
         expect(graph.findBox(box.address.uuid).nonEmpty()).toBe(true)
+    })
+})
+
+describe("graph and history failure settlement", () => {
+    const setup = () => {
+        const graph = createGraphWithFactory()
+        const editing = new BoxEditing(graph)
+        graph.beginTransaction()
+        const a = BarBox.create(graph, UUID.generate()), b = BarBox.create(graph, UUID.generate())
+        const mandatory = MandatoryBox.create(graph, UUID.generate())
+        RefBox.create(graph, UUID.generate(), box => box.target.refer(mandatory))
+        graph.endTransaction()
+        return {graph, editing, a, b, mandatory}
+    }
+    it("unlocks the graph and discards edges when a box constructor fails", () => {
+        const {graph, editing, mandatory} = setup()
+        const boom = new Error("constructor failed")
+        expect(() => editing.modify(() => RefBox.create(graph, UUID.generate(), box => {
+            box.target.refer(mandatory)
+            throw boom
+        }))).toThrow(boom)
+        expect(graph.inTransaction()).toBe(false)
+        expect(graph.boxes()).toHaveLength(4)
+        expect(graph.edges().incomingEdgesOf(mandatory)).toHaveLength(1)
+        expect(() => graph.edges().validateRequirements()).not.toThrow()
+        const created = editing.modify(() => RefBox.create(graph, UUID.generate(), box => box.target.refer(mandatory)))
+        expect(created.nonEmpty()).toBe(true)
+        expect(mandatory.pointerHub.size()).toBe(2)
+        graph.beginTransaction()
+        expect(() => BarBox.create(graph, UUID.generate(), () => {throw boom})).toThrow(boom)
+        BarBox.create(graph, UUID.generate())
+        graph.endTransaction()
+        expect(graph.boxes()).toHaveLength(6)
+    })
+    it("runs every end-transaction observer and settles listeners when one throws", () => {
+        const {graph} = setup()
+        const calls: Array<string> = []
+        const boom = new Error("observer failed")
+        graph.subscribeTransaction({onBeginTransaction: () => {}, onEndTransaction: () => calls.push("end")})
+        graph.beginTransaction()
+        graph.subscribeEndTransaction(() => {throw boom})
+        graph.subscribeEndTransaction(() => {
+            calls.push("second")
+            graph.subscribeEndTransaction(() => calls.push("nested"))
+        })
+        expect(() => graph.endTransaction()).toThrow(boom)
+        expect(calls).toEqual(["second", "nested", "end"])
+        expect(graph.inTransaction()).toBe(false)
+        graph.beginTransaction()
+        graph.endTransaction()
+        expect(calls).toEqual(["second", "nested", "end", "end"])
+    })
+    it("releases a modification process whose transaction cannot begin", () => {
+        const {graph, editing, a} = setup()
+        const boom = new Error("begin failed")
+        const subscription = graph.subscribeTransaction({
+            onBeginTransaction: () => {throw boom}, onEndTransaction: () => {}
+        })
+        expect(() => editing.beginModification()).toThrow(boom)
+        subscription.terminate()
+        expect(graph.inTransaction()).toBe(false)
+        graph.beginTransaction()
+        expect(() => editing.beginModification()).toThrow(/Transaction already in progress/)
+        expect(graph.inTransaction()).toBe(true)
+        graph.endTransaction()
+        editing.modify(() => a.bool.setValue(true))
+        expect(a.bool.getValue()).toBe(true)
+        const process = editing.beginModification()
+        a.bool.setValue(false)
+        process.approve()
+        expect(editing.undo()).toBe(true)
+        expect(a.bool.getValue()).toBe(true)
+    })
+    it.each(["undo", "redo"] as const)("settles a failed %s whose compensation also fails", direction => {
+        const {graph, editing, a, b} = setup()
+        editing.modify(() => a.bool.setValue(true), false)
+        editing.modify(() => b.bool.setValue(true), false)
+        editing.mark()
+        if (direction === "redo") {expect(editing.undo()).toBe(true)}
+        const failing = direction === "undo" ? [a, b] : [b, a]
+        const target = direction === "undo" ? [false, true] : [true, false]
+        let armed = true
+        const subscription = graph.subscribeToAllUpdates({
+            onUpdate: update => {
+                if (!armed || !(update instanceof PrimitiveUpdate)) {return}
+                failing.forEach((box, index) => {
+                    if (UUID.equals(update.address.uuid, box.address.uuid) && update.newValue === target[index]) {
+                        throw new Error(`${direction} step failed`)
+                    }
+                })
+            }
+        })
+        let notified = 0
+        editing.subscribe(() => notified++)
+        expect(editing[direction]()).toBe(false)
+        armed = false
+        subscription.terminate()
+        expect(graph.inTransaction()).toBe(false)
+        expect(notified).toBe(1)
+        expect(direction === "undo" ? editing.canUndo() : editing.canRedo()).toBe(true)
+        editing.modify(() => b.bool.setValue(direction === "undo"))
+        expect(b.bool.getValue()).toBe(direction === "undo")
     })
 })
