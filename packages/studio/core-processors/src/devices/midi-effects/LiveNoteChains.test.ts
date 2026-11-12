@@ -56,6 +56,21 @@ it("projects both active-note endpoints across adjacent windows and into an arpe
     expect([...held.iterateActiveNotesAt(groove.warp(240), true)][0].duration).toBe(Infinity)
 })
 
+it("leaves retained upstream active notes unchanged across repeated queries", () => {
+    const f = noteChainFixture(), z = f.zeitgeist().processor
+    const retained = note(), groove = f.adapters.adapterFor(f.groove, GrooveAdapter.checkType)
+    z.setNoteEventSource({
+        *processNotes() {},
+        *iterateActiveNotesAt() {yield retained}
+    })
+    const first = [...z.iterateActiveNotesAt(groove.warp(240), false)][0]
+    const second = [...z.iterateActiveNotesAt(groove.warp(240), false)][0]
+    expect(retained).toEqual(note())
+    expect(second).toEqual(first)
+    expect(first.position).toBe(groove.warp(120))
+    expect(first.position + first.duration).toBeCloseTo(groove.warp(420))
+})
+
 it("feeds held keyboard input through two arpeggios while stopped and excludes timeline notes", () => {
     const f = noteChainFixture()
     const seqContext = {subscribeProcessPhase: () => ({terminate() {}})} as unknown as EngineContext

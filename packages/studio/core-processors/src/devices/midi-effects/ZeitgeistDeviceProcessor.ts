@@ -69,8 +69,7 @@ export class ZeitgeistDeviceProcessor extends EventProcessor implements MidiEffe
         for (const event of source.iterateActiveNotesAt(groove.unwarp(position), onlyExternal)) {
             const start = groove.warp(event.position)
             const end = event.position + event.duration
-            yield Objects.overwrite(event, {position: start,
-                duration: Number.isFinite(end) ? groove.warp(end) - start : event.duration})
+            yield {...event, position: start, duration: Number.isFinite(end) ? groove.warp(end) - start : event.duration}
         }
     }
 
