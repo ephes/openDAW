@@ -5,8 +5,8 @@
 Zeitgeist borrows groove adapters from the registry; it owns its pointer
 subscription only. Switching a groove or terminating an effect must leave other
 users of that adapter subscribed. Active-note projections warp both endpoints;
-infinite held-note durations stay infinite. Projections are fresh copies, so
-retained upstream notes are never warped in place. Lifecycle events retain their IDs.
+infinite held-note durations stay infinite. Zeitgeist, Pitch and Velocity
+project active notes as fresh copies, so retained upstream notes are never changed in place. Lifecycle events retain their IDs.
 
 Active-note enumeration carries optional `external` provenance for keyboard and
 audition notes. Pitch, Velocity and Zeitgeist preserve it, and Arpeggio copies the

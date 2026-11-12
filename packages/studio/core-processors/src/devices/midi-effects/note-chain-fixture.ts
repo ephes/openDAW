@@ -1,10 +1,13 @@
 import {BoxGraph} from "@opendaw/lib-box"
 import {Terminable, UUID} from "@opendaw/lib-std"
-import {ArpeggioDeviceBox, GrooveShuffleBox, ZeitgeistDeviceBox} from "@opendaw/studio-boxes"
-import {ArpeggioDeviceBoxAdapter, BoxAdapters, BoxAdaptersContext, ParameterFieldAdapters, ZeitgeistDeviceBoxAdapter} from "@opendaw/studio-adapters"
+import {ArpeggioDeviceBox, GrooveShuffleBox, PitchDeviceBox, VelocityDeviceBox, ZeitgeistDeviceBox} from "@opendaw/studio-boxes"
+import {ArpeggioDeviceBoxAdapter, BoxAdapters, BoxAdaptersContext, ParameterFieldAdapters, PitchDeviceBoxAdapter, VelocityDeviceBoxAdapter,
+    ZeitgeistDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {EngineContext} from "../../EngineContext"
 import {ArpeggioDeviceProcessor} from "./ArpeggioDeviceProcessor"
 import {ZeitgeistDeviceProcessor} from "./ZeitgeistDeviceProcessor"
+import {PitchDeviceProcessor} from "./PitchDeviceProcessor"
+import {VelocityDeviceProcessor} from "./VelocityDeviceProcessor"
 
 // Real graph, adapters and processors; only the worklet registration and stream sink are inert.
 export function noteChainFixture() {
@@ -22,6 +25,18 @@ export function noteChainFixture() {
         graph.endTransaction()
         return new ArpeggioDeviceProcessor(context, adapters.adapterFor(box, ArpeggioDeviceBoxAdapter))
     }
+    const pitch = (configure: (box: PitchDeviceBox) => void = () => {}) => {
+        graph.beginTransaction()
+        const box = PitchDeviceBox.create(graph, UUID.generate(), configure)
+        graph.endTransaction()
+        return new PitchDeviceProcessor(context, adapters.adapterFor(box, PitchDeviceBoxAdapter))
+    }
+    const velocity = (configure: (box: VelocityDeviceBox) => void = () => {}) => {
+        graph.beginTransaction()
+        const box = VelocityDeviceBox.create(graph, UUID.generate(), configure)
+        graph.endTransaction()
+        return new VelocityDeviceProcessor(context, adapters.adapterFor(box, VelocityDeviceBoxAdapter))
+    }
     graph.beginTransaction()
     const groove = GrooveShuffleBox.create(graph, UUID.generate(), box => box.amount.setValue(0.8))
     graph.endTransaction()
@@ -31,5 +46,5 @@ export function noteChainFixture() {
         graph.endTransaction()
         return {box, processor: new ZeitgeistDeviceProcessor(context, adapters.adapterFor(box, ZeitgeistDeviceBoxAdapter))}
     }
-    return {graph, context, adapters, groove, edit, arpeggio, zeitgeist}
+    return {graph, context, adapters, groove, edit, arpeggio, pitch, velocity, zeitgeist}
 }

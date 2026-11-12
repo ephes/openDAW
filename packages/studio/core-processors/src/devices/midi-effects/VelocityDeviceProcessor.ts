@@ -73,9 +73,7 @@ export class VelocityDeviceProcessor extends EventProcessor implements MidiEffec
         if (this.#source.isEmpty()) {return}
         for (const event of this.#source.unwrap().iterateActiveNotesAt(position, onlyExternal)) {
             if (event.type === "note-event") {
-                yield Objects.overwrite(event, {
-                    velocity: this.#adapter.computeVelocity(event.position, event.velocity)
-                })
+                yield {...event, velocity: this.#adapter.computeVelocity(event.position, event.velocity)}
             }
         }
     }

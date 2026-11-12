@@ -69,10 +69,10 @@ export class PitchDeviceProcessor extends EventProcessor implements MidiEffectPr
         for (const event of this.#source.unwrap().iterateActiveNotesAt(position, onlyExternal)) {
             if (event.type === "note-event") {
                 const {cent, octaves, semiTones} = this.#adapter.namedParameter
-                yield Objects.overwrite(event, {
+                yield {...event,
                     pitch: event.pitch + octaves.valueAt(event.position) * 12 + semiTones.valueAt(event.position),
                     cent: event.cent + cent.valueAt(event.position)
-                })
+                }
             }
         }
     }

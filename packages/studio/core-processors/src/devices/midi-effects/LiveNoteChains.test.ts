@@ -71,6 +71,20 @@ it("leaves retained upstream active notes unchanged across repeated queries", ()
     expect(first.position + first.duration).toBeCloseTo(groove.warp(420))
 })
 
+it("leaves retained upstream active notes unchanged through pitch and velocity", () => {
+    const f = noteChainFixture(), retained = note()
+    const retaining: NoteEventSource = {*processNotes() {}, *iterateActiveNotesAt() {yield retained}}
+    const pitch = f.pitch(box => {box.semiTones.setValue(2); box.cents.setValue(10)})
+    const velocity = f.velocity(box => {box.offset.setValue(0.1); box.mix.setValue(1.0)})
+    pitch.setNoteEventSource(retaining); velocity.setNoteEventSource(retaining)
+    const pitched = [...pitch.iterateActiveNotesAt(200, false), ...pitch.iterateActiveNotesAt(200, false)]
+    const voiced = [...velocity.iterateActiveNotesAt(200, false), ...velocity.iterateActiveNotesAt(200, false)]
+    expect(retained).toEqual(note())
+    expect(pitched.map(event => [event.pitch, event.cent])).toEqual([[62, 10], [62, 10]])
+    expect(voiced[1].velocity).toBe(voiced[0].velocity)
+    expect(voiced[0].velocity).toBeCloseTo(0.9)
+})
+
 it("feeds held keyboard input through two arpeggios while stopped and excludes timeline notes", () => {
     const f = noteChainFixture()
     const seqContext = {subscribeProcessPhase: () => ({terminate() {}})} as unknown as EngineContext
