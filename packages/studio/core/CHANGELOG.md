@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve every retrospective MIDI retrigger, ending the previous note at the new attack and the latest note at the last release. Carry held-note velocity and press counts across the 8192-event history boundary, clipping carried starts to the retained window and keeping the capture count accurate.
+
 - Retire active automation recordings whose region or event collection was deleted so later writes start a new region. Bound automation simplification so every dropped event stays within the tolerance of the final segment.
 
 - Keep recorded automation regions inside non-quantized loop bounds (no 16th-grid overshoot past the loop end or before the loop start). Track the playhead continuously so only a real recording loop wrap (loop enabled and takes allowed) splits automation regions; with takes disabled regions keep growing past the loop end.

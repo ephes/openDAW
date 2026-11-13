@@ -248,7 +248,11 @@ without latency compensation instead of being shifted. A pitch retriggered while
 still held keeps recording until all of its presses are released.
 
 Armed MIDI captures keep a retrospective history of the most recent 8192 note
-events (about 4096 notes); older events are dropped. Live input presses are
+events (about 4096 notes), plus held state for at most 128 pitches. When older
+events are dropped, notes still held at the start of the retained history keep
+their velocity and release counts, with their start clipped to that boundary.
+Retriggering a held pitch preserves both attacks: the earlier note ends at the
+retrigger and the latest note ends at the last release. Live input presses are
 owned per input, channel and pitch: a release only ends a press from the same
 input and channel, and closing the input stream releases each held press once.
 

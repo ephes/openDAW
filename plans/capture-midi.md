@@ -29,6 +29,7 @@ Silently buffer all incoming MIDI notes on armed tracks and let the user commit 
 - **Capture committed**: Buffer clears. New capture session begins (mode depends on current transport state).
 - **Track disarmed**: Buffer clears.
 - **Recording active**: Buffer is disabled. Commit action is disabled. Uses `engine.isRecording` (observable) to detect recording state — `Recording.isRecording` is a static boolean and cannot be subscribed to.
+- **History budget**: Keep the latest 8192 note events plus held state for at most 128 pitches. Fold dropped events into that state, carrying velocity and outstanding press counts. Clip carried note starts to the oldest retained event; reset clears the carried state as well. The capture count includes carried notes and retained attacks.
 
 ## Architecture
 
@@ -144,7 +145,7 @@ All questions resolved. See Resolved Decisions below.
 
 - **Type discriminator**: RawNoteEvent uses `type: "on" | "off"` discriminator field
 - **Audition signals**: Not an issue — `NoteSignal.fromEvent()` only produces on/off, audition signals never reach `#notifier`
-- **Same-pitch overlap**: Standard MIDI pairing — one active note per pitch, walk events in order
+- **Same-pitch overlap**: One active note per pitch with an outstanding press count. A retrigger finalizes the preceding note at the new attack; the latest note ends at the last release. Keep the 1/128-note minimum duration.
 - **Region duration**: Covers full extent of all notes (`max(position + duration)`)
 - **loopDuration**: Always set equal to duration
 - **ignoreNoteRegion**: Not needed — region is created atomically after the fact, no concurrent write + playback

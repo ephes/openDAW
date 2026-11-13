@@ -28,6 +28,7 @@ import {RecordMidi} from "./RecordMidi"
 type RawNoteOn = { type: "on", pitch: byte, velocity: unitValue, delta: number }
 type RawNoteOff = { type: "off", pitch: byte, delta: number }
 type RawNoteEvent = RawNoteOn | RawNoteOff
+type HeldNote = { velocity: unitValue, delta: number, presses: number }
 
 export type ResolvedNote = { pitch: byte, velocity: unitValue, position: ppqn, duration: ppqn }
 export type CaptureResult = { mode: "stopped" | "playing", origin: number, notes: ReadonlyArray<ResolvedNote> }
@@ -47,6 +48,8 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
     #terminated: boolean = false
 
     #captureEvents: Array<RawNoteEvent> = []
+    // State immediately before the oldest retained event (at most 128 pitches).
+    readonly #captureHeldAtStart = new Map<byte, HeldNote>()
     #captureMode: "stopped" | "playing" = "stopped"
     #captureOrigin: number = 0
     #captureOriginSet: boolean = false
@@ -184,6 +187,7 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
     #bufferNote(signal: NoteSignal): void {
         if (!this.armed.getValue()) {return}
         if (this.manager.project.engine.isRecording.getValue()) {return}
+        if (!Number.isInteger(signal.pitch) || signal.pitch < 0 || signal.pitch > 127) {return}
         if (NoteSignal.isOn(signal)) {
             if (this.#capturePendingReset) {
                 this.#captureReset()
@@ -214,8 +218,19 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
 
     #trimCapture(): void {
         if (this.#captureEvents.length <= CAPTURE_MIDI_MAX_EVENTS) {return}
-        const dropped = this.#captureEvents.shift()
-        if (isDefined(dropped) && dropped.type === "on") {this.#captureNoteOnCount.setValue(this.#captureNoteOnCount.getValue() - 1)}
+        const dropped = this.#captureEvents.shift()!
+        const previousSize = this.#captureHeldAtStart.size
+        const held = this.#captureHeldAtStart.get(dropped.pitch)
+        if (dropped.type === "on") {
+            this.#captureHeldAtStart.set(dropped.pitch, {
+                velocity: dropped.velocity, delta: dropped.delta, presses: (held?.presses ?? 0) + 1
+            })
+        } else if (isDefined(held) && --held.presses === 0) {
+            this.#captureHeldAtStart.delete(dropped.pitch)
+        }
+        // A carried pitch contributes one note, in addition to retained attacks.
+        this.#captureNoteOnCount.setValue(this.#captureNoteOnCount.getValue()
+            - (dropped.type === "on" ? 1 : 0) + this.#captureHeldAtStart.size - previousSize)
     }
 
     #computeCaptureDelta(): number {
@@ -227,6 +242,7 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
 
     #captureReset(): void {
         this.#captureEvents.length = 0
+        this.#captureHeldAtStart.clear()
         this.#captureNoteOnCount.setValue(0)
         this.#captureOrigin = 0
         this.#captureOriginSet = false
@@ -237,29 +253,36 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
     }
 
     #resolveNotes(): Array<ResolvedNote> {
-        const openNotes = new Map<byte, { velocity: unitValue, delta: number }>()
+        const openNotes = new Map<byte, HeldNote>()
+        const startDelta = this.#captureEvents[0]?.delta ?? 0
+        for (const [pitch, held] of this.#captureHeldAtStart) {
+            openNotes.set(pitch, {...held, delta: startDelta})
+        }
         const resolved: Array<ResolvedNote> = []
         const toPosition = (delta: number): ppqn => {
             if (this.#captureMode === "playing" || this.#capturePendingReset) {return delta}
             return PPQN.secondsToPulses(delta / 1000, this.#captureBpmAtOrigin)
         }
+        const finish = (pitch: byte, open: HeldNote, endDelta: number): void => {
+            const position = toPosition(open.delta)
+            const duration = Math.max(MIN_NOTE_DURATION, toPosition(endDelta) - position)
+            resolved.push({pitch, velocity: open.velocity, position, duration})
+        }
         const commitDelta = this.#computeCaptureDelta()
         for (const event of this.#captureEvents) {
+            const open = openNotes.get(event.pitch)
             if (event.type === "on") {
-                openNotes.set(event.pitch, {velocity: event.velocity, delta: event.delta})
-            } else {
-                const open = openNotes.get(event.pitch)
-                if (!isDefined(open)) {continue}
+                if (isDefined(open)) {finish(event.pitch, open, event.delta)}
+                openNotes.set(event.pitch, {
+                    velocity: event.velocity, delta: event.delta, presses: (open?.presses ?? 0) + 1
+                })
+            } else if (isDefined(open) && --open.presses === 0) {
                 openNotes.delete(event.pitch)
-                const position = toPosition(open.delta)
-                const duration = Math.max(MIN_NOTE_DURATION, toPosition(event.delta) - position)
-                resolved.push({pitch: event.pitch, velocity: open.velocity, position, duration})
+                finish(event.pitch, open, event.delta)
             }
         }
         for (const [pitch, open] of openNotes) {
-            const position = toPosition(open.delta)
-            const duration = Math.max(MIN_NOTE_DURATION, toPosition(commitDelta) - position)
-            resolved.push({pitch, velocity: open.velocity, position, duration})
+            finish(pitch, open, commitDelta)
         }
         // Sort by position so notes[0] is the earliest press, not the first note-off.
         // commitMidiCapture relies on this to anchor firstPosition and place chord
