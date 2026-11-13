@@ -6,20 +6,41 @@ export type AwaitProps<T> = {
     factory: Provider<Promise<T>>,
     loading: Provider<JsxValue>,
     success: Func<T, JsxValue>,
-    failure: Func<{ reason: any, retry: Exec }, JsxValue>
+    failure: Func<{ reason: unknown, retry: Exec }, JsxValue>
     repeat?: Procedure<Exec>
 }
 
 export const Await = <T, >({factory, loading, success, failure, repeat}: AwaitProps<T>) => {
     const contents: DomElement = <div style={{display: "contents"}}/>
+    let generation = 0
     const start = () => {
-        replaceChildren(contents, loading())
-        factory().then(
-            result => replaceChildren(contents, success(result)),
-            reason => replaceChildren(contents, failure({
-                reason: reason instanceof Error ? `${reason.name} (${reason.message})` : reason,
-                retry: () => start()
-            })))
+        const attempt = ++generation
+        const current = () => attempt === generation
+        const show = (value: JsxValue) => {
+            if (current()) {replaceChildren(contents, value)}
+        }
+        const run = async (): Promise<void> => {
+            try {
+                show(loading())
+                if (!current()) {return}
+                const result = await factory()
+                if (current()) {show(success(result))}
+            } catch (reason) {
+                if (!current()) {return}
+                try {
+                    show(failure({
+                        reason: reason instanceof Error ? `${reason.name} (${reason.message})` : reason,
+                        retry: () => {if (current()) {start()}}
+                    }))
+                } catch (reason) {
+                    if (current()) {
+                        console.warn(reason)
+                        replaceChildren(contents, "Could not load content.")
+                    }
+                }
+            }
+        }
+        void run()
     }
     start()
     safeExecute(repeat, start)

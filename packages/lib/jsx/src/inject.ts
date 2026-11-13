@@ -80,18 +80,18 @@ export namespace Inject {
         #updateElements(): void {this.#targets.forEach(this.#updateElement)}
 
         readonly #updateElement: (element: Element) => void =
-            (element: Element) => {element.className = Array.from(this.#classes).join(" ")}
+            (element: Element) => {element.setAttribute("class", Array.from(this.#classes).join(" "))}
     }
 
     export class Attribute implements Injector<Element> {
         readonly #targets: WeakRefSet<Element>
-        readonly #keys: WeakMap<Element, string>
+        #keys: WeakMap<Element, Set<string>>
 
         #value: string
 
         constructor(value: string) {
             this.#targets = new WeakRefSet<Element>()
-            this.#keys = new WeakMap<Element, string>()
+            this.#keys = new WeakMap<Element, Set<string>>()
             this.#value = value
         }
 
@@ -107,20 +107,25 @@ export namespace Inject {
         }
 
         addTarget(target: Element, key: string): void {
-            this.#targets.add(target)
-            this.#keys.set(target, key)
+            let keys = this.#keys.get(target)
+            if (keys === undefined) {
+                keys = new Set<string>()
+                this.#keys.set(target, keys)
+                this.#targets.add(target)
+            }
+            keys.add(key)
             this.#updateElement(target)
         }
 
-        terminate(): void {this.#targets.clear()}
+        terminate(): void {
+            this.#targets.clear()
+            this.#keys = new WeakMap<Element, Set<string>>()
+        }
 
         #updateElements(): void {this.#targets.forEach(this.#updateElement)}
 
         readonly #updateElement: (element: Element) => void = (element: Element) => {
-            const key = this.#keys.get(element)
-            if (key !== undefined) {
-                element.setAttribute(key, this.#value)
-            }
+            this.#keys.get(element)?.forEach(key => element.setAttribute(key, this.#value))
         }
     }
 }

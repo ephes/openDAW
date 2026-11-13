@@ -22,8 +22,14 @@ export class RouteLocation {
     }
 
     catchupAndSubscribe(observer: Observer<RouteLocation>): Subscription {
-        observer(this)
-        return this.#notifier.subscribe(observer)
+        const subscription = this.#notifier.subscribe(observer)
+        try {
+            observer(this)
+            return subscription
+        } catch (reason) {
+            subscription.terminate()
+            throw reason
+        }
     }
 
     get path(): string {return location.pathname}
@@ -56,6 +62,9 @@ export class RouteMatcher<R extends Route> {
         if (path.length > 1 && path.endsWith("/")) {
             path = path.slice(0, -1)
         }
+        if (route.length > 1 && route.endsWith("/")) {
+            route = route.slice(0, -1)
+        }
         const routeSegments = route.split("/")
         const pathSegments = path.split("/")
         for (let i = 1; i < pathSegments.length; i++) {
@@ -66,7 +75,14 @@ export class RouteMatcher<R extends Route> {
                 return false
             }
         }
-        return true
+        return routeSegments.length === pathSegments.length || routeSegments[pathSegments.length] === "*"
+    }
+
+    static isWithin(path: string, base: string): boolean {
+        if (!path.startsWith("/") || !base.startsWith("/")) {return false}
+        const strip = (value: string) => value.length > 1 && value.endsWith("/") ? value.slice(0, -1) : value
+        const pathSegments = strip(path).split("/")
+        return strip(base).split("/").every((segment, index) => index === 0 || pathSegments[index] === segment)
     }
 
     readonly #routes: ReadonlyArray<R>
