@@ -1,11 +1,11 @@
 import {ByteArrayOutput, Maybe, Option, Procedure, UUID} from "@opendaw/lib-std"
 import {Box} from "../box"
 import {BoxGraph} from "../graph"
-import {BooleanField, StringField} from "../primitive"
+import {BooleanField, Float32Field, StringField} from "../primitive"
 import {PointerField} from "../pointer"
 import {NoPointers, VertexVisitor} from "../vertex"
 
-export class TestBox extends Box<string, {0: BooleanField, 1: StringField, 2: PointerField<string>}> {
+export class TestBox extends Box<string, {0: BooleanField, 1: StringField, 2: PointerField<string>, 3: Float32Field}> {
     static create(graph: BoxGraph, uuid = UUID.generate(), init?: Procedure<TestBox>): TestBox {
         return graph.stageBox(new TestBox({graph, uuid, name: "TestBox", pointerRules: {accepts: ["test"], mandatory: false}}), init)
     }
@@ -14,7 +14,8 @@ export class TestBox extends Box<string, {0: BooleanField, 1: StringField, 2: Po
         return {
             0: BooleanField.create({...field, fieldKey: 0, fieldName: "flag"}),
             1: StringField.create({...field, fieldKey: 1, fieldName: "text"}),
-            2: PointerField.create({...field, fieldKey: 2, fieldName: "ref"}, "test", false)
+            2: PointerField.create({...field, fieldKey: 2, fieldName: "ref"}, "test", false),
+            3: Float32Field.create({...field, fieldKey: 3, fieldName: "level"}, "any", "")
         }
     }
     get tags(): Readonly<Record<string, string | number | boolean>> {return {}}

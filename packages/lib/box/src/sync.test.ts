@@ -73,6 +73,13 @@ describe("replication batch boundaries", () => {
         expect(target.inTransaction()).toBe(false)
     })
 
+    it.each([Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, Number.NaN, 3.4e39])("replicates the float32 value %d", value => {
+        const {target, box, sender} = fixture()
+        sender.sendUpdates([{type: "update-primitive", address: box.getField(3).address.decompose(), value}])
+        expect((target.boxes()[0] as TestBox).getField(3).getValue()).toBe(Math.fround(value))
+        expect(target.inTransaction()).toBe(false)
+    })
+
     it("resolves updates to boxes created earlier in the same batch", () => {
         const {target, box, sender} = fixture()
         const uuid = UUID.generate()
@@ -87,11 +94,23 @@ describe("replication batch boundaries", () => {
 
     it("quarantines a failed sender, never replays a committed batch, and reconnects from a snapshot", async () => {
         const {source, target, box, a} = fixture()
-        const transport = vi.spyOn(a, "send").mockImplementationOnce(() => {throw new Error("transport failed")})
+        const failure = new Error("transport failed")
+        const transport = vi.spyOn(a, "send").mockImplementationOnce(() => {throw failure})
         const sync = new SyncSource(source, a)
+        const ended: Array<boolean> = []
+        source.subscribeTransaction({onBeginTransaction: () => {}, onEndTransaction: rolledBack => ended.push(rolledBack)})
+        const reported: Array<unknown> = []
+        const reject = vi.spyOn(Promise, "reject").mockImplementation((reason: unknown) => {
+            reported.push(reason)
+            return Promise.resolve() as Promise<never>
+        })
         source.beginTransaction()
         const created = TestBox.create(source)
-        expect(() => source.endTransaction()).toThrow("transport failed")
+        expect(() => source.endTransaction()).not.toThrow()
+        reject.mockRestore()
+        expect(reported).toEqual([failure])
+        expect(ended).toEqual([false])
+        expect(sync.failed).toBe(true)
         expect(source.inTransaction()).toBe(false)
         expect(source.findBox(created.address.uuid).nonEmpty()).toBe(true)
         source.beginTransaction()

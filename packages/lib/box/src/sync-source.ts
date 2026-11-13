@@ -1,4 +1,4 @@
-import {Arrays, EmptyExec, panic, Terminable, Terminator} from "@opendaw/lib-std"
+import {Arrays, EmptyExec, panic, Terminable, Terminator, tryCatch} from "@opendaw/lib-std"
 import {Communicator, Messenger} from "@opendaw/lib-runtime"
 import {BoxGraph} from "./graph"
 import {Update} from "./updates"
@@ -41,13 +41,14 @@ export class SyncSource<M> implements Terminable {
                     return
                 }
                 const batch = updates.splice(0)
-                try {
-                    this.#caller.sendUpdates(batch)
-                } catch (error) {
+                const result = tryCatch(() => this.#caller.sendUpdates(batch))
+                if (result.status === "failure") {
                     // This transaction has committed. Delivery is ambiguous: never replay its batch.
+                    // Report asynchronously so other listeners and undo history still see the commit.
                     this.#failed = true
                     this.#terminator.terminate()
-                    throw error
+                    void Promise.reject(result.error)
+                    return
                 }
                 if (SyncSource.DEBUG_CHECKSUM) {
                     this.#caller.checksum(graph.checksum()).then(EmptyExec, (reason) => panic(reason))

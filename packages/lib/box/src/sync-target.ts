@@ -82,7 +82,8 @@ const validPrimitive = (type: PrimitiveType, value: unknown): boolean => {
         case PrimitiveType.Boolean: return typeof value === "boolean"
         case PrimitiveType.String: return typeof value === "string"
         case PrimitiveType.Bytes: return value instanceof Int8Array
-        case PrimitiveType.Float32: return typeof value === "number" && Number.isFinite(value) && Number.isFinite(Math.fround(value))
+        // Float32 fields legitimately hold -Infinity (e.g. decibel minimums) and other non-finite values.
+        case PrimitiveType.Float32: return typeof value === "number"
         case PrimitiveType.Int32: return typeof value === "number" && Number.isInteger(value) && value >= -0x80000000 && value <= 0x7fffffff
     }
 }
