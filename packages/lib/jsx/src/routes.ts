@@ -78,6 +78,13 @@ export class RouteMatcher<R extends Route> {
         return routeSegments.length === pathSegments.length || routeSegments[pathSegments.length] === "*"
     }
 
+    static isWithin(path: string, base: string): boolean {
+        if (!path.startsWith("/") || !base.startsWith("/")) {return false}
+        const strip = (value: string) => value.length > 1 && value.endsWith("/") ? value.slice(0, -1) : value
+        const pathSegments = strip(path).split("/")
+        return strip(base).split("/").every((segment, index) => index === 0 || pathSegments[index] === segment)
+    }
+
     readonly #routes: ReadonlyArray<R>
 
     private constructor(routes: ReadonlyArray<R>) {

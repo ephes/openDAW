@@ -1,8 +1,9 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {Terminator} from "@opendaw/lib-std"
-import {RouteLocation} from "../routes"
+import {RouteLocation, RouteMatcher} from "../routes"
 import {PageFactory, Router, RouterConstruct} from "./Router"
 import {JsxValue} from "../types"
+import {LocalLink} from "./LocalLink"
 
 const deferred = () => {
     let resolve!: (value: JsxValue) => void
@@ -121,6 +122,22 @@ describe("Router teardown", () => {
 })
 
 describe("Router failure boundary", () => {
+    it("keeps a published page alive when onshow throws", async () => {
+        const disposed = vi.fn()
+        const error = vi.fn(() => "error page")
+        const onshow = vi.fn(() => {throw new Error("onshow failed")})
+        const container = mount([{path: "/a", factory: ({lifecycle}) => {
+            lifecycle.own({terminate: disposed})
+            return "A"
+        }}], {error, onshow})
+        await settle()
+        expect(container.textContent).toBe("A")
+        expect(onshow).toHaveBeenCalledTimes(1)
+        expect(disposed).not.toHaveBeenCalled()
+        expect(error).not.toHaveBeenCalled()
+        expect(console.warn).toHaveBeenCalledWith(expect.objectContaining({message: "onshow failed"}))
+    })
+
     it("catches synchronous factory errors and disposes their subscriptions", async () => {
         const disposed = vi.fn()
         const error = vi.fn<PageFactory<null>>(() => "error page")
@@ -224,6 +241,24 @@ describe("Route selection and initial navigation", () => {
         expect(location.pathname).toBe("/b")
         expect(container.textContent).toBe("B")
         expect(disposed).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+        ["/manuals", "/manuals/", true], ["/manuals/x/y", "/manuals/", true], ["/manuals/x", "/manuals", true],
+        ["/manual", "/manuals/", false], ["/", "/", true], ["/manuals", "/", false], ["/a", "/a/b", false]
+    ])("LocalLink treats %s as within %s: %s", (path, base, expected) => {
+        expect(RouteMatcher.isWithin(path, base)).toBe(expected)
+    })
+
+    it("LocalLink stays active on deeper pages of its section", () => {
+        history.replaceState(null, "", "/manuals/")
+        const link = LocalLink({href: "/manuals/"}) as HTMLAnchorElement
+        document.body.append(link)
+        expect(link.classList.contains("active")).toBe(true)
+        RouteLocation.get().navigateTo("/manuals/x")
+        expect(link.classList.contains("active")).toBe(true)
+        RouteLocation.get().navigateTo("/other")
+        expect(link.classList.contains("active")).toBe(false)
     })
 
     it("unsubscribes when initial location delivery throws", () => {

@@ -7,8 +7,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Retain all keys of reusable attribute injectors and support class-list bindings on SVG.
 - Give Await repeats generation ownership, fence stale retries, and settle factory/render failures; type rejection reasons as unknown.
-- Require full route consumption and observe redirects during initial location delivery.
-- Catch synchronous page failures, close failed owners, and stop after a failed error-page attempt.
+- Require full route consumption and observe redirects during initial location delivery; `LocalLink` keeps section (prefix) highlighting via `RouteMatcher.isWithin`.
+- Catch synchronous page failures, close failed owners, and stop after a failed error-page attempt; a throwing `onshow` after publication is logged and keeps the visible page alive.
 - Dispose router page owners and preloaders with the runtime; release cancelled requests immediately.
 - Fence retired router failures and cancel pending navigation when returning to the visible page.
 - Run lib-jsx DOM regressions with Vitest and include TSX in lint.

@@ -11,4 +11,4 @@ export const LocalLink = ({href, className}: { href: string, className?: string 
                RouteLocation.get().navigateTo(href)
            }} link/>,
         weakRef => RouteLocation.get().catchupAndSubscribe(location =>
-            weakRef.deref()?.classList.toggle("active", RouteMatcher.match(location.path, href))))
+            weakRef.deref()?.classList.toggle("active", RouteMatcher.isWithin(location.path, href))))

@@ -97,6 +97,10 @@ export const Router = <SERVICE = never>({
             replaceChildren(container, element)
             safeExecute(onshow)
         } catch (reason) {
+            if (showing.unwrapOrNull() === request) {
+                console.warn(reason)
+                return
+            }
             if (!owns(request)) {
                 lifecycle.terminate()
                 return
