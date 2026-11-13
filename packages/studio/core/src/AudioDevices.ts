@@ -18,13 +18,22 @@ export class AudioDevices {
                 ? "Audio input constraints could not be satisfied"
                 : Errors.isNotAllowed(error) ? "Audio input permission denied" : "Audio input unavailable")
         }
-        await this.updateInputList()
-        return stream
+        try {
+            await this.updateInputList()
+            return stream
+        } catch (error) {
+            // Ownership transfers only when setup returns the stream.
+            for (const track of stream.getTracks()) {
+                try {track.stop()} catch { /* Release the other attempt-owned tracks too. */ }
+            }
+            throw error
+        }
     }
 
     static async updateInputList() {
-        this.#inputs = Arrays.empty()
+        const generation = ++this.#inputGeneration
         const {status, value: devices} = await Promises.tryCatch(navigator.mediaDevices.enumerateDevices())
+        if (generation !== this.#inputGeneration) {return}
         if (status === "rejected") {
             return Errors.warn("Could not enumerate devices.")
         }
@@ -32,6 +41,7 @@ export class AudioDevices {
             device.kind === "audioinput" && device.deviceId !== "" && device.groupId !== "")
     }
 
+    static #inputGeneration = 0
     static #inputs: ReadonlyArray<MediaDeviceInfo> = Arrays.empty()
 
     static get inputs(): ReadonlyArray<MediaDeviceInfo> {return this.#inputs}
