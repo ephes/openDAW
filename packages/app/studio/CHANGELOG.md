@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Limit buffered video budgets and actual output to 256 MiB with a bounded streaming target; skip disabled overlay assets and bound enabled asset loading to ten seconds.
+
 - Own video initialization through its ten-second deadline and retire late results; Cancel interrupts pending render/encode/finalize steps and closes the progress dialog promptly.
 
 - Cancel active video muxers, fence retired exports and discard partial streaming files; unwind all acquired render owners after setup or encoding failures. Mediabunny finalization retains its public cancellation limitation (see video export documentation).

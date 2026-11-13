@@ -1,5 +1,7 @@
+import {WritableStream as TestWritableStream} from "node:stream/web"
 import {afterEach, beforeEach, expect, it, vi} from "vitest"
 import type {Project} from "@opendaw/studio-core"
+import {BufferVideoExporter} from "./WebCodecsVideoExporter"
 import {VideoRenderer} from "./VideoRenderer"
 
 const m = vi.hoisted(() => ({
@@ -7,10 +9,24 @@ const m = vi.hoisted(() => ({
     add: vi.fn(), finalize: vi.fn(), abort: vi.fn(), exporterClose: vi.fn(),
     offline: vi.fn(), step: vi.fn(), play: vi.fn(), stop: vi.fn(), engineClose: vi.fn(),
     state: vi.fn(), stateClose: vi.fn(), runner: vi.fn(), runnerClose: vi.fn(), compile: vi.fn(),
-    overlay: vi.fn(), overlayClose: vi.fn(), copy: vi.fn(), projectClose: vi.fn(), canvas: vi.fn()
+    overlay: vi.fn(), overlayClose: vi.fn(), copy: vi.fn(), projectClose: vi.fn(), canvas: vi.fn(), nativeVideo: vi.fn(), nativeAudio: vi.fn(), nativeData: vi.fn(), nativeClose: vi.fn(), save: vi.fn()
 }))
 vi.mock("@opendaw/lib-std", async importOriginal => ({
     ...await importOriginal<object>(), RuntimeNotifier: {progress: m.progress, info: m.info}
+}))
+vi.mock("@opendaw/lib-dom", () => ({Files: {save: m.save}}))
+vi.mock("mediabunny", () => ({
+    Output: class {
+        addVideoTrack() {} addAudioTrack() {} async start() {} async finalize() {} async cancel() {}
+    },
+    Mp4OutputFormat: class {}, StreamTarget: class {},
+    CanvasSource: class {add = m.nativeVideo; close() {}},
+    AudioSampleSource: class {add = m.nativeAudio; close() {}},
+    AudioSample: class {
+        constructor(private readonly data: AudioData) {}
+        setTimestamp() {}
+        close() {m.nativeClose(); this.data.close()}
+    }
 }))
 vi.mock("@opendaw/studio-core", () => ({OfflineEngineRenderer: {create: m.offline}}))
 vi.mock("@opendaw/studio-boxes", () => ({ShadertoyBox: class {}}))
@@ -109,6 +125,7 @@ it("caps a continuously sounding post-arrangement tail", async () => {
 
 for (const stage of ["copy", "state", "runner", "compile", "overlay", "offline", "step", "add", "finalize"] as const) {
     it(`unwinds acquired render owners after failure at ${stage}, then permits retry`, async () => {
+        m.dialog.mockResolvedValue({...config, overlay: true})
         const failure = new Error(stage)
         m[stage].mockImplementationOnce(() => {throw failure})
         await expect(VideoRenderer.render(source, "Failure fixture", 48000)).rejects.toBe(failure)
@@ -124,6 +141,7 @@ for (const stage of ["copy", "state", "runner", "compile", "overlay", "offline",
     })
 }
 it("attempts every cleanup independently while preserving the primary failure", async () => {
+    m.dialog.mockResolvedValue({...config, overlay: true})
     const failure = new Error("primary")
     m.step.mockRejectedValueOnce(failure)
     for (const close of [m.stop, m.engineClose, m.stateClose, m.runnerClose, m.overlayClose, m.projectClose, m.dialogClose]) {
@@ -188,4 +206,54 @@ it("does not await a hung exporter abort when cancelling", async () => {
     await settle(); m.progress.mock.calls[0][0].cancel(); await settle()
     expect(settled).toBe(true)
     expect(m.engineClose).toHaveBeenCalledTimes(1)
+})
+
+for (const outcome of ["reject", "hang"] as const) {
+    it(`does not acquire an overlay when disabled (asset would ${outcome})`, async () => {
+        m.overlay.mockImplementation(() => outcome === "reject" ? Promise.reject(new Error("missing asset")) : new Promise(() => {}))
+        let done = false
+        void VideoRenderer.render(source, "No overlay", 48000).then(() => {done = true}, () => {})
+        await settle()
+        expect(m.overlay).not.toHaveBeenCalled()
+        expect(done).toBe(true)
+        expect(m.finalize).toHaveBeenCalledTimes(1)
+    })
+}
+
+it("integrates one second of deterministic stereo through renderer and native exporter owners", async () => {
+    m.nativeVideo.mockResolvedValue(undefined)
+    m.nativeAudio.mockResolvedValue(undefined)
+    vi.stubGlobal("WritableStream", TestWritableStream)
+    vi.stubGlobal("AudioEncoder", {isConfigSupported: async () => ({supported: true})})
+    vi.stubGlobal("AudioData", class {
+        format: string | null = "f32-planar"
+        constructor(init: unknown) {m.nativeData(init)}
+        close() {m.nativeClose(); this.format = null}
+    })
+    m.create.mockImplementation((config, signal) => BufferVideoExporter.create(config, signal))
+    await VideoRenderer.render(source, "Integrated stereo", 48000)
+    expect(m.nativeVideo).toHaveBeenCalledTimes(30)
+    expect(m.nativeAudio).toHaveBeenCalledTimes(30)
+    let cursor = 0
+    for (const [data] of m.nativeData.mock.calls) {
+        expect(data.timestamp).toBe(Math.round(cursor / 48000 * 1_000_000))
+        expect(data.data[0]).toBe(0.5)
+        expect(data.data[data.numberOfFrames]).toBe(-0.5)
+        cursor += data.numberOfFrames
+    }
+    expect(cursor).toBe(48000)
+    expect(m.nativeClose).toHaveBeenCalledTimes(60)
+    expect(m.save).toHaveBeenCalledTimes(1)
+    expect(m.engineClose).toHaveBeenCalledTimes(1)
+})
+it("aborts a writable acquired after cancellation without starting an encoder", async () => {
+    const created = Promise.withResolvers<WritableStream>()
+    Object.defineProperty(window, "showSaveFilePicker", {value: async () => ({createWritable: () => created.promise}), configurable: true})
+    const pending = VideoRenderer.render(source, "Late writable", 48000)
+    await settle(); m.progress.mock.calls[0][0].cancel(); await pending
+    const abort = vi.fn(async () => {})
+    created.resolve({abort, locked: false} as unknown as WritableStream)
+    await settle()
+    expect(abort).toHaveBeenCalledTimes(1)
+    expect(m.create).not.toHaveBeenCalled()
 })

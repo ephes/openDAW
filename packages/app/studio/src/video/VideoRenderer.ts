@@ -43,6 +43,7 @@ export namespace VideoRenderer {
         if (!Number.isFinite(arrangementEnd) || arrangementEnd < 0) {throw new Error("Invalid arrangement duration.")}
         const maxDuration = duration > 0 ? duration : arrangementEnd + SILENCE_DURATION_SECONDS
         validateVideoConfig(exportConfig, maxDuration)
+        const timedExportConfig = {...exportConfig, durationSeconds: maxDuration}
         const controller = new AbortController()
         const {signal} = controller
         let exporter: VideoExporter | undefined
@@ -89,13 +90,15 @@ export namespace VideoRenderer {
                 const result = await wait(Promises.tryCatch(window.showSaveFilePicker({suggestedName: "opendaw-video.mp4"})))
                 if (result.status === "rejected") {return}
                 writable = await wait(result.value.createWritable(), late => {void late.abort().catch(() => {})})
+                signal.throwIfAborted()
             }
             const startupTimer = setTimeout(() => controller.abort(new Error("Video encoder startup timed out after 10 seconds.")), 10_000)
             try {
                 exporter = await wait<VideoExporter>(writable !== undefined
-                    ? StreamVideoExporter.create(exportConfig, writable, signal)
-                    : BufferVideoExporter.create(exportConfig, signal),
+                    ? StreamVideoExporter.create(timedExportConfig, writable, signal)
+                    : BufferVideoExporter.create(timedExportConfig, signal),
                     late => {void late.abort().catch(() => {})})
+                signal.throwIfAborted()
                 writable = undefined // The completed exporter now owns the writer.
             } finally {clearTimeout(startupTimer)}
             const project = source.copy()
@@ -123,16 +126,19 @@ export namespace VideoRenderer {
             const compositionCanvas = new OffscreenCanvas(width, height)
             const compositionCtx = compositionCanvas.getContext("2d")!
             const signatureTrack = project.timelineBoxAdapter.signatureTrack
-            const overlay = await wait(VideoOverlay.create({
+            const overlay = overlayEnabled ? await wait(VideoOverlay.create({
                 width, height, projectName,
                 toParts: (position: ppqn) => signatureTrack.toParts(position)
-            }), late => late.terminate())
-            cleanups.push(() => overlay.terminate())
+            }, signal), late => late.terminate()) : undefined
+            if (overlay !== undefined) {cleanups.push(() => overlay.terminate())}
+            signal.throwIfAborted()
 
             const renderer = await wait(OfflineEngineRenderer.create(project, Option.None, sampleRate), late => late.terminate())
             cleanups.push(() => renderer.terminate())
             cleanups.push(() => renderer.stop())
+            signal.throwIfAborted()
             await wait(renderer.play())
+            signal.throwIfAborted()
 
             const tempoMap = project.tempoMap
             const estimatedDurationInSeconds = duration > 0
@@ -150,6 +156,7 @@ export namespace VideoRenderer {
             let frameIndex = 0
 
             while (frameIndex < maxFrames) {
+                signal.throwIfAborted()
                 if (frameIndex >= estimatedNumberOfFrames) {
                     dialog.message = `Waiting for silence...`
                 } else {
@@ -163,6 +170,7 @@ export namespace VideoRenderer {
                 const quantumsNeeded = Math.ceil(samplesToRender / RenderQuantum)
                 const actualSamplesToRender = quantumsNeeded * RenderQuantum
                 const channels = await wait(renderer.step(actualSamplesToRender))
+                signal.throwIfAborted()
                 samplesRendered += actualSamplesToRender
                 project.liveStreamReceiver.dispatch()
                 if (duration === 0) {
@@ -188,7 +196,7 @@ export namespace VideoRenderer {
 
                 compositionCtx.drawImage(shadertoyCanvas, 0, 0)
 
-                if (overlayEnabled) {
+                if (overlay !== undefined) {
                     overlay.render(ppqn)
                     compositionCtx.globalCompositeOperation = "screen"
                     compositionCtx.drawImage(overlay.canvas, 0, 0)
@@ -201,8 +209,10 @@ export namespace VideoRenderer {
                 if (duration === 0 && consecutiveSilentSamples >= silenceSamplesNeeded) {break}
             }
 
+            signal.throwIfAborted()
             dialog.message = "Finalizing video..."
             await wait(exporter.finalize())
+            signal.throwIfAborted()
             completed = true
         } catch (error) {
             failed = true

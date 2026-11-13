@@ -18,7 +18,9 @@ Admission runs before canvases, encoders or file creation.
 
 Each submitted frame requires finite, nonnegative, strictly increasing video
 timestamps and exactly the configured audio channels. Channel planes must have
-equal nonzero lengths of at most one second. Malformed geometry is rejected
+equal lengths of at most one second. At low audio rates, a video tick whose
+audio budget is already covered by a previous quantum submits video with empty
+channel planes and creates no native audio wrapper. Malformed geometry is rejected
 before either media source receives data. Samples retain planar channel order.
 
 ## Audio clock and automatic duration
@@ -26,7 +28,8 @@ before either media source receives data. Samples retain planar channel order.
 Audio timestamps use cumulative submitted samples, independently of video frame
 indices. The offline renderer retains its quantum overshoot in the next frame's
 sample budget; samples are neither repeated nor discarded. Native AudioData
-represents the sample cursor rounded to the nearest microsecond.
+represents the cursor rounded to the nearest microsecond; AudioSample.setTimestamp
+retains the precise seconds derived from the sample cursor for muxing.
 
 Automatic duration preserves the complete arrangement, including silent gaps.
 Tail silence is counted only after the final scheduled region. Empty/silent
@@ -40,7 +43,9 @@ explicit shorter duration. Explicit duration ignores silence.
 Encoder construction owns its output and sources until start succeeds. Failed
 track creation, codec probing or output startup closes acquired sources and
 cancels the muxer. Each created AudioData and AudioSample closes in a finally
-boundary, including failed sample construction or source submission. Cleanup
+boundary, including failed sample construction or source submission. AudioSample
+owns its input AudioData; the outer finally checks the native format so transferred
+data is not closed twice. Cleanup
 attempts do not replace the original encoding error.
 
 ## Abort and partial setup
@@ -75,3 +80,49 @@ cancellation does not open an error notification. Native audio wrappers close
 promptly when a pending add is interrupted. The finalizing library limitation
 above still applies to the underlying native flush; cancellation cannot undo a
 file commit/download that has already been started.
+
+## Buffered output and optional overlay
+
+Without the direct file picker, duration must have a resolved positive upper
+budget. Admission uses `(video bitrate + audio bitrate) × seconds / 8`, with
+25% headroom and 1 MiB for metadata, and refuses budgets over 256 MiB. The
+upper duration includes the automatic ten-second tail. Use a shorter export or
+Chrome's direct file streaming for larger output.
+
+A public Mediabunny StreamTarget writes into seekable bounded storage instead of
+BufferTarget. Actual output offsets plus bytes may never exceed 256 MiB; crossing
+the ceiling retires the export and cannot call Files.save. Header rewrites replace
+bytes rather than retaining copies. This is an encoded-output limit, not a total
+browser-memory guarantee: canvas/codec memory and temporary buffer copies also
+need room. Tests use a sixteen-byte ceiling and a one-byte over-budget target
+write, without allocating a large output file.
+
+Disabled overlays do not create VideoOverlay or fetch/decode cover.png. Enabled
+asset loads have a ten-second deadline covering fetch, body and bitmap decoding,
+check HTTP success and observe cancellation. A late bitmap is closed. Asset
+refusal/timeout uses the same render cleanup and controlled export error path.
+
+## Round 88 validation and remaining review boundary
+
+The six bundles were implemented in brief order on a fresh ephes/openDAW main
+checkout (`73e54ebb`). All twelve scout scopes still applied. Each bundle's new
+regressions was run against the preceding implementation and failed before its
+fix; the geometry, native ownership/precision and low-rate quantum follow-ups
+also have recorded red runs. Logs are retained outside the clone in the worker's
+coordination log directory. Tests use synthetic data only.
+
+The local gate is Node >=23, `npm ci --ignore-scripts`, `npm run build`, then
+`npm run lint` and `npm test`. Focused validation also runs studio TypeScript
+and lint checks. Fixtures cover fake codec lifecycle failures, one second of
+stereo through renderer/exporter, and real Mediabunny MP4 target finalize/abort.
+No native browser codec/decode smoke test is claimed.
+
+The active muxer cancellation portion of B04 is implemented. Hard interruption
+of a native flush already inside Mediabunny finalize remains unresolved: a probe
+of the installed public API observes `finalizing` after cancel, then `finalized`
+after the deferred finalization is released. Supporting hard cancellation there
+requires an upstream public lifecycle change or an alternative encoder owner;
+that portion is parked for the clerk/owner, not claimed complete. Other bundles
+have no owner decisions. The feature branch is for external review and merge;
+no Claude command, Actions wait, release or default-branch push is part of this
+worker closeout.

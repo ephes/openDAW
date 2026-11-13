@@ -5,7 +5,7 @@ import {BufferVideoExporter, StreamVideoExporter} from "./WebCodecsVideoExporter
 const m = vi.hoisted(() => ({
     canvas: vi.fn(), draw: vi.fn(), video: vi.fn(), audio: vi.fn(), start: vi.fn(), finalize: vi.fn(),
     cancel: vi.fn(), videoClose: vi.fn(), audioClose: vi.fn(), sample: vi.fn(), sampleClose: vi.fn(),
-    data: vi.fn(), dataClose: vi.fn(), save: vi.fn(), videoTrack: vi.fn(), audioTrack: vi.fn(), videoConstruct: vi.fn(), audioConstruct: vi.fn()
+    data: vi.fn(), dataClose: vi.fn(), save: vi.fn(), videoTrack: vi.fn(), audioTrack: vi.fn(), videoConstruct: vi.fn(), audioConstruct: vi.fn(), target: vi.fn()
 }))
 vi.mock("@opendaw/lib-dom", () => ({Files: {save: m.save}}))
 vi.mock("mediabunny", () => ({
@@ -13,12 +13,22 @@ vi.mock("mediabunny", () => ({
         addVideoTrack = m.videoTrack; addAudioTrack = m.audioTrack
         start = m.start; finalize = m.finalize; cancel = m.cancel
     },
-    Mp4OutputFormat: class {}, BufferTarget: class {buffer = new ArrayBuffer(4)}, StreamTarget: class {},
+    Mp4OutputFormat: class {}, BufferTarget: class {buffer = new ArrayBuffer(4)}, StreamTarget: class {constructor(stream: WritableStream) {m.target(stream)}},
     CanvasSource: class {constructor() {m.videoConstruct()} add = m.video; close = m.videoClose},
     AudioSampleSource: class {constructor() {m.audioConstruct()} add = m.audio; close = m.audioClose},
-    AudioSample: class {constructor(data: unknown) {m.sample(data)} close = m.sampleClose}
+    AudioSample: class {
+        timestamp: number
+        readonly duration: number
+        constructor(private readonly data: AudioData) {
+            m.sample(data)
+            this.timestamp = data.timestamp / 1_000_000
+            this.duration = data.numberOfFrames / data.sampleRate
+        }
+        setTimestamp(timestamp: number) {this.timestamp = timestamp}
+        close() {m.sampleClose(); this.data.close()}
+    }
 }))
-const config = {width: 1280, height: 720, frameRate: 60, sampleRate: 48000, numberOfChannels: 2}
+const config = {width: 1280, height: 720, frameRate: 60, sampleRate: 48000, numberOfChannels: 2, durationSeconds: 1}
 const canvas = {} as OffscreenCanvas
 const audio = () => [new Float32Array([1, 2]), new Float32Array([3, 4])]
 beforeEach(() => {
@@ -31,8 +41,17 @@ beforeEach(() => {
     })
     vi.stubGlobal("AudioEncoder", {isConfigSupported: vi.fn(async () => ({supported: true}))})
     vi.stubGlobal("AudioData", class {
-        constructor(data: unknown) {m.data(data)}
-        close = m.dataClose
+        format: string | null = "f32-planar"
+        readonly sampleRate: number
+        readonly numberOfFrames: number
+        readonly timestamp: number
+        constructor(data: AudioDataInit) {
+            m.data(data)
+            this.sampleRate = data.sampleRate
+            this.numberOfFrames = data.numberOfFrames
+            this.timestamp = data.timestamp
+        }
+        close() {m.dataClose(); this.format = null}
     })
 })
 afterEach(() => {vi.unstubAllGlobals()})
@@ -86,6 +105,12 @@ for (const sampleRate of [44100, 48000]) {
                 const data = m.data.mock.calls[frame][0]
                 expect(data.timestamp).toBe(Math.round(submitted / sampleRate * 1_000_000))
                 expect(data.numberOfFrames).toBe(count)
+                const sample = m.audio.mock.calls[frame][0]
+                expect(sample.timestamp).toBe(submitted / sampleRate)
+                if (frame > 0) {
+                    const previous = m.audio.mock.calls[frame - 1][0]
+                    expect(sample.timestamp).toBeCloseTo(previous.timestamp + previous.duration, 12)
+                }
                 submitted += count
             }
             expect(submitted).toBe(Math.ceil(Math.round(30 * sampleRate / frameRate) / 128) * 128)
@@ -203,5 +228,59 @@ for (const stage of ["codec", "start"] as const) {
         await expect(exporter).rejects.toThrow("startup cancelled")
         expect(m.cancel).toHaveBeenCalledTimes(1)
         expect(m.audioConstruct).toHaveBeenCalledTimes(stage === "codec" ? 0 : 1)
+    })
+}
+
+it("refuses an over-budget buffered export before canvas allocation", async () => {
+    await expect(BufferVideoExporter.create({...config, durationSeconds: 3600, videoBitrate: 32_000_000})).rejects.toThrow(/shorter|stream/i)
+    expect(m.canvas).not.toHaveBeenCalled()
+    expect(m.start).not.toHaveBeenCalled()
+})
+
+it("aborts a synthetic write above the actual byte ceiling without saving", async () => {
+    const exporter = await BufferVideoExporter.create(config)
+    const writer = m.target.mock.calls[0][0].getWriter()
+    m.finalize.mockImplementationOnce(() => writer.write({position: 256 * 1024 * 1024, data: new Uint8Array([1])}))
+    await expect(exporter.finalize()).rejects.toThrow(/shorter|stream/i)
+    expect(m.cancel).toHaveBeenCalledTimes(1)
+    expect(m.save).not.toHaveBeenCalled()
+})
+it("saves a small bounded export with rewritten header bytes", async () => {
+    const exporter = await BufferVideoExporter.create(config)
+    const writer = m.target.mock.calls[0][0].getWriter()
+    m.finalize.mockImplementationOnce(async () => {
+        await writer.write({position: 0, data: new Uint8Array([0, 0, 3, 4])})
+        await writer.write({position: 0, data: new Uint8Array([1, 2])})
+    })
+    await exporter.finalize()
+    expect(new Uint8Array(m.save.mock.calls[0][0])).toEqual(new Uint8Array([1, 2, 3, 4]))
+    expect(m.cancel).not.toHaveBeenCalled()
+})
+
+it("rejects a sparse missing later channel before video submission", async () => {
+    const exporter = await BufferVideoExporter.create(config)
+    const sparse = new Array<Float32Array>(2)
+    sparse[0] = new Float32Array(2)
+    await expect(exporter.addFrame(canvas, sparse, 0)).rejects.toThrow()
+    expect(m.video).not.toHaveBeenCalled()
+    expect(m.audio).not.toHaveBeenCalled()
+})
+
+for (const sampleRate of [8000, 11025]) {
+    it(`preserves quantum remainder when a 120 fps tick has no new audio at ${sampleRate} Hz`, async () => {
+        const exporter = await BufferVideoExporter.create({...config, frameRate: 120, sampleRate})
+        let submitted = 0
+        let audioIndex = 0
+        for (let frame = 0; frame < 120; frame++) {
+            const count = Math.ceil((Math.round((frame + 1) * sampleRate / 120) - submitted) / 128) * 128
+            await exporter.addFrame(canvas, [new Float32Array(count), new Float32Array(count)], frame / 120)
+            if (count > 0) {
+                expect(m.audio.mock.calls[audioIndex++][0].timestamp).toBe(submitted / sampleRate)
+            }
+            submitted += count
+        }
+        expect(m.video).toHaveBeenCalledTimes(120)
+        expect(m.audio).toHaveBeenCalledTimes(audioIndex)
+        expect(submitted).toBe(Math.ceil(sampleRate / 128) * 128)
     })
 }

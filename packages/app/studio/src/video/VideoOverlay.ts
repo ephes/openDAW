@@ -1,4 +1,5 @@
 import {int, Terminable} from "@opendaw/lib-std"
+import {waitForVideoTask} from "./VideoExportTask"
 import {ppqn} from "@opendaw/lib-dsp"
 
 export interface VideoOverlayConfig {
@@ -9,16 +10,30 @@ export interface VideoOverlayConfig {
 }
 
 export class VideoOverlay implements Terminable {
-    static async create(config: VideoOverlayConfig): Promise<VideoOverlay> {
-        const canvas = new OffscreenCanvas(config.width, config.height)
-        const ctx = canvas.getContext("2d")!
-        const logo = await VideoOverlay.#loadImage("/cover.png")
-        return new VideoOverlay(config, canvas, ctx, logo)
+    static async create(config: VideoOverlayConfig, signal?: AbortSignal): Promise<VideoOverlay> {
+        const controller = new AbortController()
+        const cancel = () => controller.abort(signal?.reason)
+        signal?.addEventListener("abort", cancel, {once: true})
+        if (signal?.aborted) {cancel()}
+        const combined = controller.signal
+        const timeout = setTimeout(() => controller.abort(new Error("Video overlay asset load timed out after 10 seconds.")), 10_000)
+        try {
+            combined.throwIfAborted()
+            const canvas = new OffscreenCanvas(config.width, config.height)
+            const ctx = canvas.getContext("2d")!
+            const logo = await waitForVideoTask(VideoOverlay.#loadImage("/cover.png", combined), combined, late => late.close())
+            return new VideoOverlay(config, canvas, ctx, logo)
+        } finally {
+            clearTimeout(timeout)
+            signal?.removeEventListener("abort", cancel)
+        }
     }
 
-    static async #loadImage(src: string): Promise<ImageBitmap> {
-        const response = await fetch(src)
+    static async #loadImage(src: string, signal: AbortSignal): Promise<ImageBitmap> {
+        const response = await fetch(src, {signal})
+        if (!response.ok) {throw new Error("Video overlay image could not be loaded.")}
         const blob = await response.blob()
+        signal.throwIfAborted()
         return createImageBitmap(blob)
     }
 

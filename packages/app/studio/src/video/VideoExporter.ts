@@ -8,6 +8,8 @@ export interface VideoExportConfig {
     readonly numberOfChannels: number
     readonly videoBitrate?: number
     readonly audioBitrate?: number
+    /** Admitted upper duration, including the automatic tail. Required for buffered output. */
+    readonly durationSeconds?: number
 }
 
 export interface VideoExporter extends Terminable {

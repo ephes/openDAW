@@ -4,14 +4,14 @@ import {Promises} from "@opendaw/lib-runtime"
 import type {
     AudioSample as AudioSampleClass,
     AudioSampleSource,
-    BufferTarget,
     CanvasSource,
     Mp4OutputFormat,
     Output,
     Target
 } from "mediabunny"
 import {waitForVideoTask} from "./VideoExportTask"
-import {validateVideoConfig} from "./VideoExportLimits"
+import {BoundedVideoBuffer} from "./BoundedVideoBuffer"
+import {validateBufferedVideoConfig, validateVideoConfig} from "./VideoExportLimits"
 import type {VideoExportConfig, VideoExporter} from "./VideoExporter"
 
 const closeSafely = (close: () => void): void => {
@@ -32,7 +32,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     }
 
     protected static async createEncoder(config: VideoExportConfig, target: Target, signal?: AbortSignal): Promise<EncoderState> {
-        validateVideoConfig(config)
+        validateVideoConfig(config, config.durationSeconds ?? 0)
         const {Output, Mp4OutputFormat, CanvasSource, AudioSampleSource, AudioSample} = await waitForVideoTask(import("mediabunny"), signal)
         signal?.throwIfAborted()
         const canvas = new OffscreenCanvas(config.width, config.height)
@@ -113,9 +113,10 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
             throw new Error("Video timestamps must be finite, nonnegative and strictly increasing.")
         }
         if (audio.length !== this.#config.numberOfChannels || !Number.isSafeInteger(numberOfFrames)
-            || numberOfFrames <= 0 || numberOfFrames > this.#config.sampleRate
-            || audio.some(channel => !(channel instanceof Float32Array) || channel.length !== numberOfFrames)) {
-            throw new Error("Video audio must contain equal, nonempty channel planes of at most one second.")
+            || numberOfFrames < 0 || numberOfFrames > this.#config.sampleRate
+            || Array.from({length: this.#config.numberOfChannels}, (_, index) => audio[index])
+                .some(channel => !(channel instanceof Float32Array) || channel.length !== numberOfFrames)) {
+            throw new Error("Video audio must contain equal channel planes of at most one second.")
         }
         this.#lastTimestamp = timestampSeconds
         this.#ctx.drawImage(canvas, 0, 0)
@@ -141,6 +142,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
             try {
                 const audioSample = new this.#AudioSample(audioData)
                 try {
+                    audioSample.setTimestamp(this.#audioSamples / this.#config.sampleRate)
                     await waitForVideoTask(this.#audioSource.add(audioSample), this.#abortController.signal)
                     this.assertActive()
                     this.#audioSamples += numberOfFrames
@@ -148,7 +150,9 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
                     closeSafely(() => audioSample.close())
                 }
             } finally {
-                closeSafely(() => audioData.close())
+                // AudioSample takes ownership of AudioData. If construction/close
+                // failed before releasing it, the native public format is still non-null.
+                if (audioData.format !== null) {closeSafely(() => audioData.close())}
             }
         }
     }
@@ -164,19 +168,23 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         this.#abortController.signal.throwIfAborted()
     }
 
-    protected complete(): void {
+    protected assertFinalizing(): void {
         if (this.#state !== "finalizing") {throw new Error("Video export was aborted.")}
+    }
+
+    protected complete(): void {
+        this.assertFinalizing()
         this.#state = "finalized"
         this.#progress.setValue(1)
     }
 
     protected async abortTarget(): Promise<void> {}
 
-    abort(): Promise<void> {
+    abort(reason: unknown = new DOMException("Video export was aborted.", "AbortError")): Promise<void> {
         if (this.#abortTask !== undefined) {return this.#abortTask}
         if (this.#state === "finalized") {return Promise.resolve()}
         this.#state = "aborted"
-        this.#abortController.abort(new DOMException("Video export was aborted.", "AbortError"))
+        this.#abortController.abort(reason)
         // Start both independently: muxer teardown must not delay discarding the file.
         this.#abortTask = Promise.allSettled([this.#output.cancel(), this.abortTarget()]).then(() => {})
         return this.#abortTask
@@ -202,7 +210,12 @@ export class StreamVideoExporter extends WebCodecsVideoExporter {
             // the underlying file; muxer close must not publish a partial export.
             const target = new StreamTarget(new WritableStream({write: chunk => writer.write(chunk)}), {chunked: true})
             const encoder = await WebCodecsVideoExporter.createEncoder(config, target, signal)
-            return new StreamVideoExporter(config, encoder, writer)
+            const exporter = new StreamVideoExporter(config, encoder, writer)
+            if (signal?.aborted) {
+                void exporter.abort(signal.reason)
+                signal.throwIfAborted()
+            }
+            return exporter
         } catch (error) {
             void abortWriter()
             throw error
@@ -219,10 +232,16 @@ export class StreamVideoExporter extends WebCodecsVideoExporter {
     }
 
     async finalize(): Promise<void> {
-        await this.finalizeOutput()
-        await this.#writer.close()
-        this.complete()
-        this.#writer.releaseLock()
+        try {
+            await this.finalizeOutput()
+            this.assertFinalizing()
+            await this.#writer.close()
+            this.complete()
+            this.#writer.releaseLock()
+        } catch (error) {
+            void this.abort(error)
+            throw error
+        }
     }
 
     protected async abortTarget(): Promise<void> {
@@ -232,23 +251,52 @@ export class StreamVideoExporter extends WebCodecsVideoExporter {
 
 export class BufferVideoExporter extends WebCodecsVideoExporter {
     static async create(config: VideoExportConfig, signal?: AbortSignal): Promise<BufferVideoExporter> {
-        const {BufferTarget} = await waitForVideoTask(import("mediabunny"), signal)
+        validateBufferedVideoConfig(config)
+        const {StreamTarget} = await waitForVideoTask(import("mediabunny"), signal)
         signal?.throwIfAborted()
-        const bufferTarget = new BufferTarget()
-        const encoder = await WebCodecsVideoExporter.createEncoder(config, bufferTarget, signal)
-        return new BufferVideoExporter(config, encoder, bufferTarget)
+        const buffer = new BoundedVideoBuffer()
+        let exporter: BufferVideoExporter | undefined
+        const target = new StreamTarget(new WritableStream({
+            write: chunk => {
+                try {buffer.write(chunk)} catch (error) {
+                    void exporter?.abort(error)
+                    throw error
+                }
+            }
+        }), {chunked: true, chunkSize: 1024 * 1024})
+        try {
+            const encoder = await WebCodecsVideoExporter.createEncoder(config, target, signal)
+            exporter = new BufferVideoExporter(config, encoder, buffer)
+            if (signal?.aborted) {
+                void exporter.abort(signal.reason)
+                signal.throwIfAborted()
+            }
+            return exporter
+        } catch (error) {
+            buffer.clear()
+            throw error
+        }
     }
 
-    readonly #bufferTarget: BufferTarget
+    readonly #buffer: BoundedVideoBuffer
 
-    private constructor(config: VideoExportConfig, encoder: EncoderState, bufferTarget: BufferTarget) {
+    private constructor(config: VideoExportConfig, encoder: EncoderState, buffer: BoundedVideoBuffer) {
         super(config, encoder)
-        this.#bufferTarget = bufferTarget
+        this.#buffer = buffer
     }
 
     async finalize(): Promise<void> {
-        await this.finalizeOutput()
-        await Files.save(asDefined(this.#bufferTarget.buffer), {suggestedName: "opendaw-video.mp4"})
-        this.complete()
+        try {
+            await this.finalizeOutput()
+            this.assertFinalizing()
+            await Files.save(this.#buffer.finish(), {suggestedName: "opendaw-video.mp4"})
+            this.complete()
+            this.#buffer.clear()
+        } catch (error) {
+            void this.abort(error)
+            throw error
+        }
     }
+
+    protected async abortTarget(): Promise<void> {this.#buffer.clear()}
 }

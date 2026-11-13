@@ -1,3 +1,4 @@
+import {BUFFERED_VIDEO_LIMIT_MESSAGE, MAX_BUFFERED_VIDEO_BYTES} from "./BoundedVideoBuffer"
 import type {VideoExportConfig} from "./VideoExporter"
 
 export const MAX_VIDEO_DURATION = 3600
@@ -22,4 +23,13 @@ export const validateVideoConfig = (config: VideoExportConfig, duration = 0): vo
         || Math.ceil(duration * frameRate) > MAX_VIDEO_FRAMES) {
         throw new Error("Video duration must be 0 (automatic) or at most one hour / 432000 frames.")
     }
+}
+
+/** Include 25% headroom and 1 MiB metadata; actual writes have an independent ceiling. */
+export const validateBufferedVideoConfig = (config: VideoExportConfig): void => {
+    const duration = config.durationSeconds
+    validateVideoConfig(config, duration ?? NaN)
+    if (duration === undefined || duration <= 0) {throw new Error("Buffered video needs a finite positive duration budget.")}
+    const estimatedBytes = Math.ceil(duration * ((config.videoBitrate ?? 5_000_000) + (config.audioBitrate ?? 192_000)) / 8 * 1.25) + 1024 * 1024
+    if (estimatedBytes > MAX_BUFFERED_VIDEO_BYTES) {throw new Error(BUFFERED_VIDEO_LIMIT_MESSAGE)}
 }
