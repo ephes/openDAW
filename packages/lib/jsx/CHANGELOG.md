@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retain all keys of reusable attribute injectors and support class-list bindings on SVG.
+
 - Give Await repeats generation ownership, fence stale retries, and settle factory/render failures.
 
 - Require full route consumption and observe redirects during initial location delivery.

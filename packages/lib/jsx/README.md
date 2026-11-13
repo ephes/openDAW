@@ -60,3 +60,12 @@ success or failure; retry callbacks from superseded errors do nothing. Factory
 throws, rejected promises and success/loading renderer throws use the same failure
 renderer. If that renderer throws, Await logs it once and displays
 `Could not load content.`; a later explicit repeat can still recover.
+
+## Reusable DOM bindings
+
+One attribute injector can bind several keys on the same element and can be
+shared across elements. Updating or toggling it changes every bound attribute.
+Termination detaches all bindings without removing their last DOM values; a later
+explicit binding starts afresh. Class-list injectors own the complete `class`
+attribute, with the same add/remove/toggle behavior for HTML and SVG. Their
+termination also stops updates while preserving the last rendered classes.

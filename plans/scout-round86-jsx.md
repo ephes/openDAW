@@ -25,3 +25,7 @@ Subscription failure cleanup and synchronous runtime shutdown are retained.
 B05: out-of-order results/rejections, stale retries, synchronous factories, and
 throwing success/failure renderers all fail on the previous Await. Latest-attempt
 ownership and terminal failure rendering prevent stale DOM and unhandled promises.
+
+B06: real JSX HTML/SVG bindings expose overwritten attribute keys and the readonly
+SVG className assignment before fixes. Weak target ownership, per-target key sets
+and namespace-safe class attributes preserve values when detached.
