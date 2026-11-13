@@ -196,3 +196,14 @@ The key distinction is the target address:
 - **User** (exclude): `pointer.targetAddress.isBox() === true` - points to the resource box itself
 
 This allows resource boxes to have "owned" children that are always included when copying, while preventing other boxes that merely reference the resource from being pulled in.
+## Binary project compatibility
+
+Unknown field keys are skipped as opaque length-prefixed frames, including empty
+frames. A frame admits at most 64 MiB; counts must be nonnegative signed 16-bit
+values and every header/payload must fit the remaining input before allocation.
+Framed readers require a `DataInput.remaining()` implementation (provided by
+`ByteArrayInput`). Supported field decode errors throw `Serializer.DecodeError`
+with bounded structural context, without copying decoder messages or payloads.
+`BoxGraph.fromArrayBuffer` aborts its own failed import transaction, removes staged
+boxes/edges and permits a subsequent import. Load into a fresh graph and publish
+it only after success to preserve the currently open project on refusal.
