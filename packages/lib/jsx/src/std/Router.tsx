@@ -25,7 +25,6 @@ export type RouterConstruct<SERVICE = never> = {
 type PageRequest = {
     lifecycle: Terminable
     preloader: Option<Terminable>
-    content: Promise<JsxValue>
     path: string
     state: "loading" | "cancelled"
 }
@@ -50,64 +49,64 @@ export const Router = <SERVICE = never>({
     let loading: Option<PageRequest> = Option.None
     let showing: Option<PageRequest> = Option.None
 
+    const stopPreloader = (request: PageRequest): void => {
+        const preloader = request.preloader
+        request.preloader = Option.None
+        preloader.ifSome(owner => owner.terminate())
+    }
     const cancelLoading = (): void => {
-        if (loading.nonEmpty()) {
-            const request: PageRequest = loading.unwrap()
-            loading = Option.None
+        const request = loading.unwrapOrNull()
+        loading = Option.None
+        if (request !== null) {
             request.state = "cancelled"
-            request.preloader.ifSome(lifecycle => lifecycle.terminate())
-            request.preloader = Option.None
+            stopPreloader(request)
             request.lifecycle.terminate()
         }
     }
-    const fetchPage = async (pageFactory: PageFactory<SERVICE>, path: string): Promise<void> => {
+    const owns = (request: PageRequest): boolean =>
+        !terminated && request.state === "loading" && loading.unwrapOrNull() === request
+
+    const fetchPage = async (pageFactory: PageFactory<SERVICE>, path: string,
+                             errorAttempt = false, reason = ""): Promise<void> => {
         if (terminated) {return}
         cancelLoading()
         const lifecycle = new Terminator()
-        const pageResult: JsxValue | Promise<JsxValue> = pageFactory({
-            service,
-            lifecycle,
-            path,
-            error: ""
-        })
-        const content: Promise<JsxValue> = pageResult instanceof Promise ? pageResult : Promise.resolve(pageResult)
-        const request: PageRequest = {
-            path,
-            content,
-            lifecycle,
-            preloader: Option.wrap(safeExecute(preloader)),
-            state: "loading"
-        }
+        const request: PageRequest = {path, lifecycle, preloader: Option.None, state: "loading"}
         loading = Option.wrap(request)
-        let element: JsxValue
         try {
-            element = await content
-        } catch (reason) {
-            if (request.state === "cancelled") {
-                request.lifecycle.terminate()
+            const loader = safeExecute(preloader)
+            if (owns(request)) {
+                request.preloader = Option.wrap(loader)
+            } else {
+                loader?.terminate()
                 return
             }
-            console.warn(reason)
-            if (isDefined(error)) {
-                return fetchPage(error, path)
-            } else {
-                alert(`Could not load page (${reason})`)
+            const element = await pageFactory({service, lifecycle, path, error: reason})
+            if (!owns(request)) {
+                lifecycle.terminate()
+                return
             }
-        }
-        if (request.state === "cancelled") {
-            request.lifecycle.terminate()
-        } else if (request.path === path) {
-            if (showing.nonEmpty()) {
-                showing.unwrap().lifecycle.terminate()
-                showing = Option.None
-            }
-            if (loading.nonEmpty()) {
-                loading.unwrap().preloader.ifSome(lifecycle => lifecycle.terminate())
-                loading = Option.None
-            }
-            replaceChildren(container, element)
+            stopPreloader(request)
+            if (!owns(request)) {return}
+            const previous = showing
+            showing = Option.None
+            previous.ifSome(page => page.lifecycle.terminate())
+            if (!owns(request)) {return}
+            loading = Option.None
             showing = Option.wrap(request)
+            replaceChildren(container, element)
             safeExecute(onshow)
+        } catch (reason) {
+            if (!owns(request)) {
+                lifecycle.terminate()
+                return
+            }
+            cancelLoading()
+            console.warn(reason)
+            if (isDefined(error) && !errorAttempt) {
+                return fetchPage(error, path, true, String(reason))
+            }
+            if (!isDefined(error)) {alert(`Could not load page (${reason})`)}
         }
     }
     runtime.own({terminate: () => {

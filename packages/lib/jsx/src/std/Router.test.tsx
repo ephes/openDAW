@@ -119,3 +119,74 @@ describe("Router teardown", () => {
         } finally {clearInterval(timer)}
     })
 })
+
+describe("Router failure boundary", () => {
+    it("catches synchronous factory errors and disposes their subscriptions", async () => {
+        const disposed = vi.fn()
+        const error = vi.fn<PageFactory<null>>(() => "error page")
+        const container = mount([{path: "/a", factory: ({lifecycle}) => {
+            lifecycle.own({terminate: disposed})
+            throw new Error("factory failed")
+        }}], {error})
+        await settle()
+        expect(container.textContent).toBe("error page")
+        expect(error).toHaveBeenCalledTimes(1)
+        expect(error.mock.calls[0]?.[0]?.error).toContain("factory failed")
+        expect(disposed).toHaveBeenCalledTimes(1)
+    })
+
+    it.each(["reject", "throw"] as const)("stops when the error factory fails by %s", async outcome => {
+        const disposed = [vi.fn(), vi.fn()]
+        const preloaders: Array<ReturnType<typeof vi.fn>> = []
+        const onshow = vi.fn()
+        let errorCalls = 0
+        // Bound the broken implementation's recursion so the regression fails promptly.
+        const error: PageFactory<null> = ({lifecycle}) => {
+            errorCalls++
+            if (errorCalls > 1) {return new Promise(() => {})}
+            lifecycle.own({terminate: disposed[1]})
+            if (outcome === "throw") {throw new Error("error page failed")}
+            return Promise.reject(new Error("error page failed"))
+        }
+        const container = mount([
+            {path: "/a", factory: () => "A"},
+            {path: "/b", factory: ({lifecycle}) => {
+                lifecycle.own({terminate: disposed[0]})
+                return Promise.reject(new Error("primary failed"))
+            }}
+        ], {error, onshow, preloader: () => {
+            const terminate = vi.fn()
+            preloaders.push(terminate)
+            return {terminate}
+        }})
+        await settle()
+        RouteLocation.get().navigateTo("/b")
+        await settle()
+        expect(errorCalls).toBe(1)
+        expect(container.textContent).toBe("A")
+        expect(onshow).toHaveBeenCalledTimes(1)
+        disposed.forEach(dispose => expect(dispose).toHaveBeenCalledTimes(1))
+        preloaders.forEach(dispose => expect(dispose).toHaveBeenCalledTimes(1))
+        RouteLocation.get().navigateTo("/c")
+        await settle()
+        expect(container.textContent).toBe("fallback")
+    })
+
+    it("retains the visible page when no error factory exists", async () => {
+        const alert = vi.spyOn(window, "alert").mockImplementation(() => {})
+        const disposed = vi.fn()
+        const container = mount([
+            {path: "/a", factory: () => "A"},
+            {path: "/b", factory: ({lifecycle}) => {
+                lifecycle.own({terminate: disposed})
+                return Promise.reject("failed")
+            }}
+        ])
+        await settle()
+        RouteLocation.get().navigateTo("/b")
+        await settle()
+        expect(container.textContent).toBe("A")
+        expect(disposed).toHaveBeenCalledTimes(1)
+        expect(alert).toHaveBeenCalledTimes(1)
+    })
+})

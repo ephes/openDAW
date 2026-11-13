@@ -40,3 +40,9 @@ checks both TypeScript and TSX. Root build, lint and test remain the full gates.
 The runtime owns both visible and pending page lifecycles and pending preloaders.
 Disposing it stops navigation and fences late completions. Cancelling a request
 terminates its resources immediately, even when its factory never settles.
+
+Synchronous throws and promise rejections share the same routing error boundary.
+A failed page lifecycle is closed before the optional error factory runs; its
+context receives the failure text in `error`. The error factory is attempted only
+once. If it also fails, Router logs the failure, clears its loader and preserves
+the last valid page. Without an error factory the existing alert reports failure.
