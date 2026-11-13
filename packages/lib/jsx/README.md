@@ -52,3 +52,11 @@ explicitly accepts the remaining path, including an empty remainder (`/a/*`
 also matches `/a`). One trailing slash is ignored on paths and route declarations.
 RouteLocation subscribes before initial delivery so synchronous factory redirects
 are observed. A throwing initial observer is unsubscribed before rethrowing.
+
+## Await attempts
+
+Each repeat or retry starts a new attempt. Only the latest attempt may render
+success or failure; retry callbacks from superseded errors do nothing. Factory
+throws, rejected promises and success/loading renderer throws use the same failure
+renderer. If that renderer throws, Await logs it once and displays
+`Could not load content.`; a later explicit repeat can still recover.

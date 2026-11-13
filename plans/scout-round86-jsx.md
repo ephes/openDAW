@@ -21,3 +21,7 @@ before factory invocation so a factory cannot overwrite a newer request.
 B04: a Router route table covers root, missing/extra segments, trailing slashes
 and wildcards. Short paths and initial redirects fail before their fixes.
 Subscription failure cleanup and synchronous runtime shutdown are retained.
+
+B05: out-of-order results/rejections, stale retries, synchronous factories, and
+throwing success/failure renderers all fail on the previous Await. Latest-attempt
+ownership and terminal failure rendering prevent stale DOM and unhandled promises.
