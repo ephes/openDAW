@@ -13,6 +13,10 @@ import type {
 import {validateVideoConfig} from "./VideoExportLimits"
 import type {VideoExportConfig, VideoExporter} from "./VideoExporter"
 
+const closeSafely = (close: () => void): void => {
+    try {close()} catch {console.warn("Video resource cleanup failed")}
+}
+
 type EncoderState = {
     output: Output<Mp4OutputFormat, Target>
     videoSource: CanvasSource
@@ -32,20 +36,28 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         const canvas = new OffscreenCanvas(config.width, config.height)
         const ctx = asDefined(canvas.getContext("2d"))
         const output = new Output({format: new Mp4OutputFormat(), target})
-        const videoSource = new CanvasSource(canvas, {
-            codec: "avc",
-            bitrate: config.videoBitrate ?? 5_000_000,
-            bitrateMode: "constant",
-            keyFrameInterval: 2
-        })
-        output.addVideoTrack(videoSource)
-        const audioBitrate = config.audioBitrate ?? 192_000
-        const audioCodec = await WebCodecsVideoExporter.#pickAudioCodec(config.sampleRate, config.numberOfChannels, audioBitrate)
-        const audioSource = new AudioSampleSource({codec: audioCodec, bitrate: audioBitrate})
-        output.addAudioTrack(audioSource)
-        console.debug(`VideoExport codecs → video: avc, audio: ${audioCodec}`)
-        await output.start()
-        return {output, videoSource, audioSource, AudioSample, ctx}
+        let videoSource: CanvasSource | undefined
+        let audioSource: AudioSampleSource | undefined
+        try {
+            videoSource = new CanvasSource(canvas, {
+                codec: "avc",
+                bitrate: config.videoBitrate ?? 5_000_000,
+                bitrateMode: "constant",
+                keyFrameInterval: 2
+            })
+            output.addVideoTrack(videoSource)
+            const audioBitrate = config.audioBitrate ?? 192_000
+            const audioCodec = await WebCodecsVideoExporter.#pickAudioCodec(config.sampleRate, config.numberOfChannels, audioBitrate)
+            audioSource = new AudioSampleSource({codec: audioCodec, bitrate: audioBitrate})
+            output.addAudioTrack(audioSource)
+            await output.start()
+            return {output, videoSource, audioSource, AudioSample, ctx}
+        } catch (error) {
+            closeSafely(() => videoSource?.close())
+            closeSafely(() => audioSource?.close())
+            try {await output.cancel()} catch {console.warn("Video encoder rollback failed")}
+            throw error
+        }
     }
 
     static async #pickAudioCodec(sampleRate: number, numberOfChannels: number, bitrate: number): Promise<"aac" | "opus"> {
@@ -108,11 +120,17 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
                 timestamp: timestampUs,
                 data: audioBuffer
             })
-            const audioSample = new this.#AudioSample(audioData)
-            await this.#audioSource.add(audioSample)
-            this.#audioSamples += numberOfFrames
-            audioSample.close()
-            audioData.close()
+            try {
+                const audioSample = new this.#AudioSample(audioData)
+                try {
+                    await this.#audioSource.add(audioSample)
+                    this.#audioSamples += numberOfFrames
+                } finally {
+                    closeSafely(() => audioSample.close())
+                }
+            } finally {
+                closeSafely(() => audioData.close())
+            }
         }
     }
 

@@ -34,3 +34,11 @@ projects finish within ten seconds after the arrangement end. All automatic
 tails, including sustained effects, are capped at ten seconds. Automatic projects
 whose arrangement plus tail exceeds the one-hour work limit are refused; use an
 explicit shorter duration. Explicit duration ignores silence.
+
+## Native resource ownership
+
+Encoder construction owns its output and sources until start succeeds. Failed
+track creation, codec probing or output startup closes acquired sources and
+cancels the muxer. Each created AudioData and AudioSample closes in a finally
+boundary, including failed sample construction or source submission. Cleanup
+attempts do not replace the original encoding error.

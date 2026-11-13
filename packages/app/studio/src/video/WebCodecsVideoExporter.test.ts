@@ -4,7 +4,7 @@ import {BufferVideoExporter, StreamVideoExporter} from "./WebCodecsVideoExporter
 const m = vi.hoisted(() => ({
     canvas: vi.fn(), draw: vi.fn(), video: vi.fn(), audio: vi.fn(), start: vi.fn(), finalize: vi.fn(),
     cancel: vi.fn(), videoClose: vi.fn(), audioClose: vi.fn(), sample: vi.fn(), sampleClose: vi.fn(),
-    data: vi.fn(), dataClose: vi.fn(), save: vi.fn(), videoTrack: vi.fn(), audioTrack: vi.fn()
+    data: vi.fn(), dataClose: vi.fn(), save: vi.fn(), videoTrack: vi.fn(), audioTrack: vi.fn(), videoConstruct: vi.fn(), audioConstruct: vi.fn()
 }))
 vi.mock("@opendaw/lib-dom", () => ({Files: {save: m.save}}))
 vi.mock("mediabunny", () => ({
@@ -13,8 +13,8 @@ vi.mock("mediabunny", () => ({
         start = m.start; finalize = m.finalize; cancel = m.cancel
     },
     Mp4OutputFormat: class {}, BufferTarget: class {buffer = new ArrayBuffer(4)}, StreamTarget: class {},
-    CanvasSource: class {add = m.video; close = m.videoClose},
-    AudioSampleSource: class {add = m.audio; close = m.audioClose},
+    CanvasSource: class {constructor() {m.videoConstruct()} add = m.video; close = m.videoClose},
+    AudioSampleSource: class {constructor() {m.audioConstruct()} add = m.audio; close = m.audioClose},
     AudioSample: class {constructor(data: unknown) {m.sample(data)} close = m.sampleClose}
 }))
 const config = {width: 1280, height: 720, frameRate: 60, sampleRate: 48000, numberOfChannels: 2}
@@ -89,4 +89,38 @@ for (const sampleRate of [44100, 48000]) {
             expect(m.video.mock.calls.map(call => call[0])).toEqual(Array.from({length: 30}, (_, i) => i / frameRate))
         })
     }
+}
+
+for (const stage of ["videoConstruct", "videoTrack", "audioConstruct", "audioTrack", "start"] as const) {
+    it(`rolls back encoder construction at ${stage}`, async () => {
+        const failure = new Error(stage)
+        m[stage].mockImplementationOnce(() => {throw failure})
+        await expect(BufferVideoExporter.create(config)).rejects.toBe(failure)
+        expect(m.cancel).toHaveBeenCalledTimes(1)
+        if (stage !== "videoConstruct") {expect(m.videoClose).toHaveBeenCalledTimes(1)}
+        if (["audioTrack", "start"].includes(stage)) {expect(m.audioClose).toHaveBeenCalledTimes(1)}
+    })
+}
+it("rolls back when codec probing throws synchronously", async () => {
+    const failure = new Error("codec probe")
+    vi.stubGlobal("AudioEncoder", {isConfigSupported: () => {throw failure}})
+    await expect(BufferVideoExporter.create(config)).rejects.toBe(failure)
+    expect(m.cancel).toHaveBeenCalledTimes(1)
+    expect(m.videoClose).toHaveBeenCalledTimes(1)
+})
+it("transfers a successful encoder without early cancellation", async () => {
+    await BufferVideoExporter.create(config)
+    expect(m.cancel).not.toHaveBeenCalled()
+    expect(m.videoClose).not.toHaveBeenCalled()
+    expect(m.audioClose).not.toHaveBeenCalled()
+})
+for (const stage of ["sample", "audio"] as const) {
+    it(`closes native audio owners when ${stage} fails`, async () => {
+        const exporter = await BufferVideoExporter.create(config)
+        const failure = new Error(stage)
+        m[stage].mockImplementationOnce(() => {throw failure})
+        await expect(exporter.addFrame(canvas, audio(), 0)).rejects.toBe(failure)
+        expect(m.dataClose).toHaveBeenCalledTimes(1)
+        expect(m.sampleClose).toHaveBeenCalledTimes(stage === "sample" ? 0 : 1)
+    })
 }
