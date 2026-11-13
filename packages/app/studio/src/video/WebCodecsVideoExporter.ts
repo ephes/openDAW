@@ -10,6 +10,7 @@ import type {
     Output,
     Target
 } from "mediabunny"
+import {validateVideoConfig} from "./VideoExportLimits"
 import type {VideoExportConfig, VideoExporter} from "./VideoExporter"
 
 type EncoderState = {
@@ -26,6 +27,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     }
 
     protected static async createEncoder(config: VideoExportConfig, target: Target): Promise<EncoderState> {
+        validateVideoConfig(config)
         const {Output, Mp4OutputFormat, CanvasSource, AudioSampleSource, AudioSample} = await import("mediabunny")
         const canvas = new OffscreenCanvas(config.width, config.height)
         const ctx = asDefined(canvas.getContext("2d"))
@@ -62,6 +64,8 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     readonly #ctx: OffscreenCanvasRenderingContext2D
     readonly #progress: DefaultObservableValue<number> = new DefaultObservableValue(0)
 
+    #lastTimestamp = -1
+
     protected constructor(config: VideoExportConfig, encoder: EncoderState) {
         this.#config = config
         this.#output = encoder.output
@@ -74,6 +78,16 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     get progress(): ObservableValue<number> {return this.#progress}
 
     async addFrame(canvas: OffscreenCanvas, audio: Float32Array[], timestampSeconds: number): Promise<void> {
+        const numberOfFrames = audio[0]?.length
+        if (!Number.isFinite(timestampSeconds) || timestampSeconds < 0 || timestampSeconds <= this.#lastTimestamp) {
+            throw new Error("Video timestamps must be finite, nonnegative and strictly increasing.")
+        }
+        if (audio.length !== this.#config.numberOfChannels || !Number.isSafeInteger(numberOfFrames)
+            || numberOfFrames <= 0 || numberOfFrames > this.#config.sampleRate
+            || audio.some(channel => !(channel instanceof Float32Array) || channel.length !== numberOfFrames)) {
+            throw new Error("Video audio must contain equal, nonempty channel planes of at most one second.")
+        }
+        this.#lastTimestamp = timestampSeconds
         this.#ctx.drawImage(canvas, 0, 0)
         const frameDuration = 1 / this.#config.frameRate
         await this.#videoSource.add(timestampSeconds, frameDuration)

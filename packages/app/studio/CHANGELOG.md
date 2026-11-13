@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Validate video export configuration and frame audio geometry before allocating or submitting media.
+
 - Render OAuth errors as text and forward correlated callback, error and close messages.
 
 - Keep failed soundfont imports invisible and prevent stale sample editors from recreating deleted samples.

@@ -20,6 +20,7 @@ import {
     VideoOverlay,
     WebCodecsVideoExporter
 } from "@/video"
+import {validateVideoConfig} from "./VideoExportLimits"
 import {Promises} from "@opendaw/lib-runtime"
 
 const MAX_DURATION_SECONDS = TimeSpan.hours(1).absSeconds()
@@ -37,6 +38,7 @@ export namespace VideoRenderer {
         const config = await showVideoExportDialog(sampleRate)
         const {width, height, frameRate, duration, overlay: overlayEnabled, videoBitrate} = config
         const exportConfig = {width, height, frameRate, sampleRate, numberOfChannels: 2, videoBitrate}
+        validateVideoConfig(exportConfig, duration)
         let exporter: VideoExporter
         if (isDefined(window.showSaveFilePicker)) {
             const result = await Promises.tryCatch(

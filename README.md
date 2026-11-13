@@ -223,6 +223,11 @@ shared rules allow the project's public namespace-merging convention; other
 recommended source rules remain enabled. See [the baseline lint plan](plans/baseline-lint-green.md)
 for configuration rationale and the narrowly documented generic type boundaries.
 
+### Video export
+
+See [video export limits and lifecycle](plans/video-export-safety.md) for
+configuration limits, automatic duration and cancellation behavior.
+
 ### Clipboard admission
 
 Studio clipboard envelopes admit at most 8 MiB of decoded binary data (including
