@@ -115,7 +115,7 @@ export const Router = <SERVICE = never>({
         showing.ifSome(request => request.lifecycle.terminate())
         showing = Option.None
     }})
-    runtime.own(RouteLocation.get()
+    const subscription = RouteLocation.get()
         .catchupAndSubscribe((location: RouteLocation) => {
             if (terminated) {return}
             cancelLoading()
@@ -123,6 +123,7 @@ export const Router = <SERVICE = never>({
                 return
             }
             return fetchPage(resolvePageFactory(location.path), location.path)
-        }))
+        })
+    if (terminated) {subscription.terminate()} else {runtime.own(subscription)}
     return container
 }

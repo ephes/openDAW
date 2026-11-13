@@ -190,3 +190,46 @@ describe("Router failure boundary", () => {
         expect(alert).toHaveBeenCalledTimes(1)
     })
 })
+
+describe("Route selection and initial navigation", () => {
+    it.each([
+        ["/", "root"], ["/a", "fallback"], ["/a/", "fallback"],
+        ["/a/b", "long"], ["/a/b/", "long"], ["/a/b/c", "fallback"],
+        ["/wild", "wild"], ["/wild/", "wild"], ["/wild/x/y", "wild"],
+        ["/z", "short"], ["/z/", "short"], ["/missing", "fallback"]
+    ])("selects %s through the Router", async (path, expected) => {
+        history.replaceState(null, "", path)
+        const container = mount([
+            {path: "/z/b", factory: () => "too long"},
+            {path: "/z", factory: () => "short"},
+            {path: "/a/b", factory: () => "long"},
+            {path: "/wild/*", factory: () => "wild"},
+            {path: "/", factory: () => "root"}
+        ])
+        await settle()
+        expect(container.textContent).toBe(expected)
+    })
+
+    it("observes synchronous redirects during the initial factory call", async () => {
+        const disposed = vi.fn()
+        const container = mount([
+            {path: "/a", factory: ({lifecycle}) => {
+                lifecycle.own({terminate: disposed})
+                RouteLocation.get().navigateTo("/b")
+                return "A"
+            }},
+            {path: "/b", factory: () => "B"}
+        ])
+        await settle()
+        expect(location.pathname).toBe("/b")
+        expect(container.textContent).toBe("B")
+        expect(disposed).toHaveBeenCalledTimes(1)
+    })
+
+    it("unsubscribes when initial location delivery throws", () => {
+        const observer = vi.fn(() => {throw new Error("initial delivery")})
+        expect(() => RouteLocation.get().catchupAndSubscribe(observer)).toThrow("initial delivery")
+        expect(() => RouteLocation.get().navigateTo("/b")).not.toThrow()
+        expect(observer).toHaveBeenCalledTimes(1)
+    })
+})

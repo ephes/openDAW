@@ -46,3 +46,9 @@ A failed page lifecycle is closed before the optional error factory runs; its
 context receives the failure text in `error`. The error factory is attempted only
 once. If it also fails, Router logs the failure, clears its loader and preserves
 the last valid page. Without an error factory the existing alert reports failure.
+
+Routes consume all path segments; `/a/b` does not match `/a`. A `*` segment
+explicitly accepts the remaining path, including an empty remainder (`/a/*`
+also matches `/a`). One trailing slash is ignored on paths and route declarations.
+RouteLocation subscribes before initial delivery so synchronous factory redirects
+are observed. A throwing initial observer is unsubscribed before rethrowing.

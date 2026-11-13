@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Require full route consumption and observe redirects during initial location delivery.
+
 - Catch synchronous page failures, close failed owners, and stop after a failed error-page attempt.
 
 - Dispose router page owners and preloaders with the runtime; release cancelled requests immediately.

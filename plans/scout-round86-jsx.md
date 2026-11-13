@@ -17,3 +17,7 @@ B03: synchronous factory throws, rejecting/throwing error pages, and the missing
 error-page path fail before the boundary fix. Error rendering is terminal after
 one attempt and leaves the previous page available. Request ownership is installed
 before factory invocation so a factory cannot overwrite a newer request.
+
+B04: a Router route table covers root, missing/extra segments, trailing slashes
+and wildcards. Short paths and initial redirects fail before their fixes.
+Subscription failure cleanup and synchronous runtime shutdown are retained.
