@@ -9,6 +9,7 @@ export class SyncSource<M> implements Terminable {
 
     readonly #terminator: Terminator
     readonly #caller: Synchronization<M>
+    #failed: boolean = false
 
     constructor(graph: BoxGraph<M>, messenger: Messenger, initialize?: boolean) {
         this.#terminator = new Terminator()
@@ -39,11 +40,18 @@ export class SyncSource<M> implements Terminable {
                     Arrays.clear(updates)
                     return
                 }
-                this.#caller.sendUpdates(updates)
+                const batch = updates.splice(0)
+                try {
+                    this.#caller.sendUpdates(batch)
+                } catch (error) {
+                    // This transaction has committed. Delivery is ambiguous: never replay its batch.
+                    this.#failed = true
+                    this.#terminator.terminate()
+                    throw error
+                }
                 if (SyncSource.DEBUG_CHECKSUM) {
                     this.#caller.checksum(graph.checksum()).then(EmptyExec, (reason) => panic(reason))
                 }
-                Arrays.clear(updates)
             }
         }))
 
@@ -80,6 +88,11 @@ export class SyncSource<M> implements Terminable {
         }))
     }
 
-    checksum(value: Int8Array): Promise<void> {return this.#caller.checksum(value)}
+    /** A failed transport requires a new sender and a fresh target snapshot. */
+    get failed(): boolean {return this.#failed}
+    checksum(value: Int8Array): Promise<void> {
+        return this.#failed ? Promise.reject(new Error("Sync source failed; resynchronize from a fresh snapshot"))
+            : this.#caller.checksum(value)
+    }
     terminate() {this.#terminator.terminate()}
 }

@@ -6,3 +6,5 @@ or Claude CLI runs in this sandbox; the parked branch awaits the external clerk.
 
 - B01: real binary box imports cover opaque unknown fields, frame admission,
   mutating supported decoders, rollback and retry. Field payload limit: 64 MiB.
+- B02: paired Messenger/Communicator graphs cover failed batch rollback, protocol
+  and field admission, transaction ownership, sender quarantine and snapshot reconnect.
