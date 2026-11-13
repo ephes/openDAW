@@ -42,3 +42,19 @@ track creation, codec probing or output startup closes acquired sources and
 cancels the muxer. Each created AudioData and AudioSample closes in a finally
 boundary, including failed sample construction or source submission. Cleanup
 attempts do not replace the original encoding error.
+
+## Abort and partial setup
+
+Abort is a terminal, idempotent exporter transition: later frame/finalize calls
+are refused and a late finalization cannot save buffered output. Streaming
+exports retain a writer owned by the attempt: muxer cleanup cannot commit a
+partial file, and abort discards it. A successful finalize alone closes the file.
+The render copy, offline engine, shader state/runner, WebGL context, overlay and
+progress dialog unwind independently on failure, including partial setup.
+
+Mediabunny 1.45.4's public Output.cancel() releases active encoders, but is a
+no-op once Output.finalize() has begun. Cancellation still retires the attempt,
+discards its writable and suppresses late buffered saves. Native resources in
+that finalizing phase can only finish when the library's pending flush settles;
+there is no public force-close API for this phase. No private library fields are
+used. This limitation remains for external review.

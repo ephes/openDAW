@@ -105,3 +105,32 @@ it("caps a continuously sounding post-arrangement tail", async () => {
     await VideoRenderer.render(source, "Tail", 48000)
     expect(total / 48000).toBeLessThanOrEqual(11.04)
 })
+
+for (const stage of ["copy", "state", "runner", "compile", "overlay", "offline", "step", "add", "finalize"] as const) {
+    it(`unwinds acquired render owners after failure at ${stage}, then permits retry`, async () => {
+        const failure = new Error(stage)
+        m[stage].mockImplementationOnce(() => {throw failure})
+        await expect(VideoRenderer.render(source, "Failure fixture", 48000)).rejects.toBe(failure)
+        expect(m.abort).toHaveBeenCalledTimes(1)
+        expect(m.dialogClose).toHaveBeenCalledTimes(1)
+        if (stage !== "copy") {expect(m.projectClose).toHaveBeenCalledTimes(1)}
+        if (!["copy", "state"].includes(stage)) {expect(m.stateClose).toHaveBeenCalledTimes(1)}
+        if (!["copy", "state", "runner"].includes(stage)) {expect(m.runnerClose).toHaveBeenCalledTimes(1)}
+        if (["offline", "step", "add", "finalize"].includes(stage)) {expect(m.overlayClose).toHaveBeenCalledTimes(1)}
+        if (["step", "add", "finalize"].includes(stage)) {expect(m.engineClose).toHaveBeenCalledTimes(1)}
+        await VideoRenderer.render(source, "Retry", 48000)
+        expect(m.finalize).toHaveBeenCalled()
+    })
+}
+it("attempts every cleanup independently while preserving the primary failure", async () => {
+    const failure = new Error("primary")
+    m.step.mockRejectedValueOnce(failure)
+    for (const close of [m.stop, m.engineClose, m.stateClose, m.runnerClose, m.overlayClose, m.projectClose, m.dialogClose]) {
+        close.mockImplementationOnce(() => {throw new Error("cleanup")})
+    }
+    m.abort.mockRejectedValueOnce(new Error("abort cleanup"))
+    await expect(VideoRenderer.render(source, "Cleanup fixture", 48000)).rejects.toBe(failure)
+    for (const close of [m.stop, m.engineClose, m.stateClose, m.runnerClose, m.overlayClose, m.projectClose, m.dialogClose, m.abort]) {
+        expect(close).toHaveBeenCalledTimes(1)
+    }
+})

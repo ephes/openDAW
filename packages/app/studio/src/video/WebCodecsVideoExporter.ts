@@ -53,9 +53,9 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
             await output.start()
             return {output, videoSource, audioSource, AudioSample, ctx}
         } catch (error) {
+            try {await output.cancel()} catch {console.warn("Video encoder rollback failed")}
             closeSafely(() => videoSource?.close())
             closeSafely(() => audioSource?.close())
-            try {await output.cancel()} catch {console.warn("Video encoder rollback failed")}
             throw error
         }
     }
@@ -76,6 +76,8 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     readonly #ctx: OffscreenCanvasRenderingContext2D
     readonly #progress: DefaultObservableValue<number> = new DefaultObservableValue(0)
 
+    #state: "active" | "finalizing" | "finalized" | "aborted" = "active"
+    #abortTask: Promise<void> | undefined
     #audioSamples = 0
     #lastTimestamp = -1
 
@@ -91,6 +93,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     get progress(): ObservableValue<number> {return this.#progress}
 
     async addFrame(canvas: OffscreenCanvas, audio: Float32Array[], timestampSeconds: number): Promise<void> {
+        this.assertActive()
         const numberOfFrames = audio[0]?.length
         if (!Number.isFinite(timestampSeconds) || timestampSeconds < 0 || timestampSeconds <= this.#lastTimestamp) {
             throw new Error("Video timestamps must be finite, nonnegative and strictly increasing.")
@@ -104,6 +107,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         this.#ctx.drawImage(canvas, 0, 0)
         const frameDuration = 1 / this.#config.frameRate
         await this.#videoSource.add(timestampSeconds, frameDuration)
+        this.assertActive()
         if (audio.length > 0 && audio[0].length > 0) {
             const numberOfChannels = audio.length
             const numberOfFrames = audio[0].length
@@ -124,6 +128,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
                 const audioSample = new this.#AudioSample(audioData)
                 try {
                     await this.#audioSource.add(audioSample)
+                    this.assertActive()
                     this.#audioSamples += numberOfFrames
                 } finally {
                     closeSafely(() => audioSample.close())
@@ -134,36 +139,71 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         }
     }
 
+    protected assertActive(): void {
+        if (this.#state !== "active") {throw new Error("Video export is no longer active.")}
+    }
+
     protected async finalizeOutput(): Promise<void> {
+        this.assertActive()
+        this.#state = "finalizing"
         await this.#output.finalize()
+        if (this.#state as string === "aborted") {throw new Error("Video export was aborted.")}
+    }
+
+    protected complete(): void {
+        if (this.#state !== "finalizing") {throw new Error("Video export was aborted.")}
+        this.#state = "finalized"
         this.#progress.setValue(1)
     }
 
+    protected async abortTarget(): Promise<void> {}
+
+    abort(): Promise<void> {
+        if (this.#abortTask !== undefined) {return this.#abortTask}
+        if (this.#state === "finalized") {return Promise.resolve()}
+        this.#state = "aborted"
+        // Start both independently: muxer teardown must not delay discarding the file.
+        this.#abortTask = Promise.allSettled([this.#output.cancel(), this.abortTarget()]).then(() => {})
+        return this.#abortTask
+    }
+
     abstract finalize(): Promise<void>
-    abstract abort(): Promise<void>
-    terminate(): void {}
+    terminate(): void {void this.abort().catch(() => {})}
 }
 
 export class StreamVideoExporter extends WebCodecsVideoExporter {
     static async create(config: VideoExportConfig, writable: WritableStream): Promise<StreamVideoExporter> {
-        const {StreamTarget} = await import("mediabunny")
-        const encoder = await WebCodecsVideoExporter.createEncoder(config, new StreamTarget(writable, {chunked: true}))
-        return new StreamVideoExporter(config, encoder, writable)
+        const writer = writable.getWriter()
+        try {
+            const {StreamTarget} = await import("mediabunny")
+            // Output.cancel closes its target. Only our successful finalize may commit
+            // the underlying file; muxer close must not publish a partial export.
+            const target = new StreamTarget(new WritableStream({write: chunk => writer.write(chunk)}), {chunked: true})
+            const encoder = await WebCodecsVideoExporter.createEncoder(config, target)
+            return new StreamVideoExporter(config, encoder, writer)
+        } catch (error) {
+            try {await writer.abort()} catch {console.warn("Video writable rollback failed")}
+            writer.releaseLock()
+            throw error
+        }
     }
 
-    readonly #writable: WritableStream
+    readonly #writer: WritableStreamDefaultWriter
 
-    private constructor(config: VideoExportConfig, encoder: EncoderState, writable: WritableStream) {
+    private constructor(config: VideoExportConfig, encoder: EncoderState, writer: WritableStreamDefaultWriter) {
         super(config, encoder)
-        this.#writable = writable
+        this.#writer = writer
     }
 
     async finalize(): Promise<void> {
         await this.finalizeOutput()
+        await this.#writer.close()
+        this.complete()
+        this.#writer.releaseLock()
     }
 
-    async abort(): Promise<void> {
-        await Promises.tryCatch(this.#writable.abort())
+    protected async abortTarget(): Promise<void> {
+        try {await this.#writer.abort()} finally {this.#writer.releaseLock()}
     }
 }
 
@@ -185,7 +225,6 @@ export class BufferVideoExporter extends WebCodecsVideoExporter {
     async finalize(): Promise<void> {
         await this.finalizeOutput()
         await Files.save(asDefined(this.#bufferTarget.buffer), {suggestedName: "opendaw-video.mp4"})
+        this.complete()
     }
-
-    async abort(): Promise<void> {}
 }

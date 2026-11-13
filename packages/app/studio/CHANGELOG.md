@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cancel active video muxers, fence retired exports and discard partial streaming files; unwind all acquired render owners after setup or encoding failures. Mediabunny finalization retains its public cancellation limitation (see video export documentation).
+
 - Roll back partial video encoder construction and close native audio samples on failed submissions.
 
 - Timestamp video audio from its sample cursor; preserve internal arrangement gaps and bound automatic tails, including silent projects.

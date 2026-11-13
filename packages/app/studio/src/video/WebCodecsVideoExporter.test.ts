@@ -1,3 +1,4 @@
+import {WritableStream as TestWritableStream} from "node:stream/web"
 import {afterEach, beforeEach, expect, it, vi} from "vitest"
 import {BufferVideoExporter, StreamVideoExporter} from "./WebCodecsVideoExporter"
 
@@ -22,6 +23,7 @@ const canvas = {} as OffscreenCanvas
 const audio = () => [new Float32Array([1, 2]), new Float32Array([3, 4])]
 beforeEach(() => {
     vi.resetAllMocks()
+    vi.stubGlobal("WritableStream", TestWritableStream)
     vi.stubGlobal("OffscreenCanvas", class {
         constructor(...args: unknown[]) {m.canvas(...args)}
         getContext() {return {drawImage: m.draw}}
@@ -63,7 +65,7 @@ for (const timestamp of [NaN, Infinity, -1]) {
     })
 }
 it("refuses timestamp regression and preserves planar channel identity", async () => {
-    const exporter = await StreamVideoExporter.create(config, {} as WritableStream)
+    const exporter = await StreamVideoExporter.create(config, new WritableStream())
     await exporter.addFrame(canvas, audio(), 1)
     expect(m.data.mock.calls[0][0].data).toEqual(new Float32Array([1, 2, 3, 4]))
     await expect(exporter.addFrame(canvas, audio(), 0.5)).rejects.toThrow()
@@ -122,5 +124,38 @@ for (const stage of ["sample", "audio"] as const) {
         await expect(exporter.addFrame(canvas, audio(), 0)).rejects.toBe(failure)
         expect(m.dataClose).toHaveBeenCalledTimes(1)
         expect(m.sampleClose).toHaveBeenCalledTimes(stage === "sample" ? 0 : 1)
+    })
+}
+
+for (const streaming of [false, true]) {
+    it(`cancels the muxer once and rejects later submissions (stream=${streaming})`, async () => {
+        const abort = vi.fn()
+        const exporter = streaming
+            ? await StreamVideoExporter.create(config, new WritableStream({abort}))
+            : await BufferVideoExporter.create(config)
+        await exporter.abort()
+        await exporter.abort()
+        exporter.terminate()
+        expect(m.cancel).toHaveBeenCalledTimes(1)
+        await expect(exporter.addFrame(canvas, audio(), 0)).rejects.toThrow()
+        await expect(exporter.finalize()).rejects.toThrow()
+        expect(m.save).not.toHaveBeenCalled()
+        expect(abort).toHaveBeenCalledTimes(streaming ? 1 : 0)
+    })
+    it(`cannot publish a finalization retired by abort (stream=${streaming})`, async () => {
+        const finish = Promise.withResolvers<void>()
+        m.finalize.mockReturnValue(finish.promise)
+        const close = vi.fn(); const abort = vi.fn()
+        const exporter = streaming
+            ? await StreamVideoExporter.create(config, new WritableStream({close, abort}))
+            : await BufferVideoExporter.create(config)
+        const pending = exporter.finalize()
+        const result = expect(pending).rejects.toThrow()
+        await exporter.abort()
+        finish.resolve()
+        await result
+        expect(m.cancel).toHaveBeenCalledTimes(1)
+        expect(m.save).not.toHaveBeenCalled()
+        expect(close).not.toHaveBeenCalled()
     })
 }

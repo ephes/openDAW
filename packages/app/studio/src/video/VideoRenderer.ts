@@ -56,26 +56,34 @@ export namespace VideoRenderer {
                 BufferVideoExporter.create(exportConfig), TimeSpan.seconds(10))
         }
         console.time("Render Video")
-        const project = source.copy()
-        const {boxGraph, timelineBox: {loopArea: {enabled}}} = project
-        boxGraph.beginTransaction()
-        enabled.setValue(false)
-        boxGraph.endTransaction()
+        let project: Project | undefined
+        let renderer: OfflineEngineRenderer | undefined
+        let shadertoyState: ShadertoyState | undefined
+        let shadertoyRunner: ShadertoyRunner | undefined
+        let overlay: VideoOverlay | undefined
+        let shadertoyContext: WebGL2RenderingContext | null = null
+        let dialog: ReturnType<typeof RuntimeNotifier.progress> | undefined
         let active = true
+        let completed = false
+        let failed = false
+        let failure: unknown
         const progressValue = new DefaultObservableValue(0.0)
-        const dialog = RuntimeNotifier.progress({
-            headline: "Rendering video...",
-            progress: progressValue,
-            cancel: () => active = false
-        })
-
         try {
+            dialog = RuntimeNotifier.progress({
+                headline: "Rendering video...",
+                progress: progressValue,
+                cancel: () => active = false
+            })
+            project = source.copy()
+            const {boxGraph, timelineBox: {loopArea: {enabled}}} = project
+            boxGraph.beginTransaction()
+            try {enabled.setValue(false)} finally {boxGraph.endTransaction()}
             dialog.message = "Initializing..."
             const estimator = TimeSpan.createEstimator()
             const shadertoyCanvas = new OffscreenCanvas(width, height)
-            const shadertoyContext = shadertoyCanvas.getContext("webgl2")!
-            const shadertoyState = new ShadertoyState(project)
-            const shadertoyRunner = new ShadertoyRunner(shadertoyState, shadertoyContext)
+            shadertoyContext = shadertoyCanvas.getContext("webgl2")!
+            shadertoyState = new ShadertoyState(project)
+            shadertoyRunner = new ShadertoyRunner(shadertoyState, shadertoyContext)
             const shadertoy = project.rootBoxAdapter.box.shadertoy
             if (shadertoy.nonEmpty()) {
                 const code = asInstanceOf(shadertoy.targetVertex.unwrap().box, ShadertoyBox).shaderCode.getValue()
@@ -86,13 +94,14 @@ export namespace VideoRenderer {
             }
             const compositionCanvas = new OffscreenCanvas(width, height)
             const compositionCtx = compositionCanvas.getContext("2d")!
-            const overlay = await VideoOverlay.create({
+            const signatureTrack = project.timelineBoxAdapter.signatureTrack
+            overlay = await VideoOverlay.create({
                 width, height, projectName,
-                toParts: (position: ppqn) => project.timelineBoxAdapter.signatureTrack.toParts(position)
+                toParts: (position: ppqn) => signatureTrack.toParts(position)
             })
 
-            const renderer = await OfflineEngineRenderer.create(project, Option.None, sampleRate)
-            renderer.play()
+            renderer = await OfflineEngineRenderer.create(project, Option.None, sampleRate)
+            await renderer.play()
 
             const tempoMap = project.tempoMap
             const estimatedDurationInSeconds = duration > 0
@@ -161,34 +170,41 @@ export namespace VideoRenderer {
                 if (duration === 0 && consecutiveSilentSamples >= silenceSamplesNeeded) {break}
             }
 
-            renderer.stop()
-            renderer.terminate()
-            shadertoyState.terminate()
-            shadertoyRunner.terminate()
-            overlay.terminate()
-
-            if (!active) {
-                dialog.terminate()
-                await exporter.abort()
-                return
+            if (active) {
+                dialog.message = "Finalizing video..."
+                await exporter.finalize()
+                completed = true
             }
-
-            dialog.message = "Finalizing video..."
-            await exporter.finalize()
-            dialog.terminate()
         } catch (error) {
-            dialog.terminate()
-            await exporter.abort()
-            const message = isAllocationError(error)
-                ? "Video is too large for this browser. Please use Chrome."
-                : String(error)
-            await RuntimeNotifier.info({
-                headline: "Video Export Failed",
-                message
-            })
-            throw error
+            failed = true
+            failure = error
+        } finally {
+            // Every acquired owner gets an independent cleanup attempt.
+            for (const close of [
+                () => renderer?.stop(),
+                () => renderer?.terminate(),
+                () => overlay?.terminate(),
+                () => shadertoyRunner?.terminate(),
+                () => shadertoyState?.terminate(),
+                () => shadertoyContext?.getExtension?.("WEBGL_lose_context")?.loseContext(),
+                () => project?.terminate(),
+                () => dialog?.terminate()
+            ]) {
+                try {close()} catch {console.warn("Video render cleanup failed")}
+            }
+            if (!completed) {
+                try {await exporter.abort()} catch {console.warn("Video export abort failed")}
+            }
+            console.timeEnd("Render Video")
         }
-
-        console.timeEnd("Render Video")
+        if (failed) {
+            const message = isAllocationError(failure)
+                ? "Video is too large for this browser. Please use Chrome."
+                : String(failure)
+            try {
+                await RuntimeNotifier.info({headline: "Video Export Failed", message})
+            } catch {console.warn("Video failure notification failed")}
+            throw failure
+        }
     }
 }
