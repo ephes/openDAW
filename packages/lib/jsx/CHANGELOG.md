@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fence retired router failures and cancel pending navigation when returning to the visible page.
+- Run lib-jsx DOM regressions with Vitest and include TSX in lint.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.83](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-jsx@0.0.82...@opendaw/lib-jsx@0.0.83) (2026-05-22)

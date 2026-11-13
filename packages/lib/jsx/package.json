@@ -19,8 +19,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "lint": "eslint \"**/*.ts\"",
-    "test": "echo \"No tests to run\""
+    "lint": "eslint \"**/*.{ts,tsx}\"",
+    "test": "vitest run"
   },
   "dependencies": {
     "@opendaw/lib-dom": "^0.0.83",
@@ -28,7 +28,9 @@
   },
   "devDependencies": {
     "@opendaw/eslint-config": "^0.0.28",
-    "@opendaw/typescript-config": "^0.0.32"
+    "@opendaw/typescript-config": "^0.0.32",
+    "jsdom": "^25.0.1",
+    "vitest": "^3.1.3"
   },
   "gitHead": "e4f70170c5947610932306da94e7f0bb817e43b3"
 }

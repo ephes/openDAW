@@ -6,7 +6,7 @@ export type AwaitProps<T> = {
     factory: Provider<Promise<T>>,
     loading: Provider<JsxValue>,
     success: Func<T, JsxValue>,
-    failure: Func<{ reason: any, retry: Exec }, JsxValue>
+    failure: Func<{ reason: unknown, retry: Exec }, JsxValue>
     repeat?: Procedure<Exec>
 }
 

@@ -49,13 +49,16 @@ export const Router = <SERVICE = never>({
     let loading: Option<PageRequest> = Option.None
     let showing: Option<PageRequest> = Option.None
 
-    const fetchPage = async (pageFactory: PageFactory<SERVICE>, path: string): Promise<void> => {
+    const cancelLoading = (): void => {
         if (loading.nonEmpty()) {
             const request: PageRequest = loading.unwrap()
             request.preloader.ifSome(lifecycle => lifecycle.terminate())
             request.state = "cancelled"
             loading = Option.None
         }
+    }
+    const fetchPage = async (pageFactory: PageFactory<SERVICE>, path: string): Promise<void> => {
+        cancelLoading()
         const lifecycle = new Terminator()
         const pageResult: JsxValue | Promise<JsxValue> = pageFactory({
             service,
@@ -76,6 +79,10 @@ export const Router = <SERVICE = never>({
         try {
             element = await content
         } catch (reason) {
+            if (request.state === "cancelled") {
+                request.lifecycle.terminate()
+                return
+            }
             console.warn(reason)
             if (isDefined(error)) {
                 return fetchPage(error, path)
@@ -101,6 +108,7 @@ export const Router = <SERVICE = never>({
     }
     runtime.own(RouteLocation.get()
         .catchupAndSubscribe((location: RouteLocation) => {
+            cancelLoading()
             if (showing.unwrapOrNull()?.path === location.path) {
                 return
             }
