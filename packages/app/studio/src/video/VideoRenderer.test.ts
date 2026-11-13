@@ -40,9 +40,10 @@ const project = {
 const source = {...project, copy: m.copy} as unknown as Project
 const exporter = {addFrame: m.add, finalize: m.finalize, abort: m.abort, terminate: m.exporterClose}
 const engine = {play: m.play, step: m.step, stop: m.stop, terminate: m.engineClose, get totalFrames() {return total}}
-export const settle = async () => {for (let i = 0; i < 100; i++) {await Promise.resolve()}}
+export const settle = async () => {for (let i = 0; i < 1000; i++) {await Promise.resolve()}}
 beforeEach(() => {
     vi.resetAllMocks()
+    for (const task of [m.add, m.finalize, m.abort, m.play]) {task.mockResolvedValue(undefined)}
     total = 0; end = 1; tone = () => true
     m.dialog.mockResolvedValue({...config})
     m.progress.mockReturnValue({terminate: m.dialogClose})
@@ -133,4 +134,58 @@ it("attempts every cleanup independently while preserving the primary failure", 
     for (const close of [m.stop, m.engineClose, m.stateClose, m.runnerClose, m.overlayClose, m.projectClose, m.dialogClose, m.abort]) {
         expect(close).toHaveBeenCalledTimes(1)
     }
+})
+
+for (const outcome of ["reject", "hang", "late"] as const) {
+    it(`owns the startup writable when encoder creation ${outcome}s`, async () => {
+        vi.useFakeTimers()
+        const abort = vi.fn(async () => {})
+        const writable = {abort, locked: false}
+        Object.defineProperty(window, "showSaveFilePicker", {value: async () => ({createWritable: async () => writable}), configurable: true})
+        const init = Promise.withResolvers<typeof exporter>()
+        const failure = new Error("startup refused")
+        m.create.mockImplementationOnce(() => outcome === "reject" ? Promise.reject(failure) : init.promise)
+        const pending = VideoRenderer.render(source, "Startup", 48000)
+        const result = expect(pending).rejects.toThrow()
+        await settle()
+        if (outcome !== "reject") {await vi.advanceTimersByTimeAsync(10001)}
+        await result
+        expect(abort).toHaveBeenCalledTimes(1)
+        expect(m.copy).not.toHaveBeenCalled()
+        if (outcome === "late") {
+            init.resolve(exporter); await settle()
+            expect(m.abort).toHaveBeenCalledTimes(1)
+            expect(m.finalize).not.toHaveBeenCalled()
+        }
+    })
+}
+for (const stage of ["step", "add", "finalize"] as const) {
+    it(`cancels promptly while ${stage} never settles, and fences late work`, async () => {
+        vi.useFakeTimers()
+        const deferred = Promise.withResolvers<never>()
+        m[stage].mockReturnValueOnce(deferred.promise)
+        let settled = false
+        const pending = VideoRenderer.render(source, "Cancel", 48000).then(() => {settled = true})
+        await settle()
+        expect(m[stage]).toHaveBeenCalled()
+        m.progress.mock.calls[0][0].cancel()
+        await vi.advanceTimersByTimeAsync(1)
+        expect(settled).toBe(true)
+        await pending
+        expect(m.abort).toHaveBeenCalledTimes(1)
+        expect(m.engineClose).toHaveBeenCalledTimes(1)
+        expect(m.dialogClose).toHaveBeenCalledTimes(1)
+        expect(m.info).not.toHaveBeenCalled()
+        deferred.reject(new Error("late completion")); await settle()
+        expect(m.finalize).toHaveBeenCalledTimes(stage === "finalize" ? 1 : 0)
+    })
+}
+it("does not await a hung exporter abort when cancelling", async () => {
+    m.step.mockReturnValueOnce(new Promise(() => {}))
+    m.abort.mockReturnValueOnce(new Promise(() => {}))
+    let settled = false
+    void VideoRenderer.render(source, "Cancel cleanup", 48000).then(() => {settled = true})
+    await settle(); m.progress.mock.calls[0][0].cancel(); await settle()
+    expect(settled).toBe(true)
+    expect(m.engineClose).toHaveBeenCalledTimes(1)
 })

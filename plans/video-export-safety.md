@@ -58,3 +58,20 @@ discards its writable and suppresses late buffered saves. Native resources in
 that finalizing phase can only finish when the library's pending flush settles;
 there is no public force-close API for this phase. No private library fields are
 used. This limitation remains for external review.
+
+## Startup and active cancellation
+
+Encoder initialization has a ten-second deadline. Its AbortSignal reaches codec
+probing and output startup; acquired muxer/writer owners retire on cancellation
+or refusal. A late initializer cannot transfer ownership or publish a file.
+All pending promise rejections remain observed. A writable acquired late is
+aborted rather than handed to an already retired attempt.
+
+Cancel immediately retires the exporter, stops/terminates the offline engine,
+releases acquired render resources and closes the progress dialog. Rendering
+settles even if a step, backpressure, finalize or cleanup promise never settles.
+Late results cannot continue the render or save buffered output. Expected user
+cancellation does not open an error notification. Native audio wrappers close
+promptly when a pending add is interrupted. The finalizing library limitation
+above still applies to the underlying native flush; cancellation cannot undo a
+file commit/download that has already been started.

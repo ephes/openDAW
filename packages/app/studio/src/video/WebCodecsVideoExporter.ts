@@ -10,6 +10,7 @@ import type {
     Output,
     Target
 } from "mediabunny"
+import {waitForVideoTask} from "./VideoExportTask"
 import {validateVideoConfig} from "./VideoExportLimits"
 import type {VideoExportConfig, VideoExporter} from "./VideoExporter"
 
@@ -30,12 +31,17 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         return typeof VideoEncoder !== "undefined" && typeof AudioEncoder !== "undefined"
     }
 
-    protected static async createEncoder(config: VideoExportConfig, target: Target): Promise<EncoderState> {
+    protected static async createEncoder(config: VideoExportConfig, target: Target, signal?: AbortSignal): Promise<EncoderState> {
         validateVideoConfig(config)
-        const {Output, Mp4OutputFormat, CanvasSource, AudioSampleSource, AudioSample} = await import("mediabunny")
+        const {Output, Mp4OutputFormat, CanvasSource, AudioSampleSource, AudioSample} = await waitForVideoTask(import("mediabunny"), signal)
+        signal?.throwIfAborted()
         const canvas = new OffscreenCanvas(config.width, config.height)
         const ctx = asDefined(canvas.getContext("2d"))
         const output = new Output({format: new Mp4OutputFormat(), target})
+        let cancellation: Promise<void> | undefined
+        const cancel = (): Promise<void> => cancellation ??= output.cancel().catch(() => {console.warn("Video encoder rollback failed")})
+        const onAbort = () => {void cancel()}
+        signal?.addEventListener("abort", onAbort, {once: true})
         let videoSource: CanvasSource | undefined
         let audioSource: AudioSampleSource | undefined
         try {
@@ -47,16 +53,23 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
             })
             output.addVideoTrack(videoSource)
             const audioBitrate = config.audioBitrate ?? 192_000
-            const audioCodec = await WebCodecsVideoExporter.#pickAudioCodec(config.sampleRate, config.numberOfChannels, audioBitrate)
+            const audioCodec = await waitForVideoTask(
+                WebCodecsVideoExporter.#pickAudioCodec(config.sampleRate, config.numberOfChannels, audioBitrate), signal)
+            signal?.throwIfAborted()
             audioSource = new AudioSampleSource({codec: audioCodec, bitrate: audioBitrate})
             output.addAudioTrack(audioSource)
-            await output.start()
+            await waitForVideoTask(output.start(), signal)
+            signal?.throwIfAborted()
             return {output, videoSource, audioSource, AudioSample, ctx}
         } catch (error) {
-            try {await output.cancel()} catch {console.warn("Video encoder rollback failed")}
-            closeSafely(() => videoSource?.close())
-            closeSafely(() => audioSource?.close())
+            try {await waitForVideoTask(cancel(), signal)} catch { /* Cancellation already owns rollback. */ }
+            if (!signal?.aborted) {
+                closeSafely(() => videoSource?.close())
+                closeSafely(() => audioSource?.close())
+            }
             throw error
+        } finally {
+            signal?.removeEventListener("abort", onAbort)
         }
     }
 
@@ -76,6 +89,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     readonly #ctx: OffscreenCanvasRenderingContext2D
     readonly #progress: DefaultObservableValue<number> = new DefaultObservableValue(0)
 
+    readonly #abortController = new AbortController()
     #state: "active" | "finalizing" | "finalized" | "aborted" = "active"
     #abortTask: Promise<void> | undefined
     #audioSamples = 0
@@ -106,7 +120,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         this.#lastTimestamp = timestampSeconds
         this.#ctx.drawImage(canvas, 0, 0)
         const frameDuration = 1 / this.#config.frameRate
-        await this.#videoSource.add(timestampSeconds, frameDuration)
+        await waitForVideoTask(this.#videoSource.add(timestampSeconds, frameDuration), this.#abortController.signal)
         this.assertActive()
         if (audio.length > 0 && audio[0].length > 0) {
             const numberOfChannels = audio.length
@@ -127,7 +141,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
             try {
                 const audioSample = new this.#AudioSample(audioData)
                 try {
-                    await this.#audioSource.add(audioSample)
+                    await waitForVideoTask(this.#audioSource.add(audioSample), this.#abortController.signal)
                     this.assertActive()
                     this.#audioSamples += numberOfFrames
                 } finally {
@@ -146,8 +160,8 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     protected async finalizeOutput(): Promise<void> {
         this.assertActive()
         this.#state = "finalizing"
-        await this.#output.finalize()
-        if (this.#state as string === "aborted") {throw new Error("Video export was aborted.")}
+        await waitForVideoTask(this.#output.finalize(), this.#abortController.signal)
+        this.#abortController.signal.throwIfAborted()
     }
 
     protected complete(): void {
@@ -162,6 +176,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         if (this.#abortTask !== undefined) {return this.#abortTask}
         if (this.#state === "finalized") {return Promise.resolve()}
         this.#state = "aborted"
+        this.#abortController.abort(new DOMException("Video export was aborted.", "AbortError"))
         // Start both independently: muxer teardown must not delay discarding the file.
         this.#abortTask = Promise.allSettled([this.#output.cancel(), this.abortTarget()]).then(() => {})
         return this.#abortTask
@@ -172,19 +187,27 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
 }
 
 export class StreamVideoExporter extends WebCodecsVideoExporter {
-    static async create(config: VideoExportConfig, writable: WritableStream): Promise<StreamVideoExporter> {
+    static async create(config: VideoExportConfig, writable: WritableStream, signal?: AbortSignal): Promise<StreamVideoExporter> {
         const writer = writable.getWriter()
+        let abortTask: Promise<void> | undefined
+        const abortWriter = () => abortTask ??= writer.abort().catch(() => {
+            console.warn("Video writable rollback failed")
+        }).finally(() => writer.releaseLock())
+        const onAbort = () => {void abortWriter()}
+        signal?.addEventListener("abort", onAbort, {once: true})
         try {
-            const {StreamTarget} = await import("mediabunny")
+            const {StreamTarget} = await waitForVideoTask(import("mediabunny"), signal)
+            signal?.throwIfAborted()
             // Output.cancel closes its target. Only our successful finalize may commit
             // the underlying file; muxer close must not publish a partial export.
             const target = new StreamTarget(new WritableStream({write: chunk => writer.write(chunk)}), {chunked: true})
-            const encoder = await WebCodecsVideoExporter.createEncoder(config, target)
+            const encoder = await WebCodecsVideoExporter.createEncoder(config, target, signal)
             return new StreamVideoExporter(config, encoder, writer)
         } catch (error) {
-            try {await writer.abort()} catch {console.warn("Video writable rollback failed")}
-            writer.releaseLock()
+            void abortWriter()
             throw error
+        } finally {
+            signal?.removeEventListener("abort", onAbort)
         }
     }
 
@@ -208,10 +231,11 @@ export class StreamVideoExporter extends WebCodecsVideoExporter {
 }
 
 export class BufferVideoExporter extends WebCodecsVideoExporter {
-    static async create(config: VideoExportConfig): Promise<BufferVideoExporter> {
-        const {BufferTarget} = await import("mediabunny")
+    static async create(config: VideoExportConfig, signal?: AbortSignal): Promise<BufferVideoExporter> {
+        const {BufferTarget} = await waitForVideoTask(import("mediabunny"), signal)
+        signal?.throwIfAborted()
         const bufferTarget = new BufferTarget()
-        const encoder = await WebCodecsVideoExporter.createEncoder(config, bufferTarget)
+        const encoder = await WebCodecsVideoExporter.createEncoder(config, bufferTarget, signal)
         return new BufferVideoExporter(config, encoder, bufferTarget)
     }
 

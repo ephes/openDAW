@@ -20,6 +20,7 @@ import {
     VideoOverlay,
     WebCodecsVideoExporter
 } from "@/video"
+import {waitForVideoTask} from "./VideoExportTask"
 import {validateVideoConfig} from "./VideoExportLimits"
 import {Promises} from "@opendaw/lib-runtime"
 
@@ -42,48 +43,75 @@ export namespace VideoRenderer {
         if (!Number.isFinite(arrangementEnd) || arrangementEnd < 0) {throw new Error("Invalid arrangement duration.")}
         const maxDuration = duration > 0 ? duration : arrangementEnd + SILENCE_DURATION_SECONDS
         validateVideoConfig(exportConfig, maxDuration)
-        let exporter: VideoExporter
-        if (isDefined(window.showSaveFilePicker)) {
-            const result = await Promises.tryCatch(
-                window.showSaveFilePicker({suggestedName: "opendaw-video.mp4"})
-            )
-            if (result.status === "rejected") {return}
-            const writable = await result.value.createWritable()
-            exporter = await Promises.timeout(
-                StreamVideoExporter.create(exportConfig, writable), TimeSpan.seconds(10))
-        } else {
-            exporter = await Promises.timeout(
-                BufferVideoExporter.create(exportConfig), TimeSpan.seconds(10))
-        }
-        console.time("Render Video")
-        let project: Project | undefined
-        let renderer: OfflineEngineRenderer | undefined
-        let shadertoyState: ShadertoyState | undefined
-        let shadertoyRunner: ShadertoyRunner | undefined
-        let overlay: VideoOverlay | undefined
-        let shadertoyContext: WebGL2RenderingContext | null = null
-        let dialog: ReturnType<typeof RuntimeNotifier.progress> | undefined
-        let active = true
+        const controller = new AbortController()
+        const {signal} = controller
+        let exporter: VideoExporter | undefined
+        let writable: WritableStream | undefined
+        let exporterRetired = false
+        let cancelled = false
         let completed = false
         let failed = false
         let failure: unknown
+        const cleanups: Array<() => void> = []
+        const release = () => {
+            while (cleanups.length > 0) {
+                try {cleanups.pop()!()} catch {console.warn("Video render cleanup failed")}
+            }
+        }
+        const abortExporter = () => {
+            if (exporter === undefined || exporterRetired) {return}
+            exporterRetired = true
+            void exporter.abort().catch(() => {console.warn("Video export abort failed")})
+        }
+        const abortWritable = () => {
+            const pending = writable
+            writable = undefined
+            if (pending !== undefined && !pending.locked) {
+                void pending.abort().catch(() => {console.warn("Video writable abort failed")})
+            }
+        }
+        const retire = () => {release(); abortExporter(); abortWritable()}
+        signal.addEventListener("abort", retire, {once: true})
+        const wait = <T>(task: Promise<T>, late?: (value: T) => void): Promise<T> => waitForVideoTask(task, signal, late)
         const progressValue = new DefaultObservableValue(0.0)
+        console.time("Render Video")
         try {
-            dialog = RuntimeNotifier.progress({
+            const dialog = RuntimeNotifier.progress({
                 headline: "Rendering video...",
                 progress: progressValue,
-                cancel: () => active = false
+                cancel: () => {
+                    cancelled = true
+                    controller.abort(new DOMException("Video export was cancelled.", "AbortError"))
+                }
             })
-            project = source.copy()
+            cleanups.push(() => dialog.terminate())
+            if (isDefined(window.showSaveFilePicker)) {
+                const result = await wait(Promises.tryCatch(window.showSaveFilePicker({suggestedName: "opendaw-video.mp4"})))
+                if (result.status === "rejected") {return}
+                writable = await wait(result.value.createWritable(), late => {void late.abort().catch(() => {})})
+            }
+            const startupTimer = setTimeout(() => controller.abort(new Error("Video encoder startup timed out after 10 seconds.")), 10_000)
+            try {
+                exporter = await wait<VideoExporter>(writable !== undefined
+                    ? StreamVideoExporter.create(exportConfig, writable, signal)
+                    : BufferVideoExporter.create(exportConfig, signal),
+                    late => {void late.abort().catch(() => {})})
+                writable = undefined // The completed exporter now owns the writer.
+            } finally {clearTimeout(startupTimer)}
+            const project = source.copy()
+            cleanups.push(() => project.terminate())
             const {boxGraph, timelineBox: {loopArea: {enabled}}} = project
             boxGraph.beginTransaction()
             try {enabled.setValue(false)} finally {boxGraph.endTransaction()}
             dialog.message = "Initializing..."
             const estimator = TimeSpan.createEstimator()
             const shadertoyCanvas = new OffscreenCanvas(width, height)
-            shadertoyContext = shadertoyCanvas.getContext("webgl2")!
-            shadertoyState = new ShadertoyState(project)
-            shadertoyRunner = new ShadertoyRunner(shadertoyState, shadertoyContext)
+            const shadertoyContext = shadertoyCanvas.getContext("webgl2")!
+            cleanups.push(() => shadertoyContext?.getExtension?.("WEBGL_lose_context")?.loseContext())
+            const shadertoyState = new ShadertoyState(project)
+            cleanups.push(() => shadertoyState.terminate())
+            const shadertoyRunner = new ShadertoyRunner(shadertoyState, shadertoyContext)
+            cleanups.push(() => shadertoyRunner.terminate())
             const shadertoy = project.rootBoxAdapter.box.shadertoy
             if (shadertoy.nonEmpty()) {
                 const code = asInstanceOf(shadertoy.targetVertex.unwrap().box, ShadertoyBox).shaderCode.getValue()
@@ -95,13 +123,16 @@ export namespace VideoRenderer {
             const compositionCanvas = new OffscreenCanvas(width, height)
             const compositionCtx = compositionCanvas.getContext("2d")!
             const signatureTrack = project.timelineBoxAdapter.signatureTrack
-            overlay = await VideoOverlay.create({
+            const overlay = await wait(VideoOverlay.create({
                 width, height, projectName,
                 toParts: (position: ppqn) => signatureTrack.toParts(position)
-            })
+            }), late => late.terminate())
+            cleanups.push(() => overlay.terminate())
 
-            renderer = await OfflineEngineRenderer.create(project, Option.None, sampleRate)
-            await renderer.play()
+            const renderer = await wait(OfflineEngineRenderer.create(project, Option.None, sampleRate), late => late.terminate())
+            cleanups.push(() => renderer.terminate())
+            cleanups.push(() => renderer.stop())
+            await wait(renderer.play())
 
             const tempoMap = project.tempoMap
             const estimatedDurationInSeconds = duration > 0
@@ -118,7 +149,7 @@ export namespace VideoRenderer {
             let samplesRendered = 0
             let frameIndex = 0
 
-            while (frameIndex < maxFrames && active) {
+            while (frameIndex < maxFrames) {
                 if (frameIndex >= estimatedNumberOfFrames) {
                     dialog.message = `Waiting for silence...`
                 } else {
@@ -131,7 +162,7 @@ export namespace VideoRenderer {
                 const samplesToRender = targetSamples - samplesRendered
                 const quantumsNeeded = Math.ceil(samplesToRender / RenderQuantum)
                 const actualSamplesToRender = quantumsNeeded * RenderQuantum
-                const channels = await renderer.step(actualSamplesToRender)
+                const channels = await wait(renderer.step(actualSamplesToRender))
                 samplesRendered += actualSamplesToRender
                 project.liveStreamReceiver.dispatch()
                 if (duration === 0) {
@@ -165,39 +196,28 @@ export namespace VideoRenderer {
                 }
 
                 const timestampSeconds = frameIndex / frameRate
-                await exporter.addFrame(compositionCanvas, channels, timestampSeconds)
+                await wait(exporter.addFrame(compositionCanvas, channels, timestampSeconds))
                 frameIndex++
                 if (duration === 0 && consecutiveSilentSamples >= silenceSamplesNeeded) {break}
             }
 
-            if (active) {
-                dialog.message = "Finalizing video..."
-                await exporter.finalize()
-                completed = true
-            }
+            dialog.message = "Finalizing video..."
+            await wait(exporter.finalize())
+            completed = true
         } catch (error) {
             failed = true
             failure = error
         } finally {
-            // Every acquired owner gets an independent cleanup attempt.
-            for (const close of [
-                () => renderer?.stop(),
-                () => renderer?.terminate(),
-                () => overlay?.terminate(),
-                () => shadertoyRunner?.terminate(),
-                () => shadertoyState?.terminate(),
-                () => shadertoyContext?.getExtension?.("WEBGL_lose_context")?.loseContext(),
-                () => project?.terminate(),
-                () => dialog?.terminate()
-            ]) {
-                try {close()} catch {console.warn("Video render cleanup failed")}
-            }
             if (!completed) {
-                try {await exporter.abort()} catch {console.warn("Video export abort failed")}
+                controller.abort(failure ?? new DOMException("Video export was aborted.", "AbortError"))
+                abortExporter()
+                abortWritable()
             }
+            release()
+            signal.removeEventListener("abort", retire)
             console.timeEnd("Render Video")
         }
-        if (failed) {
+        if (failed && !cancelled) {
             const message = isAllocationError(failure)
                 ? "Video is too large for this browser. Please use Chrome."
                 : String(failure)

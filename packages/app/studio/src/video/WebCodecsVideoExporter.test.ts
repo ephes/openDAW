@@ -23,6 +23,7 @@ const canvas = {} as OffscreenCanvas
 const audio = () => [new Float32Array([1, 2]), new Float32Array([3, 4])]
 beforeEach(() => {
     vi.resetAllMocks()
+    for (const task of [m.video, m.audio, m.start, m.finalize, m.cancel]) {task.mockResolvedValue(undefined)}
     vi.stubGlobal("WritableStream", TestWritableStream)
     vi.stubGlobal("OffscreenCanvas", class {
         constructor(...args: unknown[]) {m.canvas(...args)}
@@ -157,5 +158,50 @@ for (const streaming of [false, true]) {
         expect(m.cancel).toHaveBeenCalledTimes(1)
         expect(m.save).not.toHaveBeenCalled()
         expect(close).not.toHaveBeenCalled()
+    })
+}
+
+for (const stage of ["video", "audio", "finalize"] as const) {
+    it(`interrupts native pending ${stage} on abort`, async () => {
+        const deferred = Promise.withResolvers<void>()
+        m[stage].mockReturnValueOnce(deferred.promise)
+        const exporter = await BufferVideoExporter.create(config)
+        let settled = false
+        const pending = stage === "finalize" ? exporter.finalize() : exporter.addFrame(canvas, audio(), 0)
+        void pending.catch(() => {settled = true})
+        for (let i = 0; i < 20; i++) {await Promise.resolve()}
+        await exporter.abort()
+        for (let i = 0; i < 20; i++) {await Promise.resolve()}
+        expect(settled).toBe(true)
+        if (stage === "audio") {
+            expect(m.dataClose).toHaveBeenCalledTimes(1)
+            expect(m.sampleClose).toHaveBeenCalledTimes(1)
+        }
+        deferred.resolve()
+        await expect(pending).rejects.toThrow()
+        expect(m.save).not.toHaveBeenCalled()
+    })
+}
+
+for (const stage of ["codec", "start"] as const) {
+    it(`cancels pending encoder ${stage} initialization and aborts its writer once`, async () => {
+        const controller = new AbortController()
+        const deferred = Promise.withResolvers<never>()
+        if (stage === "codec") {vi.stubGlobal("AudioEncoder", {isConfigSupported: () => deferred.promise})}
+        else {m.start.mockReturnValueOnce(deferred.promise)}
+        const abort = vi.fn()
+        const exporter = StreamVideoExporter.create(config, new WritableStream({abort}), controller.signal)
+        let rejected = false
+        void exporter.catch(() => {rejected = true})
+        for (let i = 0; i < 100; i++) {await Promise.resolve()}
+        controller.abort(new Error("startup cancelled"))
+        for (let i = 0; i < 100; i++) {await Promise.resolve()}
+        expect(rejected).toBe(true)
+        expect(m.cancel).toHaveBeenCalledTimes(1)
+        expect(abort).toHaveBeenCalledTimes(1)
+        deferred.reject(new Error("late probe failure"))
+        await expect(exporter).rejects.toThrow("startup cancelled")
+        expect(m.cancel).toHaveBeenCalledTimes(1)
+        expect(m.audioConstruct).toHaveBeenCalledTimes(stage === "codec" ? 0 : 1)
     })
 }

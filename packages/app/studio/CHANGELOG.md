@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Own video initialization through its ten-second deadline and retire late results; Cancel interrupts pending render/encode/finalize steps and closes the progress dialog promptly.
+
 - Cancel active video muxers, fence retired exports and discard partial streaming files; unwind all acquired render owners after setup or encoding failures. Mediabunny finalization retains its public cancellation limitation (see video export documentation).
 
 - Roll back partial video encoder construction and close native audio samples on failed submissions.
