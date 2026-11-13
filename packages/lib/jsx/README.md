@@ -36,3 +36,7 @@ or invoke the error page, including when they reject after a later page appears.
 After the root build, `npm test --workspace=@opendaw/lib-jsx` runs the TSX/DOM
 regressions with Vitest and jsdom. `npm run lint --workspace=@opendaw/lib-jsx`
 checks both TypeScript and TSX. Root build, lint and test remain the full gates.
+
+The runtime owns both visible and pending page lifecycles and pending preloaders.
+Disposing it stops navigation and fences late completions. Cancelling a request
+terminates its resources immediately, even when its factory never settles.

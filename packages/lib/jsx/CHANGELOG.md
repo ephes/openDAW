@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Dispose router page owners and preloaders with the runtime; release cancelled requests immediately.
+
 - Fence retired router failures and cancel pending navigation when returning to the visible page.
 - Run lib-jsx DOM regressions with Vitest and include TSX in lint.
 

@@ -66,3 +66,56 @@ describe("Router request ownership", () => {
         expect(visibleDisposed).not.toHaveBeenCalled()
     })
 })
+
+
+describe("Router teardown", () => {
+    it.each(["resolve", "reject"] as const)("disposes runtime owners before a late %s", async outcome => {
+        const pending = deferred()
+        const showingDisposed = vi.fn()
+        const loadingDisposed = vi.fn()
+        const preloaders = [vi.fn(), vi.fn()]
+        const onshow = vi.fn()
+        let count = 0
+        const error = vi.fn(() => "error")
+        const container = mount([
+            {path: "/a", factory: ({lifecycle}) => {lifecycle.own({terminate: showingDisposed}); return "A"}},
+            {path: "/b", factory: ({lifecycle}) => {lifecycle.own({terminate: loadingDisposed}); return pending.promise}}
+        ], {onshow, error, preloader: () => ({terminate: preloaders[count++]})})
+        await settle()
+        RouteLocation.get().navigateTo("/b")
+        runtime.terminate()
+        runtime.terminate()
+        expect(showingDisposed).toHaveBeenCalledTimes(1)
+        expect(loadingDisposed).toHaveBeenCalledTimes(1)
+        expect(preloaders[0]).toHaveBeenCalledTimes(1)
+        expect(preloaders[1]).toHaveBeenCalledTimes(1)
+        if (outcome === "resolve") {pending.resolve("B")} else {pending.reject("retired")}
+        RouteLocation.get().navigateTo("/c")
+        await settle()
+        expect(container.textContent).toBe("A")
+        expect(onshow).toHaveBeenCalledTimes(1)
+        expect(error).not.toHaveBeenCalled()
+        expect(loadingDisposed).toHaveBeenCalledTimes(1)
+    })
+
+    it("immediately clears resources owned by a never-settling cancelled factory", async () => {
+        const disposed = vi.fn()
+        const timer = setInterval(() => {}, 10000)
+        const container = mount([
+            {path: "/a", factory: () => "A"},
+            {path: "/b", factory: ({lifecycle}) => {
+                lifecycle.own({terminate: () => {clearInterval(timer); disposed()}})
+                return new Promise(() => {})
+            }}
+        ])
+        try {
+            await settle()
+            RouteLocation.get().navigateTo("/b")
+            RouteLocation.get().navigateTo("/a")
+            expect(disposed).toHaveBeenCalledTimes(1)
+            expect(container.textContent).toBe("A")
+            runtime.terminate()
+            expect(disposed).toHaveBeenCalledTimes(1)
+        } finally {clearInterval(timer)}
+    })
+})
