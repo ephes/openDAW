@@ -58,7 +58,9 @@ are observed. A throwing initial observer is unsubscribed before rethrowing.
 Each repeat or retry starts a new attempt. Only the latest attempt may render
 success or failure; retry callbacks from superseded errors do nothing. Factory
 throws, rejected promises and success/loading renderer throws use the same failure
-renderer. If that renderer throws, Await logs it once and displays
+renderer. Failure callbacks receive an `unknown` rejection reason (Errors are
+formatted as text); narrow or stringify it before rendering. If that renderer
+throws, Await logs it once and displays
 `Could not load content.`; a later explicit repeat can still recover.
 
 ## Reusable DOM bindings

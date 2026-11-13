@@ -29,3 +29,19 @@ ownership and terminal failure rendering prevent stale DOM and unhandled promise
 B06: real JSX HTML/SVG bindings expose overwritten attribute keys and the readonly
 SVG className assignment before fixes. Weak target ownership, per-target key sets
 and namespace-safe class attributes preserve values when detached.
+
+## Final local validation
+
+On 2026-11-13 with Node 26.13.1 / npm 11.20.0, all required root gates passed:
+
+- `npm ci` (including the existing native dependency install scripts).
+- `npm run build`: 24 successful tasks, including production TypeScript.
+- `npm run lint`: 24 successful tasks, warnings but no errors; lib-jsx includes TSX.
+- `npm test`: 44 successful tasks, including all 31 new lib-jsx DOM regressions.
+
+Each bundle's focused Vitest regressions failed before its implementation and
+passed afterward; focused lint and production type checks also passed per bundle.
+No gate was sandbox-blocked. No slices were skipped and no owner decision was
+needed. README and Unreleased notes cover the changed behavior; no version changed.
+The branch is parked for external cross-family review and merging. No review CLI,
+Actions wait, default-branch push, deployment, release or tag was performed.
