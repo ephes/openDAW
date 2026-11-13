@@ -64,6 +64,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
     readonly #ctx: OffscreenCanvasRenderingContext2D
     readonly #progress: DefaultObservableValue<number> = new DefaultObservableValue(0)
 
+    #audioSamples = 0
     #lastTimestamp = -1
 
     protected constructor(config: VideoExportConfig, encoder: EncoderState) {
@@ -94,7 +95,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
         if (audio.length > 0 && audio[0].length > 0) {
             const numberOfChannels = audio.length
             const numberOfFrames = audio[0].length
-            const timestampUs = Math.round(timestampSeconds * 1_000_000)
+            const timestampUs = Math.round(this.#audioSamples / this.#config.sampleRate * 1_000_000)
             const audioBuffer = new Float32Array(numberOfChannels * numberOfFrames)
             for (let channel = 0; channel < numberOfChannels; channel++) {
                 audioBuffer.set(audio[channel], channel * numberOfFrames)
@@ -109,6 +110,7 @@ export abstract class WebCodecsVideoExporter implements VideoExporter {
             })
             const audioSample = new this.#AudioSample(audioData)
             await this.#audioSource.add(audioSample)
+            this.#audioSamples += numberOfFrames
             audioSample.close()
             audioData.close()
         }

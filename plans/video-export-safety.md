@@ -20,3 +20,17 @@ Each submitted frame requires finite, nonnegative, strictly increasing video
 timestamps and exactly the configured audio channels. Channel planes must have
 equal nonzero lengths of at most one second. Malformed geometry is rejected
 before either media source receives data. Samples retain planar channel order.
+
+## Audio clock and automatic duration
+
+Audio timestamps use cumulative submitted samples, independently of video frame
+indices. The offline renderer retains its quantum overshoot in the next frame's
+sample budget; samples are neither repeated nor discarded. Native AudioData
+represents the sample cursor rounded to the nearest microsecond.
+
+Automatic duration preserves the complete arrangement, including silent gaps.
+Tail silence is counted only after the final scheduled region. Empty/silent
+projects finish within ten seconds after the arrangement end. All automatic
+tails, including sustained effects, are capped at ten seconds. Automatic projects
+whose arrangement plus tail exceeds the one-hour work limit are refused; use an
+explicit shorter duration. Explicit duration ignores silence.

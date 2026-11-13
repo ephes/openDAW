@@ -23,7 +23,6 @@ import {
 import {validateVideoConfig} from "./VideoExportLimits"
 import {Promises} from "@opendaw/lib-runtime"
 
-const MAX_DURATION_SECONDS = TimeSpan.hours(1).absSeconds()
 const SILENCE_THRESHOLD_DB = -72.0
 const SILENCE_DURATION_SECONDS = 10
 
@@ -39,6 +38,10 @@ export namespace VideoRenderer {
         const {width, height, frameRate, duration, overlay: overlayEnabled, videoBitrate} = config
         const exportConfig = {width, height, frameRate, sampleRate, numberOfChannels: 2, videoBitrate}
         validateVideoConfig(exportConfig, duration)
+        const arrangementEnd = source.tempoMap.ppqnToSeconds(source.lastRegionAction())
+        if (!Number.isFinite(arrangementEnd) || arrangementEnd < 0) {throw new Error("Invalid arrangement duration.")}
+        const maxDuration = duration > 0 ? duration : arrangementEnd + SILENCE_DURATION_SECONDS
+        validateVideoConfig(exportConfig, maxDuration)
         let exporter: VideoExporter
         if (isDefined(window.showSaveFilePicker)) {
             const result = await Promises.tryCatch(
@@ -95,16 +98,12 @@ export namespace VideoRenderer {
             const estimatedDurationInSeconds = duration > 0
                 ? duration
                 : tempoMap.ppqnToSeconds(project.lastRegionAction())
-            const maxDuration = duration > 0
-                ? duration
-                : MAX_DURATION_SECONDS
             const maxFrames = Math.ceil(maxDuration * frameRate)
             const estimatedNumberOfFrames = Math.ceil(estimatedDurationInSeconds * frameRate)
 
             const silenceThreshold = dbToGain(SILENCE_THRESHOLD_DB)
             const silenceSamplesNeeded = Math.ceil(SILENCE_DURATION_SECONDS * sampleRate)
             let consecutiveSilentSamples = 0
-            let hasHadAudio = false
 
             const idealSamplesPerFrame = sampleRate / frameRate
             let samplesRendered = 0
@@ -135,13 +134,10 @@ export namespace VideoRenderer {
                         }
                     }
                     if (maxSample > silenceThreshold) {
-                        hasHadAudio = true
                         consecutiveSilentSamples = 0
-                    } else if (hasHadAudio) {
-                        consecutiveSilentSamples += actualSamplesToRender
-                        if (consecutiveSilentSamples >= silenceSamplesNeeded) {
-                            break
-                        }
+                    } else if (samplesRendered / sampleRate >= arrangementEnd) {
+                        consecutiveSilentSamples += Math.min(actualSamplesToRender,
+                            Math.max(0, samplesRendered - Math.ceil(arrangementEnd * sampleRate)))
                     }
                 }
 
@@ -162,6 +158,7 @@ export namespace VideoRenderer {
                 const timestampSeconds = frameIndex / frameRate
                 await exporter.addFrame(compositionCanvas, channels, timestampSeconds)
                 frameIndex++
+                if (duration === 0 && consecutiveSilentSamples >= silenceSamplesNeeded) {break}
             }
 
             renderer.stop()

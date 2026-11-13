@@ -70,3 +70,23 @@ it("refuses timestamp regression and preserves planar channel identity", async (
     expect(m.video).toHaveBeenCalledTimes(1)
     expect(m.audio).toHaveBeenCalledTimes(1)
 })
+
+for (const sampleRate of [44100, 48000]) {
+    for (const frameRate of [30, 60, 120]) {
+        it(`keeps quantum audio contiguous at ${sampleRate} Hz / ${frameRate} fps`, async () => {
+            const exporter = await BufferVideoExporter.create({...config, sampleRate, frameRate})
+            let submitted = 0
+            for (let frame = 0; frame < 30; frame++) {
+                const target = Math.round((frame + 1) * sampleRate / frameRate)
+                const count = Math.ceil((target - submitted) / 128) * 128
+                await exporter.addFrame(canvas, [new Float32Array(count), new Float32Array(count)], frame / frameRate)
+                const data = m.data.mock.calls[frame][0]
+                expect(data.timestamp).toBe(Math.round(submitted / sampleRate * 1_000_000))
+                expect(data.numberOfFrames).toBe(count)
+                submitted += count
+            }
+            expect(submitted).toBe(Math.ceil(Math.round(30 * sampleRate / frameRate) / 128) * 128)
+            expect(m.video.mock.calls.map(call => call[0])).toEqual(Array.from({length: 30}, (_, i) => i / frameRate))
+        })
+    }
+}

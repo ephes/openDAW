@@ -82,3 +82,26 @@ it("exports a deterministic one-second stereo fixture", async () => {
     expect(m.add.mock.calls[0][1][1][0]).toBe(-0.5)
     expect(total).toBe(48000)
 })
+
+it("preserves two tone regions separated by twelve seconds of silence", async () => {
+    end = 14
+    tone = seconds => seconds < 1 || (seconds >= 13 && seconds < 14)
+    m.dialog.mockResolvedValue({...config, duration: 0})
+    await VideoRenderer.render(source, "Synthetic gap", 48000)
+    expect(m.add.mock.calls.some(call => call[2] >= 13 && call[1][0][0] !== 0)).toBe(true)
+    expect(total / 48000).toBeGreaterThanOrEqual(24)
+    expect(total / 48000).toBeLessThan(24.04)
+})
+it("finishes an empty silent project within the bounded tail", async () => {
+    end = 0; tone = () => false
+    m.dialog.mockResolvedValue({...config, duration: 0})
+    await VideoRenderer.render(source, "Empty", 48000)
+    expect(total / 48000).toBeLessThanOrEqual(10.04)
+    expect(m.finalize).toHaveBeenCalledTimes(1)
+})
+it("caps a continuously sounding post-arrangement tail", async () => {
+    end = 1
+    m.dialog.mockResolvedValue({...config, duration: 0})
+    await VideoRenderer.render(source, "Tail", 48000)
+    expect(total / 48000).toBeLessThanOrEqual(11.04)
+})

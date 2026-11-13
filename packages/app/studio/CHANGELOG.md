@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Timestamp video audio from its sample cursor; preserve internal arrangement gaps and bound automatic tails, including silent projects.
+
 - Validate video export configuration and frame audio geometry before allocating or submitting media.
 
 - Render OAuth errors as text and forward correlated callback, error and close messages.
