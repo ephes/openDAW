@@ -8,3 +8,6 @@ or Claude CLI runs in this sandbox; the parked branch awaits the external clerk.
   mutating supported decoders, rollback and retry. Field payload limit: 64 MiB.
 - B02: paired Messenger/Communicator graphs cover failed batch rollback, protocol
   and field admission, transaction ownership, sender quarantine and snapshot reconnect.
+- B03: real ProjectSkeleton/BoxAdapters automation move/copy and note relocation
+  fixtures check pointer ownership and undo checksums; 150,000 synthetic displaced
+  regions exercise stable movement beyond the function argument limit.

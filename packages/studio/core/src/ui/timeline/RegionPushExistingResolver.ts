@@ -28,7 +28,7 @@ export class RegionPushExistingResolver {
         // Capture overlapped regions BEFORE changes
         for (const track of tracks) {
             const selectedStrategy = strategy.selectedModifyStrategy()
-            const overlapped: Array<AnyRegionBoxAdapter> = []
+            const overlapped = new Set<AnyRegionBoxAdapter>()
             for (const adapter of adapters) {
                 const adapterTrackIndex = adapter.trackBoxAdapter.unwrap().listIndex + deltaIndex
                 if (adapterTrackIndex !== track.listIndex) {continue}
@@ -38,11 +38,11 @@ export class RegionPushExistingResolver {
                     if (region.complete <= position) {continue}
                     if (region.position >= complete) {break}
                     if (region.isSelected && !strategy.showOrigin()) {continue}
-                    if (!overlapped.includes(region)) {overlapped.push(region)}
+                    overlapped.add(region)
                 }
             }
-            if (overlapped.length > 0) {
-                resolver.#overlappedByTrack.set(track, overlapped)
+            if (overlapped.size > 0) {
+                resolver.#overlappedByTrack.set(track, Array.from(overlapped))
             }
         }
 
@@ -89,8 +89,12 @@ export class RegionPushExistingResolver {
                                    boxAdapters: BoxAdapters): Optional<TrackBoxAdapter> {
         const trackType = sourceTrack.type
         if (trackType === TrackType.Value) {return undefined}
-        const minPosition = Math.min(...regionsToPlace.map(region => region.position))
-        const maxComplete = Math.max(...regionsToPlace.map(region => region.complete))
+        let minPosition = Number.POSITIVE_INFINITY
+        let maxComplete = Number.NEGATIVE_INFINITY
+        for (const region of regionsToPlace) {
+            minPosition = Math.min(minPosition, region.position)
+            maxComplete = Math.max(maxComplete, region.complete)
+        }
         const audioUnit = sourceTrack.audioUnit
         // Get all tracks of same type in this audio unit, sorted by index
         const siblingTracks = audioUnit.tracks.pointerHub.incoming()

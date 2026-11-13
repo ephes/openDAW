@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep selection-based automation overlap edits on their Value track; deduplicate push-existing regions with a Set and reduce placement bounds without argument spreading.
+
 - Preserve every retrospective MIDI retrigger, ending the previous note at the new attack and the latest note at the last release. Carry held-note velocity and press counts across the 8192-event history boundary, clipping carried starts to the retained window and keeping the capture count accurate.
 
 - Retire active automation recordings whose region or event collection was deleted so later writes start a new region. Bound automation simplification so every dropped event stays within the tolerance of the final segment.
