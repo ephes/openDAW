@@ -40,6 +40,7 @@ export class RegionKeepExistingResolver {
         const copyOverlaps: Array<OverlapInfo> = []
         const moveOverlaps: Array<OverlapInfo> = []
         for (const track of tracks) {
+            if (track.type === TrackType.Value) {continue}
             const selectedStrategy = strategy.selectedModifyStrategy()
             for (const adapter of adapters) {
                 const adapterTrackIndex = adapter.trackBoxAdapter.unwrap().listIndex + deltaIndex
@@ -134,6 +135,7 @@ export class RegionKeepExistingResolver {
                                    complete: ppqn,
                                    projectApi: ProjectApi,
                                    boxAdapters: BoxAdapters): TrackBoxAdapter {
+        if (sourceTrack.type === TrackType.Value) {return sourceTrack}
         const audioUnit = sourceTrack.audioUnit
         const trackType = sourceTrack.type
 

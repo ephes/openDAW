@@ -1,4 +1,4 @@
-import {Arrays, EmptyExec, panic, Terminable, Terminator} from "@opendaw/lib-std"
+import {Arrays, EmptyExec, panic, Terminable, Terminator, tryCatch} from "@opendaw/lib-std"
 import {Communicator, Messenger} from "@opendaw/lib-runtime"
 import {BoxGraph} from "./graph"
 import {Update} from "./updates"
@@ -9,6 +9,7 @@ export class SyncSource<M> implements Terminable {
 
     readonly #terminator: Terminator
     readonly #caller: Synchronization<M>
+    #failed: boolean = false
 
     constructor(graph: BoxGraph<M>, messenger: Messenger, initialize?: boolean) {
         this.#terminator = new Terminator()
@@ -39,11 +40,19 @@ export class SyncSource<M> implements Terminable {
                     Arrays.clear(updates)
                     return
                 }
-                this.#caller.sendUpdates(updates)
+                const batch = updates.splice(0)
+                const result = tryCatch(() => this.#caller.sendUpdates(batch))
+                if (result.status === "failure") {
+                    // This transaction has committed. Delivery is ambiguous: never replay its batch.
+                    // Report asynchronously so other listeners and undo history still see the commit.
+                    this.#failed = true
+                    this.#terminator.terminate()
+                    void Promise.reject(result.error)
+                    return
+                }
                 if (SyncSource.DEBUG_CHECKSUM) {
                     this.#caller.checksum(graph.checksum()).then(EmptyExec, (reason) => panic(reason))
                 }
-                Arrays.clear(updates)
             }
         }))
 
@@ -80,6 +89,11 @@ export class SyncSource<M> implements Terminable {
         }))
     }
 
-    checksum(value: Int8Array): Promise<void> {return this.#caller.checksum(value)}
+    /** A failed transport requires a new sender and a fresh target snapshot. */
+    get failed(): boolean {return this.#failed}
+    checksum(value: Int8Array): Promise<void> {
+        return this.#failed ? Promise.reject(new Error("Sync source failed; resynchronize from a fresh snapshot"))
+            : this.#caller.checksum(value)
+    }
     terminate() {this.#terminator.terminate()}
 }

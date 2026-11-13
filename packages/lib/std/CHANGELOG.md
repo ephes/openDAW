@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Expose the optional remaining-byte query on DataInput for bounded framed decoders.
+
 - Add isolated RuntimeSignal lifetime/nested-dispatch and deterministic TimeSpan estimate/unit-boundary tests.
 
 - Reject empty/collapsed mapping domains, define singleton coordinates, and validate continuous inverses and pool ownership.

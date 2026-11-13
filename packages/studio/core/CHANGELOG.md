@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Release microphone tracks when post-acquisition enumeration fails, fence device inventory generations while retaining the last valid list, share worklet installations per context, and preflight recording geometry before allocation (1–32 channels, ≥2 chunks, ≤64 MiB audio).
+
+- Keep selection-based automation overlap edits on their Value track; deduplicate push-existing regions with a Set and reduce placement bounds without argument spreading.
+
 - Preserve every retrospective MIDI retrigger, ending the previous note at the new attack and the latest note at the last release. Carry held-note velocity and press counts across the 8192-event history boundary, clipping carried starts to the retained window and keeping the capture count accurate.
 
 - Retire active automation recordings whose region or event collection was deleted so later writes start a new region. Bound automation simplification so every dropped event stays within the tolerance of the final segment.

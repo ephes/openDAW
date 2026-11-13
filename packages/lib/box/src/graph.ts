@@ -500,35 +500,45 @@ export class BoxGraph<BoxMap = any> {
         const input = new ByteArrayInput(arrayBuffer)
         const numBoxes = input.readInt()
         this.beginTransaction()
-        const boxes: Array<{
-            creationIndex: int,
-            name: keyof BoxMap,
-            uuid: UUID.Bytes,
-            boxStream: ByteArrayInput
-        }> = []
-        for (let i = 0; i < numBoxes; i++) {
-            const length = input.readInt()
-            const int8Array = new Int8Array(length)
-            input.readBytes(int8Array)
-            const boxStream = new ByteArrayInput(int8Array.buffer)
-            const creationIndex = boxStream.readInt()
-            const name = boxStream.readString() as keyof BoxMap
-            const uuid = UUID.fromDataInput(boxStream)
-            boxes.push({creationIndex, name, uuid, boxStream})
-        }
-        boxes
-            .sort((a, b) => a.creationIndex - b.creationIndex)
-            .forEach(({name, uuid, boxStream}) => this.createBox(name, uuid, box => box.read(boxStream)))
-        if (validate) {
-            this.endTransaction()
-        } else {
-            if (this.#deferredPointerUpdates.length > 0) {
-                this.#deferredPointerUpdates.forEach(({pointerField, update}) =>
-                    this.#processPointerVertexUpdate(pointerField, update))
-                this.#deferredPointerUpdates.length = 0
+        try {
+            const boxes: Array<{
+                creationIndex: int,
+                name: keyof BoxMap,
+                uuid: UUID.Bytes,
+                boxStream: ByteArrayInput
+            }> = []
+            assert(numBoxes >= 0 && numBoxes <= Math.floor(input.remaining() / 4), "Invalid box count")
+            for (let i = 0; i < numBoxes; i++) {
+                const length = input.readInt()
+                assert(length >= 0 && length <= input.remaining(), "Invalid box record length")
+                const int8Array = new Int8Array(length)
+                input.readBytes(int8Array)
+                const boxStream = new ByteArrayInput(int8Array.buffer)
+                const creationIndex = boxStream.readInt()
+                const name = boxStream.readString() as keyof BoxMap
+                const uuid = UUID.fromDataInput(boxStream)
+                boxes.push({creationIndex, name, uuid, boxStream})
             }
-            this.#edges.clearAffected()
-            this.#finalizeTransaction()
+            boxes
+                .sort((a, b) => a.creationIndex - b.creationIndex)
+                .forEach(({name, uuid, boxStream}) => this.createBox(name, uuid, box => box.read(boxStream)))
+            if (validate) {
+                this.endTransaction()
+            } else {
+                if (this.#deferredPointerUpdates.length > 0) {
+                    this.#deferredPointerUpdates.forEach(({pointerField, update}) =>
+                        this.#processPointerVertexUpdate(pointerField, update))
+                    this.#deferredPointerUpdates.length = 0
+                }
+                this.#edges.clearAffected()
+                this.#finalizeTransaction()
+            }
+        } catch (error) {
+            // beginTransaction is outside this boundary: never abort a caller's transaction.
+            if (this.inTransaction()) {
+                try {this.abortTransaction()} catch { /* Preserve the decode failure. */ }
+            }
+            throw error
         }
     }
 

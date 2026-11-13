@@ -260,3 +260,34 @@ The listener observable counts actual EventTarget registrations (type, callback 
 capture), plus one slot for a non-null onmidimessage handler. Duplicate adds and
 absent removals do not change it. Once dispatch and AbortSignal cancellation retire
 the registration; replacing the property handler retains one slot.
+
+### Timeline overlap modes
+
+Keep-existing leaves automation (Value) regions on their owning track for both
+selection moves/copies and range operations, even when regions overlap. It does
+not create note tracks or redirect automation ownership. Audio and note regions
+retain the existing relocation behavior. Push-existing inventories displaced
+regions by identity in first-visit order, computes their union bounds in one
+pass, and moves each once to a single suitable track below. Dense inventories
+are not expanded into function arguments. These edits remain undoable as one
+normal editing transaction.
+
+### Audio initialization ownership and limits
+
+`AudioDevices.requestStream` owns acquired tracks until both acquisition and
+input enumeration succeed. If enumeration refuses setup, every acquired track
+is stopped and the caller receives the generic enumeration warning; success
+transfers the live stream to the caller. Permission diagnostics do not include
+browser-provided device/constraint details. Input refreshes retain the last
+complete list while pending or on failure. Only the latest requested enumeration
+may publish; a failed newer refresh also invalidates older completions.
+
+`AudioWorklets.createFor` shares one pending/completed installation and one owner
+per BaseAudioContext. Contexts remain independent. Rejected attempts are evicted
+so a later call can retry; `get` exposes only successfully installed owners.
+Recording rings admit 1–32 integral channels and at least two integral chunks
+(one chunk cannot distinguish readable data from an empty ring). Safe arithmetic
+and a 64 MiB audio budget are checked before allocating or constructing a node.
+The shared layout remains two Int32 pointers (8 bytes), followed by
+`channels * chunks * 128` Float32 samples in planar chunk order. The maximum
+allocation is therefore 64 MiB + 8 bytes; invalid geometry throws RangeError.

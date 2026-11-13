@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Roll back failed target sync batches, reject unknown operations and incompatible fields/values (Float32 still accepts non-finite values such as -Infinity), and quarantine source send failures until a fresh snapshot reconnect; the failure is reported asynchronously so the committed edit keeps its listeners and undo entry.
+
+- Skip unknown binary field payloads, admit framing before allocation (64 MiB per field), and abort failed supported-field imports instead of publishing partial/defaulted boxes.
+
 - Unlock the graph and discard staged edges when a box constructor throws, release a modification process whose transaction cannot begin, isolate end-transaction observers and report their failures asynchronously instead of failing a committed transaction, and settle undo/redo when compensation fails.
 
 - Mark saved history dirty when appended edits change its step, discard abandoned redo branches, and make modification approve/revert settle once.

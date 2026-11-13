@@ -196,3 +196,36 @@ The key distinction is the target address:
 - **User** (exclude): `pointer.targetAddress.isBox() === true` - points to the resource box itself
 
 This allows resource boxes to have "owned" children that are always included when copying, while preventing other boxes that merely reference the resource from being pulled in.
+## Binary project compatibility
+
+Unknown field keys are skipped as opaque length-prefixed frames, including empty
+frames. A frame admits at most 64 MiB; counts must be nonnegative signed 16-bit
+values and every header/payload must fit the remaining input before allocation.
+Framed readers require a `DataInput.remaining()` implementation (provided by
+`ByteArrayInput`). Supported field decode errors throw `Serializer.DecodeError`
+with bounded structural context, without copying decoder messages or payloads.
+This is deliberate: a project whose supported field cannot be decoded is refused
+instead of loading with silent defaults that a later save would persist.
+`BoxGraph.fromArrayBuffer` aborts its own failed import transaction, removes staged
+boxes/edges and permits a subsequent import. Load into a fresh graph and publish
+it only after success to preserve the currently open project on refusal.
+
+## Replication failure ownership
+
+Sync targets preflight supported update envelopes (including 16-byte UUIDs and
+Int16Array field paths up to 127 entries), then check actual primitive/pointer
+kinds and primitive value domains while applying the batch (Float32 fields accept
+any number, including the -Infinity used by decibel minimums). New boxes may be
+referenced later in that batch. Unknown operations, malformed data, missing
+vertices or incompatible field values refuse the entire batch and abort only
+the target-owned open transaction. A subsequent valid batch may be received;
+transport owners must handle the surfaced failure and resynchronize when needed.
+
+Sync sources detach committed batches before sending. A synchronous send failure
+sets `failed`, unsubscribes the source from graph updates and is reported
+asynchronously (a rejected promise, like other end-transaction observer failures),
+so the committed transaction still reaches the remaining transaction listeners and
+undo history. Further local edits are allowed but are not transmitted;
+checksum requests reject with a resynchronization diagnostic. Do not retry that
+sender or assume its failed batch was delivered: replace it and initialize a new
+empty target from a fresh snapshot (`new SyncSource(graph, messenger, true)`).

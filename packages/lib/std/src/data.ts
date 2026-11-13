@@ -16,6 +16,8 @@ export interface DataOutput {
 }
 
 export interface DataInput {
+    /** Required by framed decoders to admit lengths before allocation. */
+    remaining?(): int
     readByte(): byte
     readShort(): short
     readInt(): int
