@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound stock sample transfers to 64 MiB declared/actual bytes and a 60-second total metadata/body deadline; cancel and release failed readers, refuse decoding on overflow/timeout and allow explicit retry.
+
 - Cache only successful stock catalogs (including empty lists), coalesce reads and allow explicit retry after discovery failure. Bind stock metadata to the requested UUID before asset download, accepting UUID case differences canonically.
 
 - Forward client sample invalidations to the live engine and retire its sample-fetch subscriptions with the engine; replacement audio is fetched without restarting it.

@@ -44,3 +44,15 @@ cached promise so a later explicit read retries. Metadata must match the request
 UUID by bytes before following its asset URL; accepted uppercase spellings are
 returned as canonical lowercase UUIDs. Catalog retry/coalescing and UUID binding
 regressions failed before the fix; successful empty discovery remains covered.
+
+## Stock transfer limits (B5)
+
+Stock WAV transfers admit at most 64 MiB, checking declared length and actual
+bytes before retaining each chunk. A single 60-second timer covers metadata,
+header retries and the entire body; trickling bytes do not renew the budget.
+Abort reaches both fetch requests and the active reader. Failed readers are
+cancelled once and every acquired reader releases its lock. Expired attempts
+cannot start later asset requests, retry headers or decode. Successful short WAV,
+missing/lying length, overflow, stalled/trickling bodies, late metadata and queued
+retry regressions use native streams and fake timers. Byte and deadline tests
+were verified red against the pre-transfer-fix source and green after the fix.
