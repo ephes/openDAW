@@ -164,7 +164,7 @@ export const ScriptDeviceEditor = ({lifecycle, service, adapter, deviceHost, con
     const errorIcon: HTMLElement = (
         <div className="error hidden"
              style={{cursor: "pointer"}}
-             onclick={() => Clipboard.writeText(lastErrorMessage)}>
+             onclick={() => Clipboard.writeText(lastErrorMessage).catch(() => {})}>
             <Icon symbol={IconSymbol.Bug}/>
         </div>
     )

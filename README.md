@@ -168,6 +168,7 @@ evolves.
 openDAW tries to avoid external libraries and frameworks. The following is a list of the external libraries we currently
 use in the web studio:
 
+* [DOMPurify](https://github.com/cure53/DOMPurify) (for untrusted HTML documentation markup)
 * [jszip](https://www.npmjs.com/package/jszip) (for openDAW project bundle file)
 * [markdown-it](https://www.npmjs.com/package/markdown-it) + [markdown-it-table](https://www.npmjs.com/package/markdown-it-table) (
   for help pages)
@@ -222,6 +223,56 @@ TypeScript declarations, tests and tool configs, but ignores dist output. The
 shared rules allow the project's public namespace-merging convention; other
 recommended source rules remain enabled. See [the baseline lint plan](plans/baseline-lint-green.md)
 for configuration rationale and the narrowly documented generic type boundaries.
+
+### DOM and runtime helper contracts
+
+Double-pointer subscriptions pair gestures within 200 ms and 5 CSS pixels, with
+matching button and pointer kind. A recognized pair resets the history. Shortcut
+handlers returning `false` allow later entries and lower contexts to try; only a
+consuming handler prevents the browser default (unless disabled in its options).
+Dispatch snapshots contexts and entries; additions wait for the next event and
+retired owners are skipped.
+
+`Clipboard.writeText` notifies once on refusal and rejects with the original
+error, including missing or synchronously throwing browser APIs. Callers must
+observe rejection and acknowledge a copy only after success. Compression helpers
+observe both stream ends and cancel/abort and unlock them on failure. Weak-watch
+cleanup retires each dead owner before calling it, logs failures once, continues
+other cleanups and stops its timer when empty.
+
+`HTML` accepts untrusted documentation through DOMPurify with an explicit HTML
+and basic SVG allowlist. Scripts, event handlers, styles, forms, embedded
+documents and unsafe URLs are removed; headings, lists, tables, links, images and
+basic SVG shapes remain supported. `Html.sanitize` includes the root in place
+(and refuses unsupported roots); `Html.sanitizeMarkup` returns a sanitized
+fragment. `Html.parse` remains a trusted, application-authored markup helper.
+Sanitization permits external links/images and is not a network privacy boundary.
+
+`HTML` admits at most 1 MiB of UTF-8 bytes and spends at most 15 seconds across
+headers and body, without resetting the deadline on trickling chunks. Non-success
+HTTP responses and declared or streamed overflow are refused before parsing.
+Failures log once and show `Could not load content.`. Pass `lifecycle` to retire
+pending work explicitly. Removing a mounted placeholder also retires it. Owned
+URL fetches and readers are cancelled; caller-supplied response promises cannot
+be cancelled, but late responses are discarded and their bodies cancelled.
+
+Promise concurrency limits must be finite positive integers; invalid limits fail
+before providers run. Sequential batches append results in order with linear
+accumulation and stop on the first failure. `network.defaultFetch` treats aborts
+as terminal, uses `init.signal` or the input Request's signal, and cancels backoff
+and pending offline approval when aborted. Ordinary network failures still retry.
+
+The synthetic browser fixtures exercise real pointer events, RoomStatus copy
+outcomes and the HTML boundary. After the normal build, run locally:
+
+```sh
+npx playwright install chromium
+npm run test:browser
+```
+
+They use a local Vite fixture server and synthetic browser adapters; no account,
+clipboard contents or external service data is used. See
+[the implementation and validation notes](plans/dom-runtime-contracts.md).
 
 ### Video export
 

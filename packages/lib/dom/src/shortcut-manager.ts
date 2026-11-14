@@ -54,22 +54,26 @@ export class ShortcutManager {
 
     handleEvent(event: KeyboardEvent): void {
         if (event.isComposing) {return}
-        for (const context of this.#contexts) {
-            if (context.active && this.#tryHandle(event, context)) {
+        for (const [context, entries] of this.#contexts.map(context => [context, [...context.entries]] as const)) {
+            if (context.active && this.#tryHandle(event, context, entries)) {
                 console.debug("consumed by", context.name)
                 return
             }
         }
     }
 
-    #tryHandle(event: KeyboardEvent, context: ShortcutContext): boolean {
-        for (const {shortcut, consume, options} of context.entries) {
+    #tryHandle(event: KeyboardEvent, context: ShortcutContext, entries: ReadonlyArray<ShortcutEntry>): boolean {
+        for (const entry of entries) {
+            if (!context.active) {return false}
+            if (!context.entries.includes(entry)) {continue}
+            const {shortcut, consume, options} = entry
             if (!options.activeInTextField && Events.isTextInput(event.composedPath()[0] ?? event.target)) {continue}
             if (!options.allowRepeat && event.repeat) {continue}
             if (!shortcut.matches(event)) {continue}
-            if (options.preventDefault ?? true) {event.preventDefault()}
             const returnValue: unknown = consume()
-            return returnValue !== false // everything counts as consumed unless one specifically returns false
+            if (returnValue === false) {continue}
+            if (options.preventDefault ?? true) {event.preventDefault()}
+            return true // only an explicit false declines consumption
         }
         return false
     }
@@ -81,6 +85,7 @@ export class ShortcutContext implements Terminable {
     readonly #name: string
     readonly #priority: int
     readonly #entries: Array<ShortcutEntry> = []
+    #terminated = false
 
     constructor(isActive: Predicate<void>, name: string, priority: int) {
         this.#isActive = isActive
@@ -88,12 +93,13 @@ export class ShortcutContext implements Terminable {
         this.#priority = priority
     }
 
-    get active(): boolean {return this.#isActive()}
+    get active(): boolean {return !this.#terminated && this.#isActive()}
     get name(): string {return this.#name}
     get priority(): int {return this.#priority}
     get entries(): ReadonlyArray<ShortcutEntry> {return this.#entries}
 
     register(shortcut: Shortcut, consume: Provider<Maybe<boolean> | unknown>, options?: ShortcutOptions): Subscription {
+        if (this.#terminated) {return Terminable.Empty}
         if (ReservedShortcuts.isReserved(shortcut)) {
             console.warn(`Shortcut ${shortcut.format().join("")} is reserved and cannot be overridden`)
             return Terminable.Empty
@@ -112,7 +118,10 @@ export class ShortcutContext implements Terminable {
 
     own<T extends Terminable>(terminable: T): T {return this.#terminator.own(terminable)}
 
-    terminate(): void {this.#terminator.terminate()}
+    terminate(): void {
+        this.#terminated = true
+        this.#terminator.terminate()
+    }
 }
 
 export class Shortcut {

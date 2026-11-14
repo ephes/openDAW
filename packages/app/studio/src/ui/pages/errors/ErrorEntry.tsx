@@ -95,7 +95,7 @@ Please analyze the error stack trace and logs to identify the root cause and sug
                              headline: "Prompt Copied",
                              message: "The error information has been copied to clipboard. Paste it into Claude to get help fixing this error."
                          })
-                     })
+                     }).catch(() => {})
                  }}>
                 {entry.fixed ? "Yes 👍" : "No 🙄"}
             </div>
