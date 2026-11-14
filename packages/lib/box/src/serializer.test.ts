@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {ByteArrayInput, ByteArrayOutput} from "@opendaw/lib-std"
+import {ByteArrayInput, ByteArrayOutput, ByteCounter, Option} from "@opendaw/lib-std"
 import {Serializer} from "./serializer"
 import {fields, graph, project, TestBox} from "./testing/fixtures"
 
@@ -20,6 +20,102 @@ const frame = (count: number, length?: number, payload = new ArrayBuffer(0)) => 
 
 afterEach(() => vi.restoreAllMocks())
 describe("binary field compatibility", () => {
+    it.each([0, 2])("rejects duplicate key %s in either order before decoding fields", key => {
+        const source = graph()
+        source.beginTransaction()
+        const box = TestBox.create(source)
+        const other = TestBox.create(source)
+        const first = ByteArrayOutput.create()
+        box.getField(key).write(first)
+        box.getField(0).setValue(true)
+        box.getField(2).targetAddress = Option.wrap(other.address)
+        const second = ByteArrayOutput.create()
+        box.getField(key).write(second)
+        source.endTransaction()
+        for (const payloads of [[first, second], [second, first]]) {
+            const read = vi.spyOn(box.getField(key), "read")
+            const bytes = fields(payloads.map(payload => [key, payload.toArrayBuffer()]))
+            expect(() => Serializer.readFields(new ByteArrayInput(bytes), box.record())).toThrow(Serializer.DecodeError)
+            expect(read).not.toHaveBeenCalled()
+            const target = graph()
+            expect(() => target.fromArrayBuffer(project(bytes))).toThrow(Serializer.DecodeError)
+            expect(target.boxes()).toHaveLength(0)
+            expect(target.inTransaction()).toBe(false)
+            target.fromArrayBuffer(project(fields([[0, flag]])))
+            expect(target.boxes()).toHaveLength(1)
+        }
+    })
+
+    it.each([new Int8Array([1, 99]).buffer, new ArrayBuffer(0)])("refuses primitive residue or truncation", payload => {
+        const target = graph()
+        expect(() => target.fromArrayBuffer(project(fields([[0, payload]])))).toThrow(Serializer.DecodeError)
+        expect(target.boxes()).toHaveLength(0)
+        expect(target.inTransaction()).toBe(false)
+        target.fromArrayBuffer(project(fields([[0, flag]])))
+        expect(target.boxes()).toHaveLength(1)
+    })
+
+    it("refuses excessive writer counts and noncanonical or unrepresentable keys before emitting", () => {
+        const source = graph()
+        source.beginTransaction()
+        const box = TestBox.create(source)
+        source.endTransaction()
+        const field = box.getField(0)
+        const tooMany = Object.fromEntries(Array.from({length: 32768}, (_, index) => [index, field]))
+        for (const record of [tooMany, {32768: field}, {"-32769": field}, {"01": field}, {"1junk": field}]) {
+            const output = ByteArrayOutput.create()
+            expect(() => Serializer.writeFields(output, record)).toThrow()
+            expect(output.position).toBe(0)
+        }
+    })
+
+    it("admits signed key boundaries and refuses an oversized save before publication", () => {
+        const source = graph()
+        source.beginTransaction()
+        const box = TestBox.create(source)
+        source.endTransaction()
+        const field = box.getField(0)
+        const boundary = ByteArrayOutput.create()
+        Serializer.writeFields(boundary, {"-32768": field, 32767: field})
+        Serializer.readFields(new ByteArrayInput(boundary.toArrayBuffer()), {})
+        const generation = source.toArrayBuffer()
+        const output = ByteArrayOutput.create()
+        const chunk = new Int8Array(65536)
+        // A counting writer models a large synthetic payload without allocating audio.
+        vi.spyOn(field, "write").mockImplementation(target => {
+            if (!(target instanceof ByteCounter)) {throw new Error("oversized writer reached allocation")}
+            for (let index = 0; index < 1024; index++) {target.writeBytes(chunk)}
+            target.writeByte(0)
+        })
+        expect(() => Serializer.writeFields(output, {0: field})).toThrow(/64 MiB/)
+        expect(output.position).toBe(0)
+        vi.restoreAllMocks()
+        expect(source.toArrayBuffer()).toEqual(generation)
+    })
+
+    it("writes exactly the maximum count and payload size in reloadable frames", () => {
+        const source = graph()
+        source.beginTransaction()
+        const box = TestBox.create(source)
+        source.endTransaction()
+        const field = box.getField(0)
+        const maximumCount = Object.fromEntries(Array.from({length: 32767}, (_, index) => [index, field]))
+        const countOutput = ByteArrayOutput.create()
+        Serializer.writeFields(countOutput, maximumCount)
+        const countInput = new ByteArrayInput(countOutput.toArrayBuffer())
+        Serializer.readFields(countInput, {})
+        expect(countInput.remaining()).toBe(0)
+        const chunk = new Int8Array(65536)
+        vi.spyOn(field, "write").mockImplementation(output => {
+            for (let index = 0; index < 1024; index++) {output.writeBytes(chunk)}
+        })
+        const output = ByteArrayOutput.create()
+        Serializer.writeFields(output, {0: field})
+        const input = new ByteArrayInput(output.toArrayBuffer())
+        Serializer.readFields(input, {})
+        expect(output.position).toBe(12 + Serializer.MAX_FIELD_BYTES)
+        expect(input.remaining()).toBe(0)
+    })
     it("skips empty and opaque unknown frames before and between supported fields in a real import", () => {
         const target = graph()
         target.fromArrayBuffer(project(fields([[123, new ArrayBuffer(0)], [0, flag],

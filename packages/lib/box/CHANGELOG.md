@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject duplicate binary field keys and decoder residue; enforce matching writer/reader field count, signed key and 64 MiB payload limits.
+
 - Restore vertex dispatch ownership after callback errors and defer subscriptions until the outermost nested event exits.
 
 - Roll back failed target sync batches, reject unknown operations and incompatible fields/values (Float32 still accepts non-finite values such as -Infinity), and quarantine source send failures until a fresh snapshot reconnect; the failure is reported asynchronously so the committed edit keeps its listeners and undo entry.

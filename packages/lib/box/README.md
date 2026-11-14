@@ -40,6 +40,17 @@ not activate subscriptions created inside its enclosing event.
 
 ## Serialization & Persistence
 
+Binary objects contain at most 32767 nondeprecated fields, each keyed by a
+canonical signed 16-bit integer (-32768 through 32767). A field payload may be at
+most 64 MiB (67108864 bytes). Writers count payloads and check keys/counts before
+emitting the object; an over-limit save throws before a new project buffer can be
+published. Supported projects retain the existing binary representation.
+Readers reject duplicate keys before invoking any field decoder in that object.
+Known decoders must consume their complete frame; truncation, decoder errors and
+trailing bytes produce bounded `Serializer.DecodeError` messages. Unknown fields
+remain forward compatible and are skipped by their admitted frame length.
+Import through `BoxGraph.fromArrayBuffer` rolls back a failed graph installation.
+
 * **serializer.ts** - Serialization utilities for objects
 * **sync.ts** - Synchronization utilities
 * **sync-source.ts** - Source-side synchronization
