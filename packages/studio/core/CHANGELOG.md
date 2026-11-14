@@ -7,7 +7,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Observe clipboard write rejection after the adapter notification while retaining the in-memory copy fallback.
 
-- Bind engine worklet and offline renderer RPC requests to their shutdown owners so pending calls reject on disposal.
+- Bind engine worklet and offline renderer RPC requests to their shutdown owners so pending calls reject on disposal; repeated engine worklet termination is a no-op.
 
 - Keep stock progress finite in [0, 1] with unknown lengths, propagate observer failures and release readers. Export positive MIDI notes for at least one tick with nonzero attack velocity; omit silent/nonpositive notes and order same-tick releases before attacks.
 

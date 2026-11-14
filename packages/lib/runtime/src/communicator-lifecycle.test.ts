@@ -116,7 +116,7 @@ describe("RPC request ownership", () => {
         expect(progress).not.toHaveBeenCalled()
         expect(retired).toHaveBeenCalledTimes(2)
         await expect(caller.request(progress)).rejects.toThrow("Communicator sender terminated")
-        expect(() => caller.notify()).toThrow("Communicator sender terminated")
+        expect(() => caller.notify()).not.toThrow()
         expect(transport.left.sent).toHaveLength(2)
         const unrelated = vi.fn()
         transport.sender.subscribe(unrelated)

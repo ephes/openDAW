@@ -49,7 +49,8 @@ extraction failure rejects that request, removes its pending callbacks and consu
 the ID permanently. Replies/callbacks for retired or unknown IDs are ignored.
 Owner termination is idempotent, releases the receive subscription and rejects
 all pending calls with `Error("Communicator sender terminated")`. New promise
-dispatches reject with that error; new notifications throw it synchronously.
+dispatches reject with that error; new fire-and-forget notifications are dropped
+without sending, so late callers holding a stale protocol object stay harmless.
 Failed protocol binding releases the new sender while preserving the binding
 error. Engine worklet and offline renderer senders use their existing terminators,
 so shutdown settles outstanding engine requests.

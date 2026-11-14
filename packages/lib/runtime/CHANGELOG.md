@@ -8,7 +8,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 - Validate positive integer concurrency before scheduling; accumulate sequential batch results in linear work.
 - Treat fetch aborts as terminal and cancel backoff/offline approval through the effective request signal.
 
-- Reserve RPC request identities before sending, retire failed sends, ignore late replies, and support owner-bound senders that reject pending/new work on termination.
+- Reserve RPC request identities before sending, retire failed sends, ignore late replies, and support owner-bound senders that reject pending/new requests on termination and drop later notifications.
 
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
 

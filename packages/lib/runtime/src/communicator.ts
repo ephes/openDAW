@@ -82,7 +82,7 @@ export namespace Communicator {
 
         readonly dispatchAndForget = <F extends (..._: Parameters<F>) => void>
         (func: F, ...args: Parameters<F>): void => {
-            if (this.#terminated) {throw new Error("Communicator sender terminated")}
+            if (this.#terminated) {return}
             const transferables = extractTransferables(args)
             this.#messenger.send({
                 type: "send",
