@@ -17,6 +17,18 @@ export namespace Serializer {
         entries.forEach(([key]) => {
             if (!isFieldKey(key)) {throw new EncodeError("Invalid field key")}
         })
+        if (output instanceof ByteCounter) {
+            output.writeInt(MAGIC_HEADER)
+            output.writeShort(entries.length)
+            entries.forEach(([, field]) => {
+                output.writeShort(0)
+                output.writeInt(0)
+                const start = output.count
+                field.write(output)
+                if (output.count - start > MAX_FIELD_BYTES) {throw new EncodeError("Field frame exceeds 64 MiB")}
+            })
+            return
+        }
         entries.forEach(([, field]) => {
             const counter = new ByteCounter()
             field.write(counter)

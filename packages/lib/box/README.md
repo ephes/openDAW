@@ -51,7 +51,7 @@ trailing bytes produce bounded `Serializer.DecodeError` messages. Unknown fields
 remain forward compatible and are skipped by their admitted frame length.
 Import through `BoxGraph.fromArrayBuffer` rolls back a failed graph installation.
 
-`Box.fromJSON` preflights every property name before changing values. Keys must
+`Box.fromJSON` and nested `ObjectField.fromJSON` preflight every property name before changing values. Keys must
 be canonical signed 16-bit integers present in that box; unknown JSON fields are
 rejected (unlike opaque binary frames). Deprecated known fields retain their
 decoder's no-op policy. Fixed arrays require exactly their declared length and

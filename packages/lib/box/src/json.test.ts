@@ -1,5 +1,6 @@
-import {describe, expect, it} from "vitest"
-import {JSONValue, Maybe, Option, Procedure, UUID} from "@opendaw/lib-std"
+import {describe, expect, it, vi} from "vitest"
+import {ByteArrayOutput, ByteCounter, JSONValue, Maybe, Option, Procedure, UUID} from "@opendaw/lib-std"
+import {Serializer} from "./serializer"
 import {Box} from "./box"
 import {ArrayField} from "./array"
 import {BoxGraph} from "./graph"
@@ -7,6 +8,10 @@ import {BoxEditing} from "./editing"
 import {PointerField} from "./pointer"
 import {NoPointers, VertexVisitor} from "./vertex"
 import {graph, TestBox} from "./testing/fixtures"
+import {ObjectField} from "./object"
+import {FieldConstruct} from "./field"
+import {UnreferenceableType} from "./pointer"
+import {BooleanField, StringField} from "./primitive"
 
 class ArrayBox extends Box<string, {0: ArrayField<PointerField<string>>}> {
     static create(graph: BoxGraph, uuid = UUID.generate(), init?: Procedure<ArrayBox>): ArrayBox {
@@ -20,7 +25,42 @@ class ArrayBox extends Box<string, {0: ArrayField<PointerField<string>>}> {
     accept<R>(visitor: VertexVisitor<R>): Maybe<R> {void visitor; return undefined}
 }
 
+type NestedFields = {0: BooleanField, 1: StringField}
+class NestedObject extends ObjectField<NestedFields> {
+    constructor(construct: FieldConstruct<UnreferenceableType>) {super(construct)}
+    protected initializeFields(): NestedFields {
+        const field = {parent: this, pointerRules: NoPointers, deprecated: false}
+        return {0: BooleanField.create({...field, fieldKey: 0, fieldName: "flag"}),
+            1: StringField.create({...field, fieldKey: 1, fieldName: "text"})}
+    }
+}
+class NestedBox extends Box<string, {0: NestedObject}> {
+    static create(graph: BoxGraph, uuid = UUID.generate(), init?: Procedure<NestedBox>): NestedBox {
+        return graph.stageBox(new NestedBox({graph, uuid, name: "NestedBox", pointerRules: {accepts: ["test"], mandatory: false}}), init)
+    }
+    protected initializeFields() {
+        return {0: new NestedObject({parent: this, fieldKey: 0, fieldName: "nested", pointerRules: NoPointers, deprecated: false})}
+    }
+    get tags(): Readonly<Record<string, string | number | boolean>> {return {}}
+    accept<R>(visitor: VertexVisitor<R>): Maybe<R> {void visitor; return undefined}
+}
+
 describe("JSON import admission", () => {
+    it.each([{"1": "changed", "1junk": "alias"}, {"1": "changed", "99": true}, {"01": "alias"}, {"1.0": "alias"}])(
+        "preflights all nested object keys before changing values: %j", record => {
+            const target = graph()
+            const editing = new BoxEditing(target)
+            const box = editing.modify(() => NestedBox.create(target, UUID.generate(),
+                box => box.getField(0).getField(1).setValue("retained"))).unwrap()
+            const original = box.toJSON()
+            target.beginTransaction()
+            expect(() => box.getField(0).fromJSON(record)).toThrow(/Unsupported JSON field key/)
+            expect(box.toJSON()).toEqual(original)
+            target.abortTransaction()
+            editing.modify(() => box.getField(0).fromJSON({"0": true, "1": "valid"}))
+            expect(box.getField(0).getField(1).getValue()).toBe("valid")
+        })
+
     it.each([{"1": "changed", "1junk": "alias"}, {"1": "changed", "99": true},
         {"01": "alias"}, {"+1": "alias"}, {"1.0": "alias"}, {"-0": true}, {"32768": true}])(
         "preflights all box keys before changing values: %j", record => {
@@ -95,5 +135,25 @@ describe("fixed array JSON preflight", () => {
         expect(target.toJSON()).toEqual(original)
         expect(target.edges().incomingEdgesOf(box)).toHaveLength(2)
         expect(target.inTransaction()).toBe(false)
+    })
+})
+
+describe("nested frame counting", () => {
+    it("counts each nested field once and matches the written frame length", () => {
+        const target = graph()
+        target.beginTransaction()
+        const box = NestedBox.create(target, UUID.generate(), box => box.getField(0).getField(1).setValue("synthetic"))
+        target.endTransaction()
+        const leaf = box.getField(0).getField(1)
+        const write = vi.spyOn(leaf, "write")
+        const counter = new ByteCounter()
+        Serializer.writeFields(counter, {0: box.getField(0)})
+        expect(write).toHaveBeenCalledTimes(1)
+        write.mockClear()
+        const output = ByteArrayOutput.create()
+        Serializer.writeFields(output, {0: box.getField(0)})
+        expect(output.position).toBe(counter.count)
+        expect(write).toHaveBeenCalledTimes(3)
+        vi.restoreAllMocks()
     })
 })
