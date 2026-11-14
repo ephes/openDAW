@@ -7,6 +7,15 @@ journals and covers 1 MiB; project/recovery graphs 64 MiB; presets 16 MiB;
 sample/peak/soundfont binaries 1 GiB. Recovery UUID/flags admit 16/1 bytes.
 Oversized files follow the existing unreadable-asset/project recovery paths.
 
+### Soundfont import and playback
+
+Declining the warning for imports larger than 16 MiB rejects direct `importFile`
+with `AbortError` before progress, hashing, parsing or storage. Browse and missing
+asset replacement treat this as cancellation without an import-error dialog.
+Changing/removing a soundfont file pointer resets voices, pending note events,
+note display, audio and meters before adopting its next loader. Note stops remain
+processable while a font is unavailable; processor disposal also clears state.
+
 ### MIDI learning lifetime
 
 MIDI permission completion only starts learning while the same followed user and

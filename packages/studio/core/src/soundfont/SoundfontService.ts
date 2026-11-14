@@ -37,12 +37,13 @@ export class SoundfontService extends AssetService<Soundfont, void> {
             return panic("Local soundfont storage has not been read.")
         }
         if (arrayBuffer.byteLength > (1 << 24)) {
-            await RuntimeNotifier.approve({
+            const approved = await RuntimeNotifier.approve({
                 headline: "Soundfont Import",
                 message: `The soundfont you are trying to import is ${(arrayBuffer.byteLength >> 20)}mb. This may cause memory issues. Do you really want to continue?`,
                 approveText: "Import",
                 cancelText: "Cancel"
             })
+            if (!approved) {throw new DOMException("Soundfont import cancelled", "AbortError")}
         }
         const updater = RuntimeNotifier.progress({headline: `Import ${this.nameSingular}`})
         // try/finally (no catch) guarantees the modal progress dialog is

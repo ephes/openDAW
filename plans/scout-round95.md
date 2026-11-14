@@ -23,3 +23,14 @@ repair preserves the primary cause and reports bounded cleanup context. Close-on
 errors still reject and a subsequent alias access succeeds. Eight new cases
 failed before repair; all 59 OPFS cases pass afterward. Production sender forwarding
 and metadata/project/preset/media consumers now pass their public read budgets.
+
+## B03: soundfont transitions
+
+Two import tests failed before repair: declining still imported and browse
+returned an imported item. The approved-import control passed. Cancellation now
+uses AbortError consistently with picker cancellation, including missing-asset
+replacement. Three processor regressions failed before repair: switching to a
+pending/empty pointer retained voices/display, and stops were ignored when a
+loader lost its font. They now pass with the real processor/note-display path,
+synthetic adapter/loader data and a tracked voice implementation. No soundfont
+download or personal media is used.

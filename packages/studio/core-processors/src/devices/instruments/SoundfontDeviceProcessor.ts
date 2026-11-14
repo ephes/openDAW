@@ -28,7 +28,7 @@ export class SoundfontDeviceProcessor extends AudioProcessor implements Instrume
 
         this.#adapter = adapter
         this.#voices = []
-        this.#noteEventInstrument = new NoteEventInstrument(this, context.broadcaster, adapter.audioUnitBoxAdapter().address)
+        this.#noteEventInstrument = this.own(new NoteEventInstrument(this, context.broadcaster, adapter.audioUnitBoxAdapter().address))
         this.#audioOutput = new AudioBuffer()
         this.#peakBroadcaster = this.own(new PeakBroadcaster(context.broadcaster, adapter.address))
 
@@ -39,9 +39,11 @@ export class SoundfontDeviceProcessor extends AudioProcessor implements Instrume
             }),
             context.registerProcessor(this),
             context.audioOutputBufferRegistry.register(adapter.address, this.#audioOutput, this.outgoing),
-            adapter.box.file.catchupAndSubscribe((pointer) =>
+            adapter.box.file.catchupAndSubscribe((pointer) => {
+                this.reset()
                 this.#loader = pointer.targetVertex.map(({box}) =>
-                    context.soundfontManager.getOrCreate(box.address.uuid)))
+                    context.soundfontManager.getOrCreate(box.address.uuid))
+            })
         )
     }
 
@@ -64,6 +66,12 @@ export class SoundfontDeviceProcessor extends AudioProcessor implements Instrume
     }
 
     handleEvent(event: Event): void {
+        if (NoteLifecycleEvent.isStop(event)) {
+            this.#voices.forEach(voice => {
+                if (voice.event.id === event.id) {voice.release()}
+            })
+            return
+        }
         if (!this.#enabled) {return}
         const optSoundfont = this.#loader.flatMap(loader => loader.soundfont)
         if (optSoundfont.isEmpty()) {return}
@@ -88,10 +96,6 @@ export class SoundfontDeviceProcessor extends AudioProcessor implements Instrume
                     }
                 }
             }
-        } else if (NoteLifecycleEvent.isStop(event)) {
-            this.#voices.forEach(voice => {
-                if (voice.event.id === event.id) {voice.release()}
-            })
         }
     }
 
@@ -112,6 +116,7 @@ export class SoundfontDeviceProcessor extends AudioProcessor implements Instrume
     }
 
     terminate(): void {
+        this.reset()
         super.terminate()
         this.#loader = Option.None
     }

@@ -229,6 +229,8 @@ for configuration rationale and the narrowly documented generic type boundaries.
 OPFS access uses canonical paths and a worker-wide FIFO queue so parent/root
 deletion and descendant writes have a defined order. See the
 [fusion contracts](packages/lib/fusion/README.md) for path admission and storage limits.
+Large soundfont imports honor Cancel before hashing or parsing. Switching or
+removing a font immediately retires its old voices and note display.
 
 Double-pointer subscriptions pair gestures within 200 ms and 5 CSS pixels, with
 matching button and pointer kind. A recognized pair resets the history. Shortcut
