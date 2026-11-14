@@ -82,6 +82,14 @@ An empty unweighted split returns no handlers; weighted input must not be empty.
 * Synchronous stream operations **sync-stream.ts**
 * Retry and attempt utilities **attempts.ts**
 
+Default, optional and mapped mutable observables register a catchup subscription
+before its initial delivery, so synchronous changes from that callback are
+observed. Failed initial delivery releases the subscription and rethrows the
+original error. `MutableObservableOption.clear` detaches the old value, notifies
+the empty transition, then calls the disposal procedure with the old value.
+Reentrant replacement survives; disposal runs even if notification throws. If
+both notification and disposal fail, the notification error remains primary.
+
 ## Specialized
 
 * Geometric operations and utilities **geom.ts**
