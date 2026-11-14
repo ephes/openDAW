@@ -7,7 +7,7 @@ import {
     RuntimeNotifier,
     TimeSpan
 } from "@opendaw/lib-std"
-import {dbToGain, ppqn, RenderQuantum} from "@opendaw/lib-dsp"
+import {ppqn, RenderQuantum} from "@opendaw/lib-dsp"
 import {OfflineEngineRenderer, Project} from "@opendaw/studio-core"
 import {ShadertoyState} from "@/ui/shadertoy/ShadertoyState"
 import {ShadertoyRunner} from "@/ui/shadertoy/ShadertoyRunner"
@@ -20,14 +20,24 @@ import {
     VideoOverlay,
     WebCodecsVideoExporter
 } from "@/video"
+import {waitForVideoTask} from "./VideoExportTask"
+import {validateVideoConfig} from "./VideoExportLimits"
 import {Promises} from "@opendaw/lib-runtime"
 
-const MAX_DURATION_SECONDS = TimeSpan.hours(1).absSeconds()
-const SILENCE_THRESHOLD_DB = -72.0
-const SILENCE_DURATION_SECONDS = 10
+// Automatic duration renders the arrangement plus this fixed tail (sustained effects, reverb).
+const AUTOMATIC_TAIL_SECONDS = 10
 
 const isAllocationError = (error: unknown): boolean =>
     error instanceof RangeError && /alloc|array|memory/i.test(error.message)
+
+const notifyFailure = async (failure: unknown): Promise<void> => {
+    const message = isAllocationError(failure)
+        ? "Video is too large for this browser. Please use Chrome."
+        : String(failure)
+    try {
+        await RuntimeNotifier.info({headline: "Video Export Failed", message})
+    } catch {console.warn("Video failure notification failed")}
+}
 
 export namespace VideoRenderer {
     export const render = async (source: Project, projectName: string, sampleRate: number): Promise<void> => {
@@ -37,40 +47,92 @@ export namespace VideoRenderer {
         const config = await showVideoExportDialog(sampleRate)
         const {width, height, frameRate, duration, overlay: overlayEnabled, videoBitrate} = config
         const exportConfig = {width, height, frameRate, sampleRate, numberOfChannels: 2, videoBitrate}
-        let exporter: VideoExporter
-        if (isDefined(window.showSaveFilePicker)) {
-            const result = await Promises.tryCatch(
-                window.showSaveFilePicker({suggestedName: "opendaw-video.mp4"})
-            )
-            if (result.status === "rejected") {return}
-            const writable = await result.value.createWritable()
-            exporter = await Promises.timeout(
-                StreamVideoExporter.create(exportConfig, writable), TimeSpan.seconds(10))
-        } else {
-            exporter = await Promises.timeout(
-                BufferVideoExporter.create(exportConfig), TimeSpan.seconds(10))
-        }
-        console.time("Render Video")
-        const project = source.copy()
-        const {boxGraph, timelineBox: {loopArea: {enabled}}} = project
-        boxGraph.beginTransaction()
-        enabled.setValue(false)
-        boxGraph.endTransaction()
-        let active = true
-        const progressValue = new DefaultObservableValue(0.0)
-        const dialog = RuntimeNotifier.progress({
-            headline: "Rendering video...",
-            progress: progressValue,
-            cancel: () => active = false
-        })
-
+        let maxDuration: number
         try {
+            validateVideoConfig(exportConfig, duration)
+            const arrangementEnd = source.tempoMap.ppqnToSeconds(source.lastRegionAction())
+            if (!Number.isFinite(arrangementEnd) || arrangementEnd < 0) {
+                throw new Error("Invalid arrangement duration.")
+            }
+            maxDuration = duration > 0 ? duration : arrangementEnd + AUTOMATIC_TAIL_SECONDS
+            validateVideoConfig(exportConfig, maxDuration)
+        } catch (error) {
+            // Refused settings must reach the user: the menu caller ignores the rejection.
+            await notifyFailure(error)
+            throw error
+        }
+        const timedExportConfig = {...exportConfig, durationSeconds: maxDuration}
+        const controller = new AbortController()
+        const {signal} = controller
+        let exporter: VideoExporter | undefined
+        let writable: WritableStream | undefined
+        let exporterRetired = false
+        let cancelled = false
+        let completed = false
+        let failed = false
+        let failure: unknown
+        const cleanups: Array<() => void> = []
+        const release = () => {
+            while (cleanups.length > 0) {
+                try {cleanups.pop()!()} catch {console.warn("Video render cleanup failed")}
+            }
+        }
+        const abortExporter = () => {
+            if (exporter === undefined || exporterRetired) {return}
+            exporterRetired = true
+            void exporter.abort().catch(() => {console.warn("Video export abort failed")})
+        }
+        const abortWritable = () => {
+            const pending = writable
+            writable = undefined
+            if (pending !== undefined && !pending.locked) {
+                void pending.abort().catch(() => {console.warn("Video writable abort failed")})
+            }
+        }
+        const retire = () => {release(); abortExporter(); abortWritable()}
+        signal.addEventListener("abort", retire, {once: true})
+        const wait = <T>(task: Promise<T>, late?: (value: T) => void): Promise<T> => waitForVideoTask(task, signal, late)
+        const progressValue = new DefaultObservableValue(0.0)
+        console.time("Render Video")
+        try {
+            const dialog = RuntimeNotifier.progress({
+                headline: "Rendering video...",
+                progress: progressValue,
+                cancel: () => {
+                    cancelled = true
+                    controller.abort(new DOMException("Video export was cancelled.", "AbortError"))
+                }
+            })
+            cleanups.push(() => dialog.terminate())
+            if (isDefined(window.showSaveFilePicker)) {
+                const result = await wait(Promises.tryCatch(window.showSaveFilePicker({suggestedName: "opendaw-video.mp4"})))
+                if (result.status === "rejected") {return}
+                writable = await wait(result.value.createWritable(), late => {void late.abort().catch(() => {})})
+                signal.throwIfAborted()
+            }
+            const startupTimer = setTimeout(() => controller.abort(new Error("Video encoder startup timed out after 10 seconds.")), 10_000)
+            try {
+                exporter = await wait<VideoExporter>(writable !== undefined
+                    ? StreamVideoExporter.create(timedExportConfig, writable, signal)
+                    : BufferVideoExporter.create(timedExportConfig, signal),
+                    late => {void late.abort().catch(() => {})})
+                signal.throwIfAborted()
+                writable = undefined // The completed exporter now owns the writer.
+            } finally {clearTimeout(startupTimer)}
+            const project = source.copy()
+            cleanups.push(() => project.terminate())
+            const {boxGraph, timelineBox: {loopArea: {enabled}}} = project
+            boxGraph.beginTransaction()
+            try {enabled.setValue(false)} finally {boxGraph.endTransaction()}
             dialog.message = "Initializing..."
             const estimator = TimeSpan.createEstimator()
             const shadertoyCanvas = new OffscreenCanvas(width, height)
             const shadertoyContext = shadertoyCanvas.getContext("webgl2")!
+            cleanups.push(() => shadertoyContext?.getExtension?.("WEBGL_lose_context")?.loseContext())
             const shadertoyState = new ShadertoyState(project)
+            cleanups.push(() => shadertoyState.terminate())
             const shadertoyRunner = new ShadertoyRunner(shadertoyState, shadertoyContext)
+            cleanups.push(() => shadertoyRunner.terminate())
             const shadertoy = project.rootBoxAdapter.box.shadertoy
             if (shadertoy.nonEmpty()) {
                 const code = asInstanceOf(shadertoy.targetVertex.unwrap().box, ShadertoyBox).shaderCode.getValue()
@@ -81,36 +143,36 @@ export namespace VideoRenderer {
             }
             const compositionCanvas = new OffscreenCanvas(width, height)
             const compositionCtx = compositionCanvas.getContext("2d")!
-            const overlay = await VideoOverlay.create({
+            const signatureTrack = project.timelineBoxAdapter.signatureTrack
+            const overlay = overlayEnabled ? await wait(VideoOverlay.create({
                 width, height, projectName,
-                toParts: (position: ppqn) => project.timelineBoxAdapter.signatureTrack.toParts(position)
-            })
+                toParts: (position: ppqn) => signatureTrack.toParts(position)
+            }, signal), late => late.terminate()) : undefined
+            if (overlay !== undefined) {cleanups.push(() => overlay.terminate())}
+            signal.throwIfAborted()
 
-            const renderer = await OfflineEngineRenderer.create(project, Option.None, sampleRate)
-            renderer.play()
+            const renderer = await wait(OfflineEngineRenderer.create(project, Option.None, sampleRate), late => late.terminate())
+            cleanups.push(() => renderer.terminate())
+            cleanups.push(() => renderer.stop())
+            signal.throwIfAborted()
+            await wait(renderer.play())
+            signal.throwIfAborted()
 
             const tempoMap = project.tempoMap
             const estimatedDurationInSeconds = duration > 0
                 ? duration
                 : tempoMap.ppqnToSeconds(project.lastRegionAction())
-            const maxDuration = duration > 0
-                ? duration
-                : MAX_DURATION_SECONDS
             const maxFrames = Math.ceil(maxDuration * frameRate)
             const estimatedNumberOfFrames = Math.ceil(estimatedDurationInSeconds * frameRate)
-
-            const silenceThreshold = dbToGain(SILENCE_THRESHOLD_DB)
-            const silenceSamplesNeeded = Math.ceil(SILENCE_DURATION_SECONDS * sampleRate)
-            let consecutiveSilentSamples = 0
-            let hasHadAudio = false
 
             const idealSamplesPerFrame = sampleRate / frameRate
             let samplesRendered = 0
             let frameIndex = 0
 
-            while (frameIndex < maxFrames && active) {
+            while (frameIndex < maxFrames) {
+                signal.throwIfAborted()
                 if (frameIndex >= estimatedNumberOfFrames) {
-                    dialog.message = `Waiting for silence...`
+                    dialog.message = `Rendering tail...`
                 } else {
                     const progress = frameIndex / estimatedNumberOfFrames
                     dialog.message = `Frame ${frameIndex + 1} / ${estimatedNumberOfFrames} (${estimator(progress)})`
@@ -121,28 +183,10 @@ export namespace VideoRenderer {
                 const samplesToRender = targetSamples - samplesRendered
                 const quantumsNeeded = Math.ceil(samplesToRender / RenderQuantum)
                 const actualSamplesToRender = quantumsNeeded * RenderQuantum
-                const channels = await renderer.step(actualSamplesToRender)
+                const channels = await wait(renderer.step(actualSamplesToRender))
+                signal.throwIfAborted()
                 samplesRendered += actualSamplesToRender
                 project.liveStreamReceiver.dispatch()
-                if (duration === 0) {
-                    let maxSample = 0
-                    for (const channel of channels) {
-                        for (const sample of channel) {
-                            const absoluteValue = Math.abs(sample)
-                            if (absoluteValue > maxSample) {maxSample = absoluteValue}
-                        }
-                    }
-                    if (maxSample > silenceThreshold) {
-                        hasHadAudio = true
-                        consecutiveSilentSamples = 0
-                    } else if (hasHadAudio) {
-                        consecutiveSilentSamples += actualSamplesToRender
-                        if (consecutiveSilentSamples >= silenceSamplesNeeded) {
-                            break
-                        }
-                    }
-                }
-
                 const seconds = renderer.totalFrames / sampleRate
                 const ppqn = tempoMap.secondsToPPQN(seconds)
                 shadertoyState.setPPQN(ppqn)
@@ -150,7 +194,7 @@ export namespace VideoRenderer {
 
                 compositionCtx.drawImage(shadertoyCanvas, 0, 0)
 
-                if (overlayEnabled) {
+                if (overlay !== undefined) {
                     overlay.render(ppqn)
                     compositionCtx.globalCompositeOperation = "screen"
                     compositionCtx.drawImage(overlay.canvas, 0, 0)
@@ -158,38 +202,31 @@ export namespace VideoRenderer {
                 }
 
                 const timestampSeconds = frameIndex / frameRate
-                await exporter.addFrame(compositionCanvas, channels, timestampSeconds)
+                await wait(exporter.addFrame(compositionCanvas, channels, timestampSeconds))
                 frameIndex++
             }
 
-            renderer.stop()
-            renderer.terminate()
-            shadertoyState.terminate()
-            shadertoyRunner.terminate()
-            overlay.terminate()
-
-            if (!active) {
-                dialog.terminate()
-                await exporter.abort()
-                return
-            }
-
+            signal.throwIfAborted()
             dialog.message = "Finalizing video..."
-            await exporter.finalize()
-            dialog.terminate()
+            await wait(exporter.finalize())
+            signal.throwIfAborted()
+            completed = true
         } catch (error) {
-            dialog.terminate()
-            await exporter.abort()
-            const message = isAllocationError(error)
-                ? "Video is too large for this browser. Please use Chrome."
-                : String(error)
-            await RuntimeNotifier.info({
-                headline: "Video Export Failed",
-                message
-            })
-            throw error
+            failed = true
+            failure = error
+        } finally {
+            if (!completed) {
+                controller.abort(failure ?? new DOMException("Video export was aborted.", "AbortError"))
+                abortExporter()
+                abortWritable()
+            }
+            release()
+            signal.removeEventListener("abort", retire)
+            console.timeEnd("Render Video")
         }
-
-        console.timeEnd("Render Video")
+        if (failed && !cancelled) {
+            await notifyFailure(failure)
+            throw failure
+        }
     }
 }

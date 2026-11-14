@@ -5,6 +5,20 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Limit buffered video budgets and actual output to 256 MiB with a bounded streaming target; skip disabled overlay assets and bound enabled asset loading to ten seconds.
+
+- Own video initialization through its ten-second deadline and retire late results; Cancel interrupts pending render/encode/finalize steps and closes the progress dialog promptly.
+
+- Cancel active video muxers, fence retired exports and discard partial streaming files; unwind all acquired render owners after setup or encoding failures. Mediabunny finalization retains its public cancellation limitation (see video export documentation).
+
+- Roll back partial video encoder construction and close native audio samples on failed submissions.
+
+- Timestamp video audio from its sample cursor; preserve internal arrangement gaps and render a fixed ten-second automatic tail, including for silent projects.
+
+- Show refused video export settings (limits, one-hour work limit, buffered budget) as a "Video Export Failed" notice instead of silently doing nothing.
+
+- Validate video export configuration and frame audio geometry before allocating or submitting media.
+
 - Render OAuth errors as text and forward correlated callback, error and close messages.
 
 - Keep failed soundfont imports invisible and prevent stale sample editors from recreating deleted samples.
