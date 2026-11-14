@@ -274,6 +274,11 @@ They use a local Vite fixture server and synthetic browser adapters; no account,
 clipboard contents or external service data is used. See
 [the implementation and validation notes](plans/dom-runtime-contracts.md).
 
+Shared collection and subscription ownership contracts are documented in
+[`lib-std`](packages/lib/std/README.md); RPC sender lifetime is documented in
+[`lib-runtime`](packages/lib/runtime/README.md). See the
+[round 94 repair plan](plans/scout-round94-collections-lifecycle.md) for regression evidence.
+
 ### Video export
 
 See [video export limits and lifecycle](plans/video-export-safety.md) for

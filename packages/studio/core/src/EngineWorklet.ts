@@ -80,6 +80,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
     #lastCpuLoadUpdate: number = 0
     #maxMsSinceLastUpdate: number = 0
     #monitoringRouter: Nullable<MonitoringRouter> = null
+    #terminated: boolean = false
 
     constructor(context: BaseAudioContext,
                 project: Project,
@@ -167,7 +168,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
                         dispatcher.dispatchAndForget(this.updateMonitoringMap, map)
                     }
                     terminate(): void {dispatcher.dispatchAndForget(this.terminate)}
-                }))
+                }, this.#terminator))
         this.#monitoringRouter = this.#terminator.own(new MonitoringRouter(this, this.#commands))
 
         const {port, sab} =
@@ -320,6 +321,8 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
     }
 
     terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
         this.#commands.terminate()
         this.#terminator.terminate()
         this.disconnect()

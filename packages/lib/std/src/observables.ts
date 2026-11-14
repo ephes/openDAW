@@ -1,7 +1,7 @@
 import {Subscription, Terminable} from "./terminable"
 import {Notifier} from "./notifier"
 import {Option} from "./option"
-import {Func, isDefined, Maybe, Nullable, Procedure, ValueOrProvider} from "./lang"
+import {Func, isDefined, Maybe, Nullable, Procedure, tryCatch, ValueOrProvider} from "./lang"
 import {Bijective} from "./bijective"
 import {Observer} from "./observers"
 
@@ -15,6 +15,16 @@ export interface MutableValueOwner<T> extends ValueOwner<T> {
 
 export interface Observable<VALUE> {
     subscribe(observer: Observer<VALUE>): Subscription
+}
+
+const catchupAndSubscribe = <T>(observable: Observable<T>, value: T, observer: Observer<T>): Subscription => {
+    const subscription = observable.subscribe(observer)
+    const result = tryCatch(() => observer(value))
+    if (result.status === "failure") {
+        tryCatch(() => subscription.terminate())
+        throw result.error
+    }
+    return subscription
 }
 
 export interface ObservableValue<T> extends ValueOwner<T>, Observable<ObservableValue<T>> {
@@ -83,9 +93,12 @@ export class MutableObservableOption<T> implements ObservableOption<T> {
 
     clear(procedure?: Procedure<T>): void {
         if (this.#option.isEmpty()) {return}
-        if (isDefined(procedure)) {procedure(this.#option.unwrap())}
+        const previous = this.#option.unwrap()
         this.#option = Option.None
-        this.#notifier.notify(this)
+        const notification = tryCatch(() => this.#notifier.notify(this))
+        const disposal = tryCatch(() => {if (isDefined(procedure)) {procedure(previous)}})
+        if (notification.status === "failure") {throw notification.error}
+        if (disposal.status === "failure") {throw disposal.error}
     }
 
     assert(fail?: ValueOrProvider<string>): this {
@@ -109,8 +122,7 @@ export class MutableObservableOption<T> implements ObservableOption<T> {
     unwrapOrUndefined(): T | undefined {return this.#option.unwrapOrUndefined()}
     subscribe(observer: Observer<Option<T>>): Subscription {return this.#notifier.subscribe(() => observer(this))}
     catchupAndSubscribe(observer: Observer<Option<T>>): Subscription {
-        observer(this)
-        return this.#notifier.subscribe(() => observer(this))
+        return catchupAndSubscribe(this, this, observer)
     }
     terminate(): void {this.#notifier.terminate()}
 }
@@ -121,6 +133,8 @@ export class MappedMutableObservableValue<SOURCE, TARGET> implements MutableObse
     readonly #notifier: Notifier<TARGET>
     readonly #subscription: Subscription
 
+    #terminated: boolean = false
+
     constructor(source: MutableObservableValue<SOURCE>, mapping: Bijective<SOURCE, TARGET>) {
         this.#source = source
         this.#mapping = mapping
@@ -130,18 +144,24 @@ export class MappedMutableObservableValue<SOURCE, TARGET> implements MutableObse
     }
 
     catchupAndSubscribe(observer: Observer<ObservableValue<TARGET>>): Subscription {
-        observer(this)
-        return this.subscribe(observer)
+        if (this.#terminated) {return Terminable.Empty}
+        return catchupAndSubscribe(this, this, observer)
     }
 
     getValue(): TARGET {return this.#mapping.fx(this.#source.getValue())}
     setValue(value: TARGET): void {this.#source.setValue(this.#mapping.fy(value))}
 
     subscribe(observer: Observer<ObservableValue<TARGET>>): Subscription {
+        if (this.#terminated) {return Terminable.Empty}
         return this.#notifier.subscribe(() => observer(this))
     }
 
-    terminate(): void {this.#subscription.terminate()}
+    terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
+        this.#notifier.terminate()
+        this.#subscription.terminate()
+    }
 }
 
 export interface ValueGuard<T> {guard(value: T): T}
@@ -168,8 +188,7 @@ export class DefaultObservableValue<T> implements MutableObservableValue<T>, Ter
     getValue(): T {return this.#value}
     subscribe(observer: Observer<ObservableValue<T>>): Terminable {return this.#notifier.subscribe(observer)}
     catchupAndSubscribe(observer: Observer<ObservableValue<T>>): Terminable {
-        observer(this)
-        return this.#notifier.subscribe(observer)
+        return catchupAndSubscribe(this, this, observer)
     }
     terminate(): void {this.#notifier.terminate()}
     toString(): string {return `{DefaultObservableValue value: ${this.#value}`}

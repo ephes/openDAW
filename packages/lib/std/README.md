@@ -24,6 +24,28 @@ Standard library providing core utilities and data structures for TypeScript pro
 * Map utilities and extensions **maps.ts**
 * Set utilities and operations **sets.ts**
 
+`SortedSet.addMany` uses comparator equality, including UUID byte keys. Existing
+entries win over incoming duplicates; among incoming duplicates the first wins,
+as with repeated `add` calls. It returns false if any duplicate was encountered.
+Iteration, key extraction, sorting and deduplication finish before publication;
+if any throws, the set remains unchanged. `values()` is a read-only view of the
+current backing array; bulk publication can replace that array.
+
+`SortedSet.getOrCreate` rechecks the requested key after calling the factory. If
+the factory installed that key reentrantly, that installed entry wins and is
+returned. Factories must produce the requested key. Unused factory results are
+not automatically disposed; a factory allocating resources must retain ownership
+until it can check whether its result was returned.
+
+`ArrayMultimap.clone` retains its value comparator and stable order of equal
+values. Bucket arrays are independent; the value objects themselves are shared.
+`addAll` stages the complete bucket without argument spread, so large iterables
+are supported and iterator/comparator failures preserve the original bucket and
+key order. Successful bulk updates can replace the bucket returned by `get`.
+`sortKeys` publishes a fully sorted map without replaying value insertion; key
+comparator failures preserve the original map. `BinarySearch.stableInsert` finds
+the upper bound in logarithmic comparisons, even for a run of equal values.
+
 ## Algorithms & Search
 
 * Binary search implementations **binary-search.ts**
@@ -59,6 +81,22 @@ An empty unweighted split returns no handlers; weighted input must not be empty.
 * Terminable resource management **terminable.ts**
 * Synchronous stream operations **sync-stream.ts**
 * Retry and attempt utilities **attempts.ts**
+
+Default, optional and mapped mutable observables register a catchup subscription
+before its initial delivery, so synchronous changes from that callback are
+observed. Failed initial delivery releases the subscription and rethrows the
+original error. `MutableObservableOption.clear` detaches the old value, notifies
+the empty transition, then calls the disposal procedure with the old value.
+Reentrant replacement survives; disposal runs even if notification throws. If
+both notification and disposal fail, the notification error remains primary.
+
+`Notifier.subscribeMany` acquires subscriptions in order. Failed acquisition
+releases every earlier subscription in reverse order, even if a cleanup throws,
+and propagates the acquisition error. `MappedMutableObservableValue.terminate`
+idempotently releases upstream and downstream subscriptions. Later `subscribe`
+and `catchupAndSubscribe` calls return an inert subscription without delivery.
+Reading/writing a retired mapping still delegates to the source; termination
+retires its notification lifetime.
 
 ## Specialized
 
