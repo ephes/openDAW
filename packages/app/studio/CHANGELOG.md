@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound local room-sample metadata and neural-amp cache reads before OPFS allocation; retain explicit large-media reads.
+
 - Observe rejected copy actions without false success acknowledgements or unhandled promises.
 
 - Limit buffered video budgets and actual output to 256 MiB with a bounded streaming target; skip disabled overlay assets and bound enabled asset loading to ten seconds.

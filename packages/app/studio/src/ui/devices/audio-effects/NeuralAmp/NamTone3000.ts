@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {Editing, Errors, isDefined, UUID} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {NeuralAmpModelBox} from "@opendaw/studio-boxes"
@@ -54,7 +55,7 @@ const downloadModel = async (modelUrl: string, signal?: AbortSignal): Promise<st
 const readPackMeta = async (toneId: number): Promise<PackMeta | null> => {
     const path = packMetaPath(toneId)
     if (!await Workers.Opfs.exists(path)) {return null}
-    const bytes = await Workers.Opfs.read(path)
+    const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Metadata)
     return JSON.parse(new TextDecoder().decode(bytes))
 }
 
@@ -68,7 +69,7 @@ export const readModelFromPack = async (packId: string, modelId: number, signal?
     const toneId = parseInt(packId, 10)
     const path = modelPath(toneId, modelId)
     if (await Workers.Opfs.exists(path)) {
-        const bytes = await Workers.Opfs.read(path)
+        const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Metadata)
         return new TextDecoder().decode(bytes)
     }
     const meta = await readPackMeta(toneId)

@@ -34,6 +34,18 @@ worker queue, including reads/listings and recursive parent/root deletion. A
 completed child write is therefore followed by a queued deletion, or a later
 write recreates the subtree after deletion. Exclusion covers this worker only.
 
+`read(path, maxBytes?)` defaults to 64 MiB. The budget must be a nonnegative safe
+integer; the opened handle's size is checked before allocating or reading.
+`OpfsProtocol.ReadLimits` provides Metadata (1 MiB), Project (64 MiB), Preset
+(16 MiB) and Media (1 GiB) budgets. Studio metadata, indexes and journals use
+Metadata, project/recovery graphs use Project, and sample/soundfont binaries use
+Media explicitly. Inference uses its existing 512 MiB model limit and Metadata
+for its sidecar. Oversized files reject through normal load/recovery paths.
+All opened handles are closed. A close-only failure rejects; a simultaneous
+operation/close failure is an AggregateError whose cause and first error are the
+original operation failure, with bounded secondary cleanup context. Queue slots
+are released in every case.
+
 ### Sample peak format
 
 Short/empty samples may have no stages; nearest-stage lookup then returns null and

@@ -13,6 +13,8 @@ const createMockFileSystem = () => {
     const close = vi.fn()
     const flush = vi.fn()
     const opened = vi.fn(async () => {})
+    const advertisedSize = vi.fn<(size: number) => number>(size => size)
+    const read = vi.fn()
     let active = 0
     let maximumActive = 0
     const resolveDir = (segments: ReadonlyArray<string>, create: boolean): Map<string, EntryData> => {
@@ -33,8 +35,9 @@ const createMockFileSystem = () => {
         return current
     }
     const createSyncAccessHandle = (fileEntry: FileData): FileSystemSyncAccessHandle => ({
-        getSize: () => fileEntry.data.length,
+        getSize: () => advertisedSize(fileEntry.data.length),
         read: (buffer: Uint8Array, options?: {at?: number}) => {
+            read()
             fail("read")
             const at = options?.at ?? 0
             const count = Math.min(buffer.length, fileEntry.data.length - at, limits.read)
@@ -123,7 +126,7 @@ const createMockFileSystem = () => {
         } as unknown as FileSystemDirectoryHandle
         return handle
     }
-    return {root, limits, faults, close, flush, opened, maximumActive: () => maximumActive,
+    return {root, limits, faults, close, flush, opened, advertisedSize, read, maximumActive: () => maximumActive,
         createDirectoryHandle: () => createDirectoryHandle(root)}
 }
 
@@ -361,6 +364,42 @@ describe("OpfsWorker", () => {
 
 
 describe("exact OPFS transfers", () => {
+    it("admits the opened size before allocation/read and accepts the boundary", async () => {
+        await protocol.write("budget.bin", new Uint8Array([1, 2, 3]))
+        mockFs.advertisedSize.mockReturnValueOnce(Number.MAX_SAFE_INTEGER)
+        await expect(protocol.read("budget.bin", 3)).rejects.toThrow("OPFS read byte limit exceeded")
+        expect(mockFs.read).not.toHaveBeenCalled()
+        expect(await protocol.read("budget.bin", 3)).toEqual(new Uint8Array([1, 2, 3]))
+        await expect(protocol.read("budget.bin", 2)).rejects.toThrow("OPFS read byte limit exceeded")
+    })
+
+    it.each([-1, Infinity, NaN, 1.5])("rejects invalid budget %s before opening", async budget => {
+        await expect(protocol.read("budget.bin", budget)).rejects.toThrow("Invalid OPFS read budget")
+        expect(mockFs.opened).not.toHaveBeenCalled()
+    })
+
+    it.each(["read", "write", "flush"])("retains primary %s failure with bounded close context and releases exclusion", async operation => {
+        await protocol.write("double.bin", new Uint8Array([1]))
+        const primary = new Error(`Synthetic ${operation} failure`)
+        mockFs.close.mockImplementationOnce(() => {throw new Error("x".repeat(10000))})
+        if (operation === "flush") {mockFs.flush.mockImplementationOnce(() => {throw primary})}
+        else {mockFs.faults.set(operation, primary)}
+        const result = operation === "read" ? protocol.read("double.bin")
+            : protocol.write("double.bin", new Uint8Array([2]))
+        await expect(result).rejects.toMatchObject({message: primary.message, cause: primary})
+        mockFs.faults.clear()
+        await expect(protocol.read("/double.bin/")).resolves.toEqual(expect.any(Uint8Array))
+    })
+
+    it.each(["read", "write", "exists"] as const)("reports close-only failure from %s and releases exclusion", async operation => {
+        await protocol.write("close.bin", new Uint8Array([1]))
+        const closeError = new Error("Synthetic close failure")
+        mockFs.close.mockImplementationOnce(() => {throw closeError})
+        const result = operation === "write" ? protocol.write("close.bin", new Uint8Array([2]))
+            : protocol[operation]("close.bin")
+        await expect(result).rejects.toBe(closeError)
+        expect(await protocol.exists("close.bin")).toBe(true)
+    })
     it.each([[1, 3], [0, 1], [2, 2]])("stores only the view [%i, %i)", async (start, end) => {
         const bytes = new Uint8Array([90, 1, 2, 91])
         await protocol.write("view.bin", bytes.subarray(start, end))

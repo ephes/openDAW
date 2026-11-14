@@ -1,5 +1,12 @@
 This package is part of the openDAW SDK
 
+### Local storage read budgets
+
+Local OPFS reads use explicit budgets before allocation: metadata, indexes,
+journals and covers 1 MiB; project/recovery graphs 64 MiB; presets 16 MiB;
+sample/peak/soundfont binaries 1 GiB. Recovery UUID/flags admit 16/1 bytes.
+Oversized files follow the existing unreadable-asset/project recovery paths.
+
 ### MIDI learning lifetime
 
 MIDI permission completion only starts learning while the same followed user and

@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {parseProjectsCatalog, validateProjectsCatalog} from "./catalogs"
 import {
     Arrays,
@@ -220,7 +221,7 @@ export class CloudBackupProjects {
                     if (existing.some(entry => entry.name === uuidAsString)) {
                         // A project may have been created since the initial backup scan.
                         // Never clean up or overwrite a directory this restore does not own.
-                        const meta = JSON.parse(new TextDecoder().decode(await Workers.Opfs.read(ProjectPaths.projectMeta(uuid))))
+                        const meta = JSON.parse(new TextDecoder().decode(await Workers.Opfs.read(ProjectPaths.projectMeta(uuid), OpfsProtocol.ReadLimits.Metadata)))
                         if (typeof meta?.name !== "string") {throw new Error("Repair the existing local project before restoring")}
                         ProjectSkeleton.decode(await ProjectStorage.loadProject(uuid))
                         return

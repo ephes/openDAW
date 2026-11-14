@@ -44,7 +44,9 @@ export class Workers {
             .sender<OpfsProtocol>(this.messenger.unwrap("Workers are not installed").channel("opfs"),
                 router => new class implements OpfsProtocol {
                     write(path: string, data: Uint8Array): Promise<void> {return router.dispatchAndReturn(this.write, path, data)}
-                    read(path: string): Promise<Uint8Array> {return router.dispatchAndReturn(this.read, path)}
+                    read(path: string, maxBytes?: number): Promise<Uint8Array> {
+                        return router.dispatchAndReturn(this.read, path, maxBytes)
+                    }
                     exists(path: string): Promise<boolean> {return router.dispatchAndReturn(this.exists, path)}
                     delete(path: string): Promise<void> {return router.dispatchAndReturn(this.delete, path)}
                     list(path: string): Promise<ReadonlyArray<OpfsProtocol.Entry>> {return router.dispatchAndReturn(this.list, path)}

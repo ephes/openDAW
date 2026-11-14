@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {UUID} from "@opendaw/lib-std"
 import {Workers} from "./Workers"
 import {deleteWithJournal, readTrashedIds} from "./deletionJournal"
@@ -41,7 +42,7 @@ export abstract class Storage<ITEM extends { uuid: UUID.String } & META, META, N
             .map(async ({name}) => {
                 try {
                     if (!UUID.validateString(name)) {throw new Error("Invalid storage directory UUID")}
-                    const array = await Workers.Opfs.read(`${this.folder}/${name}/meta.json`)
+                    const array = await Workers.Opfs.read(`${this.folder}/${name}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
                     const meta = JSON.parse(new TextDecoder().decode(array))
                     if (meta === null || typeof meta !== "object" || Array.isArray(meta)) {
                         throw new Error("Invalid storage metadata object")

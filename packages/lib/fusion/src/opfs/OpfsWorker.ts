@@ -1,4 +1,4 @@
-import {Arrays, asDefined, Errors} from "@opendaw/lib-std"
+import {Arrays, asDefined, Errors, Provider, tryCatch} from "@opendaw/lib-std"
 import {Communicator, Messenger, Promises} from "@opendaw/lib-runtime"
 import {OpfsProtocol} from "./OpfsProtocol"
 
@@ -13,7 +13,7 @@ export namespace OpfsWorker {
                 await this.#acquireLock(path, async path => {
                     if (DEBUG) {console.debug(`write ${data.length}b to ${path}`)}
                     const handle = await this.#resolveFile(path, {create: true})
-                    try {
+                    withHandle(handle, () => {
                         handle.truncate(data.length)
                         for (let offset = 0; offset < data.byteLength;) {
                             const count = handle.write(data.subarray(offset) as Uint8Array<ArrayBuffer>, {at: offset})
@@ -23,23 +23,20 @@ export namespace OpfsWorker {
                             offset += count
                         }
                         handle.flush()
-                    } catch (reason: unknown) {
-                        const error = reason as {name?: string, message?: string, stack?: string} | null | undefined
-                        console.error("OPFS write failed:",
-                            error?.name, error?.message, error?.stack ?? "(no stack trace)")
-                        throw reason
-                    } finally {
-                        handle.close()
-                    }
+                    })
                 })
             }
 
-            async read(path: string): Promise<Uint8Array> {
+            async read(path: string, maxBytes = OpfsProtocol.ReadLimits.Project): Promise<Uint8Array> {
+                if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {throw new Error("Invalid OPFS read budget")}
                 return await this.#acquireLock(path, async path => {
                     if (DEBUG) {console.debug(`read ${path}`)}
                     const handle = await this.#resolveFile(path)
-                    try {
+                    return withHandle(handle, () => {
                         const size = handle.getSize()
+                        if (!Number.isSafeInteger(size) || size < 0 || size > maxBytes) {
+                            throw new Error("OPFS read byte limit exceeded")
+                        }
                         const buffer = new Uint8Array(size)
                         for (let offset = 0; offset < size;) {
                             const count = handle.read(buffer.subarray(offset), {at: offset})
@@ -49,9 +46,7 @@ export namespace OpfsWorker {
                             offset += count
                         }
                         return buffer
-                    } finally {
-                        handle.close()
-                    }
+                    })
                 })
             }
 
@@ -74,11 +69,7 @@ export namespace OpfsWorker {
                         throw result.error
                     }
                     const handle = result.value
-                    try {
-                        return handle.getSize() > 0
-                    } finally {
-                        handle.close()
-                    }
+                    return withHandle(handle, () => handle.getSize() > 0)
                 })
             }
 
@@ -154,6 +145,21 @@ export namespace OpfsWorker {
         Errors.isDOMException(error) && error.name === "NotFoundError"
 
     const getOpfsRoot = (): Promise<FileSystemDirectoryHandle> => navigator.storage.getDirectory()
+
+    const withHandle = <T>(handle: FileSystemSyncAccessHandle, operation: Provider<T>): T => {
+        const result = tryCatch(operation)
+        const cleanup = tryCatch(() => handle.close())
+        if (result.status === "failure") {
+            if (cleanup.status === "failure") {
+                throw new AggregateError([result.error, new Error("OPFS handle close failed")],
+                    result.error instanceof Error ? result.error.message.slice(0, 300) : "OPFS operation failed",
+                    {cause: result.error})
+            }
+            throw result.error
+        }
+        if (cleanup.status === "failure") {throw cleanup.error}
+        return result.value
+    }
 
     const pathToSegments = (path: string): ReadonlyArray<string> => {
         const noSlashes = path.replace(/^\/+|\/+$/g, "")

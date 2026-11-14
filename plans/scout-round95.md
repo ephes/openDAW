@@ -13,3 +13,13 @@ open handle. The worker now canonicalizes paths before reserving a FIFO queue
 slot. Serializing all worker operations also prevents read handles conflicting
 with recursive deletion; no nested queue acquisition occurs for root deletion.
 The new tests failed before the fix (8 cases) and pass afterward.
+
+## B02: read admission and cleanup
+
+An advertised size above budget is refused before any allocation/read, with
+boundary-sized input accepted. Invalid budgets refuse before handle acquisition.
+Double-fault transfer/flush tests previously reported only close failure; the
+repair preserves the primary cause and reports bounded cleanup context. Close-only
+errors still reject and a subsequent alias access succeeds. Eight new cases
+failed before repair; all 59 OPFS cases pass afterward. Production sender forwarding
+and metadata/project/preset/media consumers now pass their public read budgets.

@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {Option, Provider, UUID} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {Project, ProjectEnv, ProjectMeta, ProjectProfile, Workers} from "../"
@@ -17,13 +18,13 @@ export class Recovery {
         const backupResult = await Promises.tryCatch(Workers.Opfs.list(Recovery.#RESTORE_FILE_PATH))
         if (backupResult.status === "rejected" || backupResult.value.length === 0) {return Option.None}
         const readResult = await Promises.tryCatch(Promise.all([
-            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/uuid`)
+            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/uuid`, 16)
                 .then(x => UUID.validateBytes(x)),
-            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/project.od`)
+            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/project.od`, OpfsProtocol.ReadLimits.Project)
                 .then(x => Project.loadAnyVersion(this.#env, x.buffer as ArrayBuffer)),
-            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/meta.json`)
+            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
                 .then(x => JSON.parse(new TextDecoder().decode(x.buffer as ArrayBuffer)) as ProjectMeta),
-            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/saved`)
+            Workers.Opfs.read(`${Recovery.#RESTORE_FILE_PATH}/saved`, 1)
                 .then(x => x.at(0) === 1)
         ]))
         const deleteResult = await Promises.tryCatch(Workers.Opfs.delete(Recovery.#RESTORE_FILE_PATH))

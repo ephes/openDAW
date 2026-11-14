@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {Lazy, UUID} from "@opendaw/lib-std"
 import {Soundfont, SoundfontMetaData} from "@opendaw/studio-adapters"
 import {Workers} from "../Workers"
@@ -34,7 +35,7 @@ export class SoundfontStorage extends Storage<Soundfont, SoundfontMetaData, Soun
             }
             if (existing) {
                 const parts = await Promise.allSettled([
-                    Workers.Opfs.read(`${path}/soundfont.sf2`), Workers.Opfs.read(`${path}/meta.json`)
+                    Workers.Opfs.read(`${path}/soundfont.sf2`, OpfsProtocol.ReadLimits.Media), Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
                 ])
                 for (const part of parts) {
                     if (part.status === "rejected" && (!(part.reason instanceof DOMException) || part.reason.name !== "NotFoundError")) {throw part.reason}
@@ -72,9 +73,9 @@ export class SoundfontStorage extends Storage<Soundfont, SoundfontMetaData, Soun
     async load(uuid: UUID.Bytes): Promise<[ArrayBuffer, SoundfontMetaData]> {
         const path = `${this.folder}/${UUID.toString(uuid)}`
         return Promise.all([
-            Workers.Opfs.read(`${path}/soundfont.sf2`)
+            Workers.Opfs.read(`${path}/soundfont.sf2`, OpfsProtocol.ReadLimits.Media)
                 .then(bytes => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer),
-            Workers.Opfs.read(`${path}/meta.json`)
+            Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
                 .then(bytes => JSON.parse(new TextDecoder().decode(bytes)))
         ])
     }

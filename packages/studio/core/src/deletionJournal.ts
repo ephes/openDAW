@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {UUID} from "@opendaw/lib-std"
 import {Workers} from "./Workers"
 
@@ -15,7 +16,7 @@ export const deleteWithJournal = async (folder: string, uuid: UUID.Bytes, path: 
 export const readTrashedIds = async (folder: string): Promise<Array<UUID.String>> => {
     let bytes: Uint8Array
     try {
-        bytes = await Workers.Opfs.read(`${folder}/trash.json`)
+        bytes = await Workers.Opfs.read(`${folder}/trash.json`, OpfsProtocol.ReadLimits.Metadata)
     } catch (error) {
         if (error instanceof DOMException && error.name === "NotFoundError") {return []}
         throw error

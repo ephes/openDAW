@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Admit OPFS read sizes before allocation using caller budgets; preserve primary failures when handle close also fails.
+
 - Canonicalize OPFS paths and serialize access with recursive directory/root deletion.
 
 - Fall back safely on preference storage discovery/read errors and fence queued updates to retired hosts.

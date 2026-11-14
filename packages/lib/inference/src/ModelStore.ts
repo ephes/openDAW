@@ -78,7 +78,7 @@ export namespace ModelStore {
                               model: ModelDescriptor): Promise<Option<Uint8Array>> => {
         const meta = await readMeta(opfs, taskKey, model.version)
         if (meta.isEmpty() || meta.unwrap().sha256 !== model.sha256) {return Option.None}
-        const result = await Promises.tryCatch(opfs.read(modelPath(taskKey, model.version)))
+        const result = await Promises.tryCatch(opfs.read(modelPath(taskKey, model.version), MAX_MODEL_BYTES))
         if (result.status !== "resolved" || result.value.byteLength > MAX_MODEL_BYTES ||
             result.value.byteLength !== meta.unwrap().bytes || meta.unwrap().version !== model.version) {return Option.None}
         const bytes = result.value
@@ -88,7 +88,7 @@ export namespace ModelStore {
     const readMeta = async (opfs: OpfsProtocol,
                             taskKey: string,
                             version: string): Promise<Option<ModelMeta>> => {
-        const result = await Promises.tryCatch(opfs.read(metaPath(taskKey, version)))
+        const result = await Promises.tryCatch(opfs.read(metaPath(taskKey, version), OpfsProtocol.ReadLimits.Metadata))
         if (result.status === "rejected") {return Option.None}
         const {status, value} = tryCatch(() =>
             JSON.parse(new TextDecoder().decode(result.value)) as ModelMeta)
