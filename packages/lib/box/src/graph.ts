@@ -558,23 +558,26 @@ export class BoxGraph<BoxMap = any> {
             return panic("Expected object")
         }
         this.beginTransaction()
-        const entries = Object.entries(value as Record<string, { name: string, fields: JSONValue }>)
-        for (const [uuid, {name, fields}] of entries) {
-            this.createBox(name as keyof BoxMap, UUID.parse(uuid), box => {
-                const result = tryCatch(() => box.fromJSON(fields))
-                if (result.status === "failure") {console.warn(result.error)}
-            })
-        }
-        if (validate) {
-            this.endTransaction()
-        } else {
-            if (this.#deferredPointerUpdates.length > 0) {
-                this.#deferredPointerUpdates.forEach(({pointerField, update}) =>
-                    this.#processPointerVertexUpdate(pointerField, update))
-                this.#deferredPointerUpdates.length = 0
+        const result = tryCatch(() => {
+            const entries = Object.entries(value as Record<string, { name: string, fields: JSONValue }>)
+            for (const [uuid, {name, fields}] of entries) {
+                this.createBox(name as keyof BoxMap, UUID.parse(uuid), box => box.fromJSON(fields))
             }
-            this.#edges.clearAffected()
-            this.#finalizeTransaction()
+            if (validate) {
+                this.endTransaction()
+            } else {
+                if (this.#deferredPointerUpdates.length > 0) {
+                    this.#deferredPointerUpdates.forEach(({pointerField, update}) =>
+                        this.#processPointerVertexUpdate(pointerField, update))
+                    this.#deferredPointerUpdates.length = 0
+                }
+                this.#edges.clearAffected()
+                this.#finalizeTransaction()
+            }
+        })
+        if (result.status === "failure") {
+            if (this.inTransaction()) {tryCatch(() => this.abortTransaction())}
+            throw result.error
         }
     }
 

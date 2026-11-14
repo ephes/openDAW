@@ -7,25 +7,31 @@ export namespace Progress {
     export const Empty: Handler = Object.freeze(_ => {})
 
     export const split = (progress: Handler, count: int): ReadonlyArray<Handler> => {
-        const collect = new Float32Array(count)
+        const collect = new Float64Array(count)
+        let total = 0
         return Arrays.create(index => (value: number) => {
+            total += value - collect[index]
             collect[index] = value
-            progress(collect.reduce((total, value) => total + value, 0.0) / count)
+            progress(total / count)
         }, count)
     }
 
     export const splitWithWeights = (progress: Handler, weights: ReadonlyArray<number>): ReadonlyArray<Handler> => {
         const count = weights.length
-        const collect = new Float32Array(count)
+        const collect = new Float64Array(count)
         if (weights.length === 0) {return panic("Weights must not be empty")}
-        if (weights.some(w => w <= 0)) {return panic("Weights must be greater than zero")}
-        const weightSum = weights.reduce((sum, weight) => sum + weight, 0.0)
-        const normalizedWeights = weightSum > 0
-            ? weights.map(w => w / weightSum)
-            : Arrays.create(() => 1.0 / count, count)
+        if (weights.some(weight => !Number.isFinite(weight) || weight <= 0)) {
+            return panic("Weights must be finite and greater than zero")
+        }
+        const maximum = weights.reduce((maximum, weight) => Math.max(maximum, weight), 0)
+        const scaledWeights = weights.map(weight => weight / maximum)
+        const weightSum = scaledWeights.reduce((sum, weight) => sum + weight, 0)
+        const normalizedWeights = scaledWeights.map(weight => weight / weightSum)
+        let total = 0
         return Arrays.create(index => (value: number) => {
+            total += (value - collect[index]) * normalizedWeights[index]
             collect[index] = value
-            progress(collect.reduce((total, v, i) => total + v * normalizedWeights[i], 0))
+            progress(total)
         }, count)
     }
 }

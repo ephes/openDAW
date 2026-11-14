@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preflight canonical known box and nested object JSON keys and exact fixed-array shapes; roll back failed graph JSON imports instead of accepting partial boxes.
+
+- Reject duplicate binary field keys and decoder residue; enforce matching writer/reader field count, signed key and 64 MiB payload limits. Size admission counts each nested field once.
+
+- Restore vertex dispatch ownership after callback errors and defer subscriptions until the outermost nested event exits.
+
 - Roll back failed target sync batches, reject unknown operations and incompatible fields/values (Float32 still accepts non-finite values such as -Infinity), and quarantine source send failures until a fresh snapshot reconnect; the failure is reported asynchronously so the committed edit keeps its listeners and undo entry.
 
 - Skip unknown binary field payloads, admit framing before allocation (64 MiB per field), and abort failed supported-field imports instead of publishing partial/defaulted boxes.

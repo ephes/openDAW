@@ -58,8 +58,14 @@ export abstract class ObjectField<FIELDS extends Fields> extends Field<Unreferen
     fromJSON(record: JSONValue): void {
         if (this.deprecated) {return}
         if (isRecord(record)) {
-            Object.entries(record).forEach(([key, value]) => {
-                const field: Field = this.#fields[parseInt(key) as FieldKey]
+            const entries = Object.entries(record)
+            entries.forEach(([key]) => {
+                if (!Serializer.isFieldKey(key) || !Object.hasOwn(this.#fields, key)) {
+                    panic("Unsupported JSON field key")
+                }
+            })
+            entries.forEach(([key, value]) => {
+                const field: Field = this.#fields[Number(key) as FieldKey]
                 if (isDefined(value)) {
                     field.fromJSON(value)
                 }

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Account for child progress with constant-time replacement deltas and reject nonfinite weights; normalize large finite weights without overflow.
+
 - Expose the optional remaining-byte query on DataInput for bounded framed decoders.
 
 - Add isolated RuntimeSignal lifetime/nested-dispatch and deterministic TimeSpan estimate/unit-boundary tests.

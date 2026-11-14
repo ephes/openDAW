@@ -27,12 +27,38 @@ Graph-based object modeling system with serialization, transactions, and pointer
 
 ## Graph Management
 
+Vertex callbacks run in subscription order. A throwing callback stops sibling
+delivery and propagates its original error. Subscriptions created during dispatch
+remain deferred until the outermost dispatch exits, including exceptional exits;
+cancelling a deferred subscription prevents its installation. A nested event does
+not activate subscriptions created inside its enclosing event.
+
 * **graph-edges.ts** - Edge management for graph relationships
 * **pointer-hub.ts** - Hub for managing incoming pointer connections
 * **dispatchers.ts** - Event dispatching system for updates
 * **updates.ts** - Update event definitions and handling
 
 ## Serialization & Persistence
+
+Binary objects contain at most 32767 nondeprecated fields, each keyed by a
+canonical signed 16-bit integer (-32768 through 32767). A field payload may be at
+most 64 MiB (67108864 bytes). Writers count payloads and check keys/counts before
+emitting the object; an over-limit save throws before a new project buffer can be
+published. Supported projects retain the existing binary representation.
+Readers reject duplicate keys before invoking any field decoder in that object.
+Known decoders must consume their complete frame; truncation, decoder errors and
+trailing bytes produce bounded `Serializer.DecodeError` messages. Unknown fields
+remain forward compatible and are skipped by their admitted frame length.
+Import through `BoxGraph.fromArrayBuffer` rolls back a failed graph installation.
+
+`Box.fromJSON` and nested `ObjectField.fromJSON` preflight every property name before changing values. Keys must
+be canonical signed 16-bit integers present in that box; unknown JSON fields are
+rejected (unlike opaque binary frames). Deprecated known fields retain their
+decoder's no-op policy. Fixed arrays require exactly their declared length and
+all element slots; deprecated arrays ignore JSON input. Use `BoxEditing.modify`
+when decoding into existing boxes so child decoder failures roll back earlier
+changes. `BoxGraph.fromJSON` aborts its whole import on a thrown decoder error
+and preserves the prior graph, instead of logging and accepting partial boxes.
 
 * **serializer.ts** - Serialization utilities for objects
 * **sync.ts** - Synchronization utilities

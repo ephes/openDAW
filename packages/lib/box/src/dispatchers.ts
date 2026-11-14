@@ -22,11 +22,11 @@ class DispatchersImpl<TARGET extends Addressable> implements Dispatchers<TARGET>
     readonly #deferredStations: Array<DeferredMonitor<TARGET>> = []
 
     #order: int = 0 | 0
-    #dispatching: boolean = false
+    #dispatchDepth: int = 0
 
     subscribe(propagation: Propagation, address: Address, procedure: Procedure<TARGET>): Subscription {
         const monitor: Monitor<TARGET> = new Monitor<TARGET>(address, propagation, this.#order++, procedure)
-        if (this.#dispatching) {
+        if (this.#dispatchDepth > 0) {
             const deferred: DeferredMonitor<TARGET> = new DeferredMonitor<TARGET>(monitor, propagation)
             this.#deferredStations.push(deferred)
             return deferred
@@ -36,17 +36,20 @@ class DispatchersImpl<TARGET extends Addressable> implements Dispatchers<TARGET>
     }
 
     dispatch(target: TARGET): void {
-        this.#dispatching = true
-        const invoked: Array<Monitor<TARGET>> = [
-            ...this.#thisDispatcher.filter(target),
-            ...this.#parentDispatcher.filter(target),
-            ...this.#childrenDispatcher.filter(target)]
-        invoked
-            .sort(({order: a}: Monitor<TARGET>, {order: b}: Monitor<TARGET>) => a - b)
-            .forEach((station: Monitor<TARGET>): void => station.procedure(target))
-        this.#dispatching = false
-        this.#deferredStations.forEach((station: DeferredMonitor<TARGET>) => station.subscribe(this))
-        this.#deferredStations.length = 0
+        this.#dispatchDepth++
+        try {
+            const invoked: Array<Monitor<TARGET>> = [
+                ...this.#thisDispatcher.filter(target),
+                ...this.#parentDispatcher.filter(target),
+                ...this.#childrenDispatcher.filter(target)]
+            invoked
+                .sort(({order: first}: Monitor<TARGET>, {order: second}: Monitor<TARGET>) => first - second)
+                .forEach((station: Monitor<TARGET>): void => station.procedure(target))
+        } finally {
+            if (--this.#dispatchDepth === 0) {
+                this.#deferredStations.splice(0).forEach(station => station.subscribe(this))
+            }
+        }
     }
 
     subscribeMonitor(monitor: Monitor<TARGET>, propagation: Propagation): Subscription {

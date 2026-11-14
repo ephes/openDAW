@@ -150,8 +150,14 @@ export abstract class Box<P extends PointerTypes = PointerTypes, F extends Field
     }
     fromJSON(record: JSONValue): void {
         if (isRecord(record)) {
-            Object.entries(record).forEach(([key, value]) => {
-                const field: Field = this.#fields[parseInt(key) as FieldKey]
+            const entries = Object.entries(record)
+            entries.forEach(([key]) => {
+                if (!Serializer.isFieldKey(key) || !Object.hasOwn(this.#fields, key)) {
+                    panic("Unsupported JSON field key")
+                }
+            })
+            entries.forEach(([key, value]) => {
+                const field: Field = this.#fields[Number(key) as FieldKey]
                 if (isDefined(value)) {
                     field.fromJSON(value)
                 }
