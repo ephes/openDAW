@@ -41,7 +41,7 @@ describe("frame dispatch", () => {
         expect(report).toHaveBeenCalledTimes(3)
     })
 
-    it.each(["stop", "terminate", "switch"] as const)("fences a retired snapshot on %s", action => {
+    it.each(["stop", "terminate", "switch", "restart"] as const)("fences a retired snapshot on %s", action => {
         const oldDriver = driver(), newDriver = driver()
         const sibling = vi.fn(), once = vi.fn()
         let first = true
@@ -50,7 +50,10 @@ describe("frame dispatch", () => {
             first = false
             if (action === "terminate") {AnimationFrame.terminate()}
             else if (action === "stop") {AnimationFrame.stop()}
-            else {AnimationFrame.start(newDriver.owner)}
+            else {
+                if (action === "restart") {AnimationFrame.stop()}
+                AnimationFrame.start(newDriver.owner)
+            }
         })
         AnimationFrame.add(sibling)
         AnimationFrame.once(once)
@@ -60,7 +63,7 @@ describe("frame dispatch", () => {
         expect(sibling).not.toHaveBeenCalled()
         expect(once).not.toHaveBeenCalled()
         expect(oldDriver.pending.size).toBe(0)
-        if (action !== "switch") {AnimationFrame.start(newDriver.owner)}
+        if (action === "stop" || action === "terminate") {AnimationFrame.start(newDriver.owner)}
         expect(newDriver.pending.size).toBe(1)
         staleCallback(500) // A cancelled browser callback must not revive its driver.
         expect(newDriver.pending.size).toBe(1)

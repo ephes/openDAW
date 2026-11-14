@@ -65,3 +65,25 @@ Stop preserves registered recurring and pending one-shot work; terminate clears
 both. Undispatched one-shot work already in a retired snapshot is discarded.
 The first callback of a new driver is accepted regardless of its timestamp; later
 callbacks retain the 16 ms throttle. Cancelled callbacks cannot revive an old driver.
+
+## Shortcut ownership
+
+Individual shortcut subscriptions can be terminated repeatedly, before or after
+context disposal. Unsubscribing removes only that registration. IME composition
+never runs or records a shortcut, including bindings with `activeInTextField`.
+Outside composition, global bindings leave inputs, textareas and inherited
+editable content to native editing unless `activeInTextField` is explicitly set.
+The composed event origin supplies text ownership inside open shadow roots;
+`contenteditable="false"` regions permit normal shortcuts. Closed shadow roots
+hide their origin, so their host must expose editable ownership if global
+shortcuts should be suppressed.
+
+## Validation
+
+After the root build, `npm test --workspace=@opendaw/lib-dom` includes the drag,
+frame and shortcut regressions (jsdom for DOM event tests). Run
+`npx tsc -p packages/lib/dom/tsconfig.test.json` to check their types.
+`npm run test:browser --workspace=@opendaw/lib-dom` exercises native Chromium
+pointer capture, settlement failures and owner disposal, plus controlled
+composing keyboard events, inherited editable/shadow input ownership and native
+Delete editing. Install its browser once with `npx playwright install chromium`.

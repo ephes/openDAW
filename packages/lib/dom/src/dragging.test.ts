@@ -12,6 +12,9 @@ const pointer = (target: EventTarget, type: string, pointerId = 1): void => {
 
 let target: HTMLDivElement
 let attachment: Terminable | undefined
+let frameCallback: FrameRequestCallback
+let frameTime = 0
+const tick = (): void => {frameCallback(frameTime += 20)}
 let errors: unknown[]
 const onError = (event: ErrorEvent): void => {errors.push(event.error); event.preventDefault()}
 
@@ -22,6 +25,10 @@ beforeEach(() => {
     target.setPointerCapture = vi.fn(() => {capture = true})
     target.hasPointerCapture = vi.fn(() => capture)
     target.releasePointerCapture = vi.fn(() => {capture = false})
+    AnimationFrame.start({
+        requestAnimationFrame: (callback: FrameRequestCallback): number => {frameCallback = callback; return 1},
+        cancelAnimationFrame: vi.fn()
+    } as unknown as WindowProxy)
     errors = []
     window.addEventListener("error", onError)
 })
@@ -48,6 +55,7 @@ describe("drag settlement", () => {
         pointer(target, "pointermove")
         pointer(target, "pointerup")
         window.dispatchEvent(new KeyboardEvent("keyup", {key: "Shift"}))
+        tick()
         expect(process.update).not.toHaveBeenCalled()
         expect(process.approve).toHaveBeenCalledTimes(hook === "cancel" ? 0 : 1)
         expect(target.hasPointerCapture(1)).toBe(false)
@@ -103,12 +111,13 @@ describe("drag acquisition", () => {
         pointer(target, "pointermove")
         pointer(target, "pointerup")
         window.dispatchEvent(new KeyboardEvent("keyup", {key: "Shift"}))
+        tick()
         expect(process.update).not.toHaveBeenCalled()
         expect(target.hasPointerCapture(1)).toBe(false)
         if (mode === "update") {expect(errors).toEqual([failure])}
     })
 
-    it.each(["pointerup", "pointercancel", "dispose", "replacement"])("retires a deferred lock after %s", async end => {
+    it.each(["pointerup", "pointercancel", "dispose", "replacement", "reattach"])("retires a deferred lock after %s", async end => {
         // Exported preference is mutable in the studio too.
         Dragging.usePointerLock = true
         let locked: Element | null = null
@@ -124,9 +133,12 @@ describe("drag acquisition", () => {
         pointer(target, "pointermove")
         pointer(target, "pointermove")
         expect(target.requestPointerLock).toHaveBeenCalledTimes(1)
-        if (end === "dispose") {attachment.terminate()}
+        if (end === "dispose" || end === "reattach") {attachment.terminate()}
         else if (end !== "replacement") {pointer(target, end)}
-        if (end === "replacement") {
+        if (end === "reattach") {
+            attachment = Dragging.attach(target, () => Option.wrap(process), {pointerLock: true, pointerLockThreshold: 200})
+        }
+        if (end === "replacement" || end === "reattach") {
             pointer(target, "pointerdown", 2)
             pointer(target, "pointermove", 2)
             expect(target.requestPointerLock).toHaveBeenCalledTimes(1)
@@ -135,7 +147,7 @@ describe("drag acquisition", () => {
         await Promise.resolve()
         expect(locked).toBe(null)
         expect(document.exitPointerLock).toHaveBeenCalledTimes(1)
-        if (end === "replacement") {
+        if (end === "replacement" || end === "reattach") {
             pointer(target, "pointermove", 2)
             expect(target.requestPointerLock).toHaveBeenCalledTimes(2)
             resolvers[1]()
