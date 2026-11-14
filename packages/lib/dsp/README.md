@@ -115,3 +115,17 @@ Pulse tests cover finite positive sample rates, frequencies from zero through Ny
 positive values are capped), and duty widths clamped to [0,1]. One-harmonic cases have analytical
 expectations; reset and pitch-change tests check deterministic state. C64Noise tests cover finite
 nonnegative clocks, including fractional and multiple wraps, against an integer LFSR reference.
+
+## WAV export admission
+
+Both float32 and PCM16 encoders accept AudioData or AudioBufferLike sources.
+Before output allocation they require equal, complete channel-plane lengths,
+a matching declared channel count, a nonnegative safe-integer frame count and
+maxLength, and a positive integer sample rate. Channel block alignment must fit
+uint16; sample rate and byte rate must fit uint32. RIFF size must fit uint32,
+including the 36-byte RIFF payload overhead. Malformed sources throw rather than
+silently padding short channels. Validation covers full planes even for prefix
+exports; maxLength deliberately selects at most that many frames, including zero.
+
+Run `npm test -w @opendaw/lib-dsp` for exact interleaved prefix/header and
+pre-allocation admission regressions.

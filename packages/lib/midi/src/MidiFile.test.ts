@@ -1,4 +1,4 @@
-import {describe, expect, it} from "vitest"
+import {describe, expect, it, vi} from "vitest"
 import {ArrayMultimap, ByteArrayInput, ByteArrayOutput} from "@opendaw/lib-std"
 import {MidiFile} from "./MidiFile"
 import {MidiFileDecoder} from "./MidiFileDecoder"
@@ -169,5 +169,79 @@ describe("track export termination", () => {
         const decoded = MidiFile.decoder(buffer).decode()
         expect(decoded.formatType).toBe(1)
         expect(decoded.tracks.map(track => track.metaEvents.length)).toEqual([1, 1])
+    })
+})
+
+describe("musical metadata admission", () => {
+    it("rejects zero tempo", () => {
+        expect(() => MidiFile.decoder(file([[0, 0xff, 0x51, 3, 0, 0, 0, ...end]])).decode()).toThrow(/tempo/i)
+    })
+    it.each([31, 32, 255])("rejects unsupported signature exponent %i", exponent => {
+        expect(() => MidiFile.decoder(file([[0, 0xff, 0x58, 4, 4, exponent, 24, 8, ...end]])).decode()).toThrow(/signature/i)
+    })
+    it("rejects zero signature numerator", () => {
+        expect(() => MidiFile.decoder(file([[0, 0xff, 0x58, 4, 0, 2, 24, 8, ...end]])).decode()).toThrow(/signature/i)
+    })
+    it.each([0, 2, 3, 30])("admits signature denominator exponent %i", exponent => {
+        const track = MidiFile.decoder(file([[0, 0xff, 0x58, 4, 3, exponent, 24, 8, ...end]])).decode().tracks[0]
+        expect(track.metaEvents[0].value).toEqual([3, 2 ** exponent])
+    })
+})
+
+describe("running status lifetime and seven-bit channel parameters", () => {
+    it.each([
+        [0, 60, 100],
+        [0, 0x90, 60, 100, 0, 0xf0, 0, 0, 61, 100],
+        [0, 0x90, 60, 100, 0, 0xf7, 0, 0, 61, 100],
+        [0, 0x90, 60, 100, 0, 0xff, 1, 0, 0, 61, 100]
+    ])("refuses missing or cancelled status %j", (...body) => {
+        expect(() => MidiFile.decoder(file([[...body, ...end]])).decode()).toThrow(/status/i)
+    })
+    it("never shares status with a neighboring track", () => {
+        expect(() => MidiFile.decoder(file([[0, 0x90, 60, 100, ...end], [0, 61, 100, ...end]])).decode()).toThrow(/status/i)
+    })
+    for (const type of [0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0]) {
+        for (const parameter of type === 0xc0 || type === 0xd0 ? [0] : [0, 1]) {
+            it.each([0x80, 0xff])(`refuses high-bit byte %i for ${type.toString(16)} parameter ${parameter}`, bad => {
+                const data = type === 0xc0 || type === 0xd0 ? [0] : [0, 127]
+                data[parameter] = bad
+                expect(() => MidiFile.decoder(file([[0, type, ...data, ...end]])).decode()).toThrow(/data/i)
+            })
+        }
+    }
+    it("admits parameter endpoints and consecutive channel running status", () => {
+        const decoded = MidiFile.decoder(file([[0, 0x90, 0, 127, 1, 127, 0,
+            1, 0xc0, 127, 1, 0, ...end]])).decode().tracks[0]
+        expect(events(decoded).map(event => [event.ticks, event.param0, event.param1])).toEqual([
+            [0, 0, 127], [1, 127, 0], [2, 127, 0], [3, 0, 0]])
+    })
+})
+
+describe("whole-file decode work admission", () => {
+    it("refuses before allocating the next retained control", () => {
+        const decode = vi.spyOn(ControlEvent, "decode")
+        try {
+            const decoder = MidiFile.decoder(file([[0, 0x90, 60, 100, 0, 61, 100, 0, 62, 100, ...end]]), {maxEvents: 2})
+            expect(() => decoder.decode()).toThrow(/budget/i)
+            expect(decode).toHaveBeenCalledTimes(2)
+            expect(decoder.input.position).toBe(29)
+        } finally {decode.mockRestore()}
+    })
+    it.each([[0, 0xff, 1, 0], [0, 0xf0, 0], [0, 0xff, 0x51, 3, 7, 0xa1, 0x20]])
+    ("charges ignored, SysEx and retained metadata events %j", (...event) => {
+        expect(() => MidiFile.decoder(file([[...event, ...event, ...end]]), {maxEvents: 2}).decode()).toThrow(/budget/i)
+    })
+    it("shares the event budget across tracks and admits the exact boundary", () => {
+        const buffer = file([[0, 0x90, 60, 100, ...end], [0, 0xc0, 127, ...end]])
+        expect(MidiFile.decoder(buffer, {maxEvents: 4, maxTracks: 2}).decode().tracks).toHaveLength(2)
+        expect(() => MidiFile.decoder(buffer, {maxEvents: 3}).decode()).toThrow(/budget/i)
+        expect(() => MidiFile.decoder(buffer, {maxTracks: 1}).decode()).toThrow(/budget/i)
+    })
+    it("charges unknown chunks to the track work budget", () => {
+        expect(() => MidiFile.decoder(file([end, end], {chunk: 0x54455354, count: 1}), {maxTracks: 1})
+            .decode()).toThrow(/budget/i)
+    })
+    it.each([0, -1, 0.5, NaN, Infinity])("refuses invalid work limit %s", maxEvents => {
+        expect(() => MidiFile.decoder(file([end]), {maxEvents})).toThrow(/budget/i)
     })
 })

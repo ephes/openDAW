@@ -56,25 +56,34 @@ export namespace Files {
                     console.warn("FileApi.showOpenFilePicker is emulated in this browser. OpenFilePickerOptions are ignored.")
                 }
                 const fileInput = document.createElement("input")
-                fileInput.type = "file"
-                fileInput.multiple = options?.multiple ?? false
-                fileInput.style.display = "none"
-                fileInput.addEventListener("cancel", async () => {
+                let settled = false
+                const finish = (files: ReadonlyArray<File> | null, error?: unknown): void => {
+                    if (settled) {return}
+                    settled = true
+                    fileInput.removeEventListener("cancel", onCancel)
+                    fileInput.removeEventListener("change", onChange)
                     fileInput.remove()
-                    reject(new DOMException("cancel", "AbortError"))
-                })
-                fileInput.addEventListener("change", async (event: Event) => {
-                    const target = event.target as HTMLInputElement
-                    const files = target.files
-                    if (isDefined(files)) {
-                        resolve(Arrays.create(index => asDefined(files.item(index), `No file at index ${index}`), files.length))
-                    } else {
-                        reject(new DOMException("cancel", "AbortError"))
-                    }
-                    fileInput.remove()
-                })
-                document.body.appendChild(fileInput)
-                fileInput.click()
+                    if (files !== null) {resolve(files)} else {reject(error)}
+                }
+                const onCancel = (): void => finish(null, new DOMException("cancel", "AbortError"))
+                const onChange = (): void => {
+                    if (settled) {return}
+                    try {
+                        const files = fileInput.files
+                        if (isDefined(files)) {
+                            finish(Arrays.create(index => asDefined(files.item(index), `No file at index ${index}`), files.length))
+                        } else {onCancel()}
+                    } catch (error) {finish(null, error)}
+                }
+                try {
+                    fileInput.type = "file"
+                    fileInput.multiple = options?.multiple ?? false
+                    fileInput.style.display = "none"
+                    fileInput.addEventListener("cancel", onCancel)
+                    fileInput.addEventListener("change", onChange)
+                    document.body.appendChild(fileInput)
+                    fileInput.click()
+                } catch (error) {finish(null, error)}
             })
         }
     }

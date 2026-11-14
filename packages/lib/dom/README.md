@@ -91,3 +91,13 @@ Pointer lock is not covered natively; jsdom regressions cover it: a drag's own
 pending or granted lock supersedes capture and keeps the drag alive, and the drag
 is cancelled if that lock is rejected, not granted, or ends before pointerup.
 Another drag's delayed lock never shields a replacement drag.
+
+### Fallback file picker
+
+`Files.open` uses a hidden input when the native picker is unavailable. Change,
+cancel, setup/click failure and file-list extraction failure share one terminal
+path: both listeners and the input are removed before settlement. Reentrant
+terminal events are ignored; errors reject the same promise and later picker
+calls get a fresh input.
+
+Run `npm test -w @opendaw/lib-dom` for synthetic DOM lifecycle regressions.

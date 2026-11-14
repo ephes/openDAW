@@ -15,6 +15,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
   Lost pointer capture cancels a drag, except when this drag's own pending or granted pointer lock supersedes it;
   the drag is then cancelled if that lock is rejected, not granted, or ends before pointerup.
 
+- Clean fallback picker nodes/listeners before every success, cancellation or setup/extraction failure.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.83](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-dom@0.0.82...@opendaw/lib-dom@0.0.83) (2026-05-22)

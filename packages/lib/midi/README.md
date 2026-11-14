@@ -18,8 +18,34 @@ F0 and F7 events each consume their own length-prefixed payload, including empty
 and escaped messages, and their delta contributes once to absolute event ticks.
 Other system statuses are refused; FF introduces a meta event.
 
-The existing note-track encoder appends exactly one zero-delta end-of-track event
-after the last encoded event, including for empty tracks. Files containing multiple
-tracks use format 1. This does not extend the encoder's existing channel/event support.
+Export merges channels and musical metadata into one absolute-tick timeline. At a
+shared tick, metadata comes first, followed by numeric channel order; original
+order within a channel or metadata list is stable. All seven channel message
+kinds use explicit statuses and their correct data lengths, including note-off
+release velocity and zero-velocity note-on. Tempo and time signature changes
+are re-encoded (signature metronome fields use canonical 24/8); other metadata
+and SysEx payloads are intentionally not retained. Exactly one final end-of-track
+preserves the latest retained event or terminal tick. Multiple tracks use format 1.
 
 Run synthetic byte-fixture and round-trip regressions with `npm test -w @opendaw/lib-midi`.
+Typecheck test fixtures with `npm exec -w @opendaw/lib-midi -- tsc -p tsconfig.test.json`.
+
+Export admits 1–65535 tracks before calling any track encoder. Channel and
+metadata lists must have nonnegative, safe-integer, nondecreasing absolute ticks;
+interleaved channels are merged before delta calculation. Each resulting delta
+must fit 0–0x0fffffff. Tick/delta validation completes before track output
+allocation; arithmetic VLQ encoding never uses signed shifts. Invalid channels,
+message kinds or seven-bit data are refused instead of producing partial bytes.
+
+Import rejects zero tempo and signatures outside numerator 1–255 / denominator
+2^0 through 2^30. Channel data must be seven-bit. Running status is local to
+one track, starts unset, and is cleared by every meta or SysEx event; data bytes
+without an active channel status fail immediately.
+
+`MidiFile.decoder(buffer, {maxEvents, maxTracks})` accepts optional **lower**
+work limits. Defaults/ceilings are 1,000,000 events per file and 65,535 track
+chunks. Every event (including ignored metadata, SysEx and end-of-track) is
+charged before decoding or allocating its model object. Unknown chunks count
+against track work too. Limits are positive safe integers, copied at creation.
+An over-budget file throws without returning a partial model. These are work
+limits, not byte-size or wall-clock guarantees.

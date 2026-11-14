@@ -16,20 +16,12 @@ export class ControlEvent implements Event<ControlType> {
             case ControlType.CONTROLLER:
             case ControlType.PITCH_BEND:
             case ControlType.NOTE_AFTER_TOUCH:
-                return new ControlEvent(ticks, type, decoder.readByte(), decoder.readByte())
+                return new ControlEvent(ticks, type, decoder.readChannelData(), decoder.readChannelData())
             case ControlType.PROGRAM_CHANGE:
             case ControlType.CHANNEL_AFTER_TOUCH:
-                return new ControlEvent(ticks, type, decoder.readByte(), 0)
+                return new ControlEvent(ticks, type, decoder.readChannelData(), 0)
         }
-        {
-            // else ignore the message
-            let c: int
-            do {
-                c = decoder.readByte() & 0xff
-            } while (c < 0x80)
-            decoder.skip(-1)
-        }
-        return null
+        throw new Error("Unsupported MIDI channel status")
     }
 
     accept(visitor: MidiEventVisitor): void {
