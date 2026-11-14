@@ -41,3 +41,14 @@ detached resource; a nested replacement survives. Disposal also runs when an
 observer throws, retaining the primary notification error. Five of seven new
 observable tests failed on the previous source; all seven pass after repair.
 Tests cover reentrant updates, failed initial delivery and disposal/observer errors.
+
+## O5: subscription acquisition and retirement
+
+Acquire multi-source subscriptions incrementally and unwind in reverse order,
+continuing past cleanup failures while retaining the acquisition error. Mapped
+observable termination clears downstream listeners before releasing upstream,
+and makes new subscriptions inert. Three regression cases failed before repair;
+all eleven notifier/observable tests pass afterward. Synthetic sources fail at
+the second and third acquisition, with every earlier cleanup also throwing.
+The mapped test inspects its notifier via a subscription spy, using public
+`isEmpty`, and verifies no retained listeners or post-termination catchup delivery.

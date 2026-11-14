@@ -1,7 +1,28 @@
 import {describe, expect, it, vi} from "vitest"
 import {DefaultObservableValue, MappedMutableObservableValue, MutableObservableOption} from "./observables"
+import {Notifier} from "./notifier"
 
 describe("observable catchup ownership", () => {
+    it("releases mapped downstream listeners and makes later subscriptions inert", () => {
+        const source = new DefaultObservableValue(1)
+        const mapped = new MappedMutableObservableValue(source, {fx: value => value * 10, fy: value => value / 10})
+        const subscribe = vi.spyOn(Notifier.prototype, "subscribe")
+        const observer = vi.fn()
+        mapped.subscribe(observer)
+        const downstream = subscribe.mock.contexts[0]
+        subscribe.mockRestore()
+        expect(downstream.isEmpty()).toBe(false)
+        mapped.terminate()
+        mapped.terminate()
+        expect(downstream.isEmpty()).toBe(true)
+        source.setValue(2)
+        mapped.subscribe(observer).terminate()
+        mapped.catchupAndSubscribe(observer).terminate()
+        expect(downstream.isEmpty()).toBe(true)
+        expect(observer).not.toHaveBeenCalled()
+        expect(mapped.getValue()).toBe(20)
+    })
+
     it("subscribes before initial delivery for default values", () => {
         const source = new DefaultObservableValue(1)
         const seen: number[] = []

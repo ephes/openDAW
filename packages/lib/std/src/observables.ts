@@ -133,6 +133,8 @@ export class MappedMutableObservableValue<SOURCE, TARGET> implements MutableObse
     readonly #notifier: Notifier<TARGET>
     readonly #subscription: Subscription
 
+    #terminated: boolean = false
+
     constructor(source: MutableObservableValue<SOURCE>, mapping: Bijective<SOURCE, TARGET>) {
         this.#source = source
         this.#mapping = mapping
@@ -142,6 +144,7 @@ export class MappedMutableObservableValue<SOURCE, TARGET> implements MutableObse
     }
 
     catchupAndSubscribe(observer: Observer<ObservableValue<TARGET>>): Subscription {
+        if (this.#terminated) {return Terminable.Empty}
         return catchupAndSubscribe(this, this, observer)
     }
 
@@ -149,10 +152,16 @@ export class MappedMutableObservableValue<SOURCE, TARGET> implements MutableObse
     setValue(value: TARGET): void {this.#source.setValue(this.#mapping.fy(value))}
 
     subscribe(observer: Observer<ObservableValue<TARGET>>): Subscription {
+        if (this.#terminated) {return Terminable.Empty}
         return this.#notifier.subscribe(() => observer(this))
     }
 
-    terminate(): void {this.#subscription.terminate()}
+    terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
+        this.#notifier.terminate()
+        this.#subscription.terminate()
+    }
 }
 
 export interface ValueGuard<T> {guard(value: T): T}
