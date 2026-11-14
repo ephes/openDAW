@@ -17,6 +17,13 @@ Runtime utilities and asynchronous operations for TypeScript projects.
 * **messenger.ts** - Message passing utilities
 * **communicator.ts** - Inter-process communication helpers
 
+`Messenger.for(port)` owns the handlers it installs. Termination is idempotent
+and clears a handler only while it is still owned by that wrapper, so retiring an
+old owner cannot clear a replacement wrapper's handlers. Retired native wrappers
+and channels drop sends and return inert subscriptions; saved native callbacks
+also ignore late deliveries. Terminating a channel releases only that channel,
+leaving its shared transport and other channels alive.
+
 ## Time & Performance
 
 * **timespan.ts** - Time span calculations and utilities

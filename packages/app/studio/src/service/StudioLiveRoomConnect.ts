@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {Errors, Optional, RuntimeNotifier, Terminator, TimeSpan, UUID} from "@opendaw/lib-std"
 import {Promises, Wait} from "@opendaw/lib-runtime"
 import {SampleStorage, SoundfontStorage, Workers, YService} from "@opendaw/studio-core"
@@ -47,8 +48,8 @@ export const connectRoom = async (service: StudioService, prefillRoomName?: Opti
                 readSample: async uuid => {
                     const path = `${SampleStorage.Folder}/${UUID.toString(uuid)}`
                     const [wavBytes, metaBytes] = await Promise.all([
-                        Workers.Opfs.read(`${path}/audio.wav`),
-                        Workers.Opfs.read(`${path}/meta.json`)
+                        Workers.Opfs.read(`${path}/audio.wav`, OpfsProtocol.ReadLimits.Media),
+                        Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
                     ])
                     return [wavBytes.buffer as ArrayBuffer, JSON.parse(new TextDecoder().decode(metaBytes))]
                 },

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound cached model and metadata OPFS reads before allocation with the existing model ceiling and a 1 MiB sidecar budget.
+
 - Stem outputs outside the documented one-stacked/four-separate tensor layouts now reject, including extra output names or alternate ranks.
 
 - Validate planar stem inputs, chunk planning arguments and exact output tensor storage/shapes.

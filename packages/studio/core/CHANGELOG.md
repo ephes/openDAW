@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Honor declined large-soundfont imports before hashing/parsing/storage and handle AbortError as normal asset cancellation.
+
+- Pass explicit metadata, project, preset and media budgets through the OPFS worker protocol before allocation.
+
 - Observe clipboard write rejection after the adapter notification while retaining the in-memory copy fallback.
 
 - Bind engine worklet and offline renderer RPC requests to their shutdown owners so pending calls reject on disposal; repeated engine worklet termination is a no-op.

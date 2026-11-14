@@ -1,6 +1,6 @@
 import {z} from "zod"
 import {WavFile} from "@opendaw/lib-dsp"
-import {SamplePeaks} from "@opendaw/lib-fusion"
+import {OpfsProtocol, SamplePeaks} from "@opendaw/lib-fusion"
 import {readZipEntry, ZIP_LIMITS} from "@opendaw/lib-runtime"
 import {ProjectMigration} from "./ProjectMigration"
 import {ProjectMeta} from "./ProjectMeta"
@@ -153,7 +153,7 @@ export namespace ProjectBundle {
                     if (!entries.some(entry => entry.name === asset.name)) {fresh.push(asset); continue}
                     const existing = new Map<string, Uint8Array>()
                     try {
-                        for (const leaf of requiredFiles(asset)) {existing.set(leaf, await Workers.Opfs.read(`${asset.folder}/${asset.name}/${leaf}`))}
+                        for (const leaf of requiredFiles(asset)) {existing.set(leaf, await Workers.Opfs.read(`${asset.folder}/${asset.name}/${leaf}`, leaf === "meta.json" ? OpfsProtocol.ReadLimits.Metadata : OpfsProtocol.ReadLimits.Media))}
                     } catch (cause) {throw new Error("Incomplete existing bundle asset; repair it before importing", {cause})}
                     const media = asset.folder === SampleStorage.Folder ? "audio.wav" : "soundfont.sf2"
                     const before = existing.get(media)!, incoming = asset.files.get(media)!
@@ -185,9 +185,9 @@ export namespace ProjectBundle {
     const pipeSampleLoaderInto = async (loader: SampleLoader, zip: JSZip): Promise<void> => {
         const exec: Exec = async () => {
             const path = `${SampleStorage.Folder}/${UUID.toString(loader.uuid)}`
-            zip.file("audio.wav", await Workers.Opfs.read(`${path}/audio.wav`), {binary: true})
-            zip.file("peaks.bin", await Workers.Opfs.read(`${path}/peaks.bin`), {binary: true})
-            zip.file("meta.json", await Workers.Opfs.read(`${path}/meta.json`))
+            zip.file("audio.wav", await Workers.Opfs.read(`${path}/audio.wav`, OpfsProtocol.ReadLimits.Media), {binary: true})
+            zip.file("peaks.bin", await Workers.Opfs.read(`${path}/peaks.bin`, OpfsProtocol.ReadLimits.Media), {binary: true})
+            zip.file("meta.json", await Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata))
         }
         if (loader.state.type === "loaded") {
             return exec()
@@ -214,8 +214,8 @@ export namespace ProjectBundle {
     const pipeSoundfontLoaderInto = async (loader: SoundfontLoader, zip: JSZip): Promise<void> => {
         const exec: Exec = async () => {
             const path = `${SoundfontStorage.Folder}/${UUID.toString(loader.uuid)}`
-            zip.file("soundfont.sf2", await Workers.Opfs.read(`${path}/soundfont.sf2`), {binary: true})
-            zip.file("meta.json", await Workers.Opfs.read(`${path}/meta.json`))
+            zip.file("soundfont.sf2", await Workers.Opfs.read(`${path}/soundfont.sf2`, OpfsProtocol.ReadLimits.Media), {binary: true})
+            zip.file("meta.json", await Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata))
         }
         if (loader.state.type === "loaded") {
             return exec()

@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {Class, Option, Progress, safeExecute, UUID} from "@opendaw/lib-std"
 import {AudioFileBox, SoundfontFileBox} from "@opendaw/studio-boxes"
 import {ProjectSkeleton} from "@opendaw/studio-adapters"
@@ -34,7 +35,7 @@ export namespace ProjectStorage {
                 try {
                     const uuid = UUID.parse(name)
                     const meta = JSON.parse(new TextDecoder().decode(
-                        await Workers.Opfs.read(ProjectPaths.projectMeta(uuid)))) as ProjectMeta
+                        await Workers.Opfs.read(ProjectPaths.projectMeta(uuid), OpfsProtocol.ReadLimits.Metadata))) as ProjectMeta
                     if (typeof meta?.name !== "string") {throw new Error("Invalid project metadata")}
                     return {
                         uuid, meta,
@@ -51,15 +52,15 @@ export namespace ProjectStorage {
     }
 
     export const loadProject = async (uuid: UUID.Bytes): Promise<ArrayBuffer> => {
-        return Workers.Opfs.read(ProjectPaths.projectFile(uuid)).then(array => array.buffer as ArrayBuffer)
+        return Workers.Opfs.read(ProjectPaths.projectFile(uuid), OpfsProtocol.ReadLimits.Project).then(array => array.buffer as ArrayBuffer)
     }
 
     export const loadMeta = async (uuid: UUID.Bytes): Promise<ArrayBuffer> => {
-        return Workers.Opfs.read(ProjectPaths.projectMeta(uuid)).then(array => array.buffer as ArrayBuffer)
+        return Workers.Opfs.read(ProjectPaths.projectMeta(uuid), OpfsProtocol.ReadLimits.Metadata).then(array => array.buffer as ArrayBuffer)
     }
 
     export const loadCover = async (uuid: UUID.Bytes, {strict = false}: {strict?: boolean} = {}): Promise<Option<ArrayBuffer>> => {
-        return Workers.Opfs.read(ProjectPaths.projectCover(uuid))
+        return Workers.Opfs.read(ProjectPaths.projectCover(uuid), OpfsProtocol.ReadLimits.Media)
             .then(array => Option.wrap(array.buffer as ArrayBuffer), error => {
                 if (strict && (!(error instanceof DOMException) || error.name !== "NotFoundError")) {throw error}
                 return Option.None
@@ -87,8 +88,8 @@ export namespace ProjectStorage {
             let decoded: ProjectSkeleton
             try {
                 const uuid = UUID.parse(folder)
-                const projectBytes = await Workers.Opfs.read(ProjectPaths.projectFile(uuid))
-                const metaBytes = await Workers.Opfs.read(ProjectPaths.projectMeta(uuid))
+                const projectBytes = await Workers.Opfs.read(ProjectPaths.projectFile(uuid), OpfsProtocol.ReadLimits.Project)
+                const metaBytes = await Workers.Opfs.read(ProjectPaths.projectMeta(uuid), OpfsProtocol.ReadLimits.Metadata)
                 projectName = (JSON.parse(new TextDecoder().decode(metaBytes)) as ProjectMeta).name
                 decoded = ProjectSkeleton.decode(exactBuffer(projectBytes))
             } catch (cause) {

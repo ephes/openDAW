@@ -2,7 +2,6 @@ import {
     isDefined,
     Notifier,
     Nullable,
-    Observable,
     Observer,
     Procedure,
     Subscription,
@@ -28,6 +27,9 @@ const EmptyTransferables: Array<Transferable> = []
 class NativeMessenger implements Messenger {
     readonly #port: Port
     readonly #notifier = new Notifier<unknown>()
+    readonly #onmessage: Procedure<MessageEvent>
+    readonly #onmessageerror: Procedure<MessageEvent>
+    #terminated = false
 
     constructor(port: Port) {
         this.#port = port
@@ -36,20 +38,31 @@ class NativeMessenger implements Messenger {
             console.error(port)
             throw new Error(`${port} is already wrapped.`)
         }
-        port.onmessage = (event: MessageEvent) => this.#notifier.notify(event.data)
-        port.onmessageerror = (event: MessageEvent) => {throw new Error(event.type)}
+        this.#onmessage = (event: MessageEvent) => {
+            if (!this.#terminated) {this.#notifier.notify(event.data)}
+        }
+        this.#onmessageerror = (event: MessageEvent) => {
+            if (!this.#terminated) {throw new Error(event.type)}
+        }
+        port.onmessage = this.#onmessage
+        port.onmessageerror = this.#onmessageerror
     }
 
     send(message: unknown, transfer?: Array<Transferable>): void {
+        if (this.#terminated) {return}
         this.#port.postMessage(message, transfer ?? EmptyTransferables)
     }
 
     channel(name: string): Messenger {return new Channel(this, name)}
-    subscribe<T>(observer: Observer<T>): Subscription {return this.#notifier.subscribe(observer as Observer<unknown>)}
+    subscribe<T>(observer: Observer<T>): Subscription {
+        return this.#terminated ? Terminable.Empty : this.#notifier.subscribe(observer as Observer<unknown>)
+    }
     terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
         this.#notifier.terminate()
-        this.#port.onmessage = null
-        this.#port.onmessageerror = null
+        if (this.#port.onmessage === this.#onmessage) {this.#port.onmessage = null}
+        if (this.#port.onmessageerror === this.#onmessageerror) {this.#port.onmessageerror = null}
     }
 }
 
@@ -59,6 +72,7 @@ class Channel implements Messenger {
     readonly #name: string
     readonly #notifier = new Notifier<unknown>()
     readonly #subscription: Subscription
+    #terminated = false
 
     constructor(messages: Messenger, name: string) {
         this.#messages = messages
@@ -71,12 +85,17 @@ class Channel implements Messenger {
     }
 
     send(message: unknown, transferrables?: Array<Transferable>): void {
+        if (this.#terminated) {return}
         this.#messages.send({__id__: "42", channel: this.#name, message}, transferrables)
     }
 
     channel(name: string): Messenger {return new Channel(this, name)}
-    subscribe<T>(observer: Observer<T>): Subscription {return this.#notifier.subscribe(observer as Observer<unknown>)}
+    subscribe<T>(observer: Observer<T>): Subscription {
+        return this.#terminated ? Terminable.Empty : this.#notifier.subscribe(observer as Observer<unknown>)
+    }
     terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
         this.#subscription.terminate()
         this.#notifier.terminate()
     }

@@ -1,5 +1,5 @@
 import {Arrays} from "./arrays"
-import {EmptyExec, Exec, Func} from "./lang"
+import {EmptyExec, Exec, Func, tryCatch} from "./lang"
 import {Observer} from "./observers"
 
 export interface Terminable {terminate(): void}
@@ -18,8 +18,19 @@ export const Terminable = Object.freeze({
     Empty: {terminate: EmptyExec},
     create: (exec: Exec) => ({terminate: exec}),
     many: (...terminables: Terminable[]): Terminable =>
-        ({terminate: (): void => {while (terminables.length > 0) {terminables.pop()!.terminate()}}})
+        ({terminate: (): void => drain(terminables)})
 } as const)
+
+const drain = (terminables: Terminable[]): void => {
+    const pending = terminables.splice(0)
+    const errors: unknown[] = []
+    while (pending.length > 0) {
+        const result = tryCatch(() => pending.pop()!.terminate())
+        if (result.status === "failure") {errors.push(result.error)}
+    }
+    if (errors.length === 1) {throw errors[0]}
+    if (errors.length > 1) {throw new AggregateError(errors, "Multiple cleanup failures", {cause: errors[0]})}
+}
 
 export class Terminator implements TerminableOwner, Terminable {
     readonly #terminables: Terminable[] = []
@@ -42,7 +53,7 @@ export class Terminator implements TerminableOwner, Terminable {
         return this.own(terminator)
     }
 
-    terminate(): void {while (this.#terminables.length > 0) {this.#terminables.pop()!.terminate()}}
+    terminate(): void {drain(this.#terminables)}
 }
 
 export class VitalSigns implements Terminable {
@@ -62,27 +73,29 @@ export class CascadingSubscriptions {
     } {
         const current = this.#current
         const nested = current.own(new Terminator())
+        let generation = 0
+        let active = true
+        current.own({terminate: () => {active = false; generation++}})
         this.#current = nested
         return {
             own: (subscription: Subscription): Subscription => {
-                current.own(subscription)
+                if (active) {current.own(subscription)} else {subscription.terminate()}
                 return current
             },
             toObserver: <T>(fn: Func<T, Subscription>): Observer<T> => (value: T) => {
+                if (!active) {return}
+                const ticket = ++generation
                 nested.terminate()
-                nested.own(fn(value))
+                if (!active || ticket !== generation) {return}
+                this.#current = nested
+                const subscription = fn(value)
+                if (active && ticket === generation) {nested.own(subscription)} else {subscription.terminate()}
             }
         }
     }
 
     append<T>(subscribe: Func<Observer<T>, Subscription>, observer: Func<T, Subscription>): Subscription {
-        const current = this.#current
-        const nested = current.own(new Terminator())
-        current.own(subscribe((value: T) => {
-            nested.terminate()
-            nested.own(observer(value))
-        }))
-        this.#current = nested
-        return current
+        const {own, toObserver} = this.next()
+        return own(subscribe(toObserver(observer)))
     }
 }

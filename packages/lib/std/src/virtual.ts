@@ -1,6 +1,6 @@
 import {Subscription, Terminable, Terminator} from "./terminable"
 import {Notifier} from "./notifier"
-import {PathTuple, ValueAtPath} from "./lang"
+import {Exec, isDefined, PathTuple, ValueAtPath} from "./lang"
 import {Observer} from "./observers"
 import {MutableObservableValue, ObservableValue} from "./observables"
 
@@ -60,7 +60,9 @@ export class VirtualObject<T extends object> implements Terminable {
 
     update(data: T): void {
         const changedRootKeys = new Set<keyof T>()
-        this.#updateRecursive(this.#data, data, changedRootKeys)
+        const changes: Exec[] = []
+        this.#stageRecursive(this.#data, data, changes, changedRootKeys, new Set())
+        for (const change of changes) {change()}
         for (const key of changedRootKeys) {
             this.#notifier.notify([key])
         }
@@ -79,20 +81,42 @@ export class VirtualObject<T extends object> implements Terminable {
         return true
     }
 
-    readonly #updateRecursive = (target: object, source: object, changedRootKeys: Set<keyof T>, rootKey?: keyof T): void => {
-        const targetRecord = target as Record<string, unknown>
-        const sourceRecord = source as Record<string, unknown>
+    readonly #stageRecursive = (target: object, source: object, changes: Exec[],
+                               changedRootKeys: Set<keyof T>, ancestors: Set<object>, rootKey?: keyof T): void => {
+        if (!isPlainRecord(target) || !isPlainRecord(source) || ancestors.has(source)) {
+            throw new TypeError("VirtualObject.update requires acyclic plain records")
+        }
+        ancestors.add(source)
         for (const key of Object.keys(source)) {
             const currentRootKey = rootKey ?? key as keyof T
-            const newValue = sourceRecord[key]
-            const oldValue = targetRecord[key]
-            if (newValue !== null && typeof newValue === "object" && !Array.isArray(newValue)) {
-                this.#updateRecursive(targetRecord[key] as object, newValue, changedRootKeys, currentRootKey)
-            } else if (oldValue !== newValue) {
-                targetRecord[key] = newValue
+            const incoming = Object.getOwnPropertyDescriptor(source, key)
+            const existing = Object.getOwnPropertyDescriptor(target, key)
+            if (!isDefined(incoming) || !Object.hasOwn(incoming, "value")
+                || (isDefined(existing) && !Object.hasOwn(existing, "value"))) {
+                throw new TypeError("VirtualObject.update does not support accessors")
+            }
+            let newValue = incoming.value
+            const oldValue = existing?.value
+            if (isDefined(newValue) && typeof newValue === "object" && !Array.isArray(newValue)) {
+                if (isPlainRecord(oldValue)) {
+                    this.#stageRecursive(oldValue, newValue, changes, changedRootKeys, ancestors, currentRootKey)
+                    continue
+                }
+                const replacement = {}
+                this.#stageRecursive(replacement, newValue, changes, changedRootKeys, ancestors, currentRootKey)
+                newValue = replacement
+            }
+            if (oldValue !== newValue) {
+                if (isDefined(existing) ? !existing.writable : !Object.isExtensible(target)) {
+                    throw new TypeError("VirtualObject.update target is not writable")
+                }
+                const descriptor = existing ?? {writable: true, enumerable: true, configurable: true}
+                const value = newValue
+                changes.push(() => {Object.defineProperty(target, key, {...descriptor, value})})
                 changedRootKeys.add(currentRootKey)
             }
         }
+        ancestors.delete(source)
     }
 
     readonly #createProxy = <O extends object>(object: O, path: PropertyKey[]): O =>
@@ -111,4 +135,10 @@ export class VirtualObject<T extends object> implements Terminable {
             },
             preventExtensions: () => false
         })
+}
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+    if (!isDefined(value) || typeof value !== "object") {return false}
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
 }

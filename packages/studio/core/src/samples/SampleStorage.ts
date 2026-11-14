@@ -1,5 +1,5 @@
 import {ByteArrayInput, Lazy, Progress, tryCatch, UUID} from "@opendaw/lib-std"
-import {Peaks, SamplePeaks} from "@opendaw/lib-fusion"
+import {OpfsProtocol, Peaks, SamplePeaks} from "@opendaw/lib-fusion"
 import {Sample, SampleMetaData} from "@opendaw/studio-adapters"
 import {Workers} from "../Workers"
 import {Storage} from "../Storage"
@@ -60,7 +60,7 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
         return navigator.locks.request(`opendaw:storage:${this.folder}`, async () => {
             // A stale editor must not recreate a metadata-only directory after delete.
             if (!await Workers.Opfs.exists(`${path}/audio.wav`)) {throw new Error("Sample is no longer available; refresh the library.")}
-            const previous = JSON.parse(new TextDecoder().decode(await Workers.Opfs.read(`${path}/meta.json`)))
+            const previous = JSON.parse(new TextDecoder().decode(await Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata)))
             SampleMetaData.parse(previous)
             await Workers.Opfs.write(`${path}/meta.json`, new TextEncoder().encode(JSON.stringify(meta)))
         })
@@ -68,7 +68,7 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
 
     async loadMeta(uuid: UUID.Bytes): Promise<SampleMetaData> {
         const path = `${this.folder}/${UUID.toString(uuid)}`
-        const bytes = await Workers.Opfs.read(`${path}/meta.json`)
+        const bytes = await Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
         return JSON.parse(new TextDecoder().decode(bytes))
     }
 
@@ -77,12 +77,12 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
         const exactBuffer = (bytes: Uint8Array): ArrayBuffer =>
             bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
         const [audioBytes, peaksBytes, metaBytes] = await Promise.all([
-            Workers.Opfs.read(`${path}/audio.wav`),
-            Workers.Opfs.read(`${path}/peaks.bin`).catch(error => {
+            Workers.Opfs.read(`${path}/audio.wav`, OpfsProtocol.ReadLimits.Media),
+            Workers.Opfs.read(`${path}/peaks.bin`, OpfsProtocol.ReadLimits.Media).catch(error => {
                 if (error instanceof DOMException && error.name === "NotFoundError") {return new Uint8Array(0)}
                 throw error
             }),
-            Workers.Opfs.read(`${path}/meta.json`)
+            Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
         ])
         const decoded = WavFile.decodeFloats(exactBuffer(audioBytes))
         const audio: AudioData = {

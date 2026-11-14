@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reset old soundfont voices and display state on file-pointer transitions; process releases without a loaded font and own note-display disposal.
+
 - Reload invalidated worklet samples by attempt; ignore late fetch success/error after removal, reload or manager termination.
 
 - Clear Pitch, Velocity and Zeitgeist note displays on reset, and bound the Velocity display cursor to its broadcast buffer.

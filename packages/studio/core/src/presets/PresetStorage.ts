@@ -1,3 +1,4 @@
+import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {ByteArrayInput, Class, DefaultObservableValue, isAbsent, ObservableValue, Option, tryCatch, UUID} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {Box, BoxGraph} from "@opendaw/lib-box"
@@ -71,7 +72,7 @@ export namespace PresetStorage {
     export const observable = (): ObservableValue<ReadonlyArray<PresetMeta>> => cache
 
     const readIndexOwned = async (): Promise<ReadonlyArray<PresetMeta>> => {
-        const read = await Promises.tryCatch(Workers.Opfs.read(INDEX_PATH))
+        const read = await Promises.tryCatch(Workers.Opfs.read(INDEX_PATH, OpfsProtocol.ReadLimits.Metadata))
         const parsed = read.status === "resolved" ? parseIndex(read.value) : Option.None
         if (parsed.isEmpty()) {return rebuildIndexOwned()}
         const {entries, repair} = parsed.unwrap()
@@ -96,7 +97,7 @@ export namespace PresetStorage {
     })
 
     export const load = async (uuid: UUID.Bytes): Promise<ArrayBuffer> => {
-        const bytes = await Workers.Opfs.read(fileFor(uuid))
+        const bytes = await Workers.Opfs.read(fileFor(uuid), OpfsProtocol.ReadLimits.Preset)
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     }
 
@@ -137,7 +138,7 @@ export namespace PresetStorage {
             .map(file => ({uuid: file.name.slice(0, -4) as UUID.String,
                 name: cache.getValue().find(entry => `${entry.uuid}.odp` === file.name)?.name ?? file.name}))
         for (const entry of entries) {
-            const read = await Promises.tryCatch(Workers.Opfs.read(fileFor(UUID.parse(entry.uuid))))
+            const read = await Promises.tryCatch(Workers.Opfs.read(fileFor(UUID.parse(entry.uuid)), OpfsProtocol.ReadLimits.Preset))
             if (read.status === "rejected") {throw new Error(`Cannot check asset usage: repair preset ${entry.uuid}`)}
             const bytes = read.value
             if (bytes.byteLength < 8) {throw new Error(`Invalid preset ${entry.uuid}`)}
@@ -171,7 +172,7 @@ export namespace PresetStorage {
             const validId = tryCatch(() => UUID.toString(UUID.parse(uuidStr)) === uuidStr)
             if (validId.status === "failure" || !validId.value || recovered.some(meta => meta.uuid === uuidStr)) {continue}
             const path = `${FOLDER}/${entry.name}`
-            const read = await Promises.tryCatch(Workers.Opfs.read(path))
+            const read = await Promises.tryCatch(Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Preset))
             if (read.status === "rejected") {
                 console.warn(`PresetStorage.rebuildIndex: cannot read ${path}`, read.error)
                 continue
@@ -196,7 +197,7 @@ export namespace PresetStorage {
         return recovered
     }
     export const rebuildIndex = async (): Promise<ReadonlyArray<PresetMeta>> => navigator.locks.request(lock, async () => {
-        const read = await Promises.tryCatch(Workers.Opfs.read(INDEX_PATH))
+        const read = await Promises.tryCatch(Workers.Opfs.read(INDEX_PATH, OpfsProtocol.ReadLimits.Metadata))
         const parsed = read.status === "resolved" ? parseIndex(read.value) : Option.None
         return rebuildIndexOwned(parsed.map(value => value.entries).unwrapOrElse(() => []))
     })

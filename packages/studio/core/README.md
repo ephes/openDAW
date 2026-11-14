@@ -1,5 +1,22 @@
 This package is part of the openDAW SDK
 
+### Local storage read budgets
+
+Local OPFS reads use explicit budgets before allocation: metadata, indexes and
+journals 1 MiB; project/recovery graphs 64 MiB; presets 16 MiB;
+sample/peak/soundfont binaries and project covers 1 GiB (covers use the media
+budget because bundle import admits covers up to its 512 MiB media limit). Recovery UUID/flags admit 16/1 bytes.
+Oversized files follow the existing unreadable-asset/project recovery paths.
+
+### Soundfont import and playback
+
+Declining the warning for imports larger than 16 MiB rejects direct `importFile`
+with `AbortError` before progress, hashing, parsing or storage. Browse and missing
+asset replacement treat this as cancellation without an import-error dialog.
+Changing/removing a soundfont file pointer resets voices, pending note events,
+note display, audio and meters before adopting its next loader. Note stops remain
+processable while a font is unavailable; processor disposal also clears state.
+
 ### MIDI learning lifetime
 
 MIDI permission completion only starts learning while the same followed user and

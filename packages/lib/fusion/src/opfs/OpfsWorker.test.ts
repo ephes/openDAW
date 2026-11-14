@@ -12,6 +12,11 @@ const createMockFileSystem = () => {
     const fail = (operation: string) => {if (faults.has(operation)) {throw faults.get(operation)}}
     const close = vi.fn()
     const flush = vi.fn()
+    const opened = vi.fn(async () => {})
+    const advertisedSize = vi.fn<(size: number) => number>(size => size)
+    const read = vi.fn()
+    let active = 0
+    let maximumActive = 0
     const resolveDir = (segments: ReadonlyArray<string>, create: boolean): Map<string, EntryData> => {
         let current = root
         for (const segment of segments) {
@@ -30,8 +35,9 @@ const createMockFileSystem = () => {
         return current
     }
     const createSyncAccessHandle = (fileEntry: FileData): FileSystemSyncAccessHandle => ({
-        getSize: () => fileEntry.data.length,
+        getSize: () => advertisedSize(fileEntry.data.length),
         read: (buffer: Uint8Array, options?: {at?: number}) => {
+            read()
             fail("read")
             const at = options?.at ?? 0
             const count = Math.min(buffer.length, fileEntry.data.length - at, limits.read)
@@ -54,14 +60,18 @@ const createMockFileSystem = () => {
         },
         truncate: (size: number) => {fileEntry.data = new Uint8Array(size)},
         flush,
-        close
+        close: () => {active--; close()}
     } as unknown as FileSystemSyncAccessHandle)
     const createFileHandle = (name: string, fileEntry: FileData): FileSystemFileHandle => ({
         kind: "file",
         name,
         isSameEntry: async (_other: FileSystemHandle) => false,
         getFile: async () => new File([fileEntry.data.slice()], name),
-        createSyncAccessHandle: async () => createSyncAccessHandle(fileEntry)
+        createSyncAccessHandle: async () => {
+            maximumActive = Math.max(maximumActive, ++active)
+            await opened()
+            return createSyncAccessHandle(fileEntry)
+        }
     } as unknown as FileSystemFileHandle)
     const createDirectoryHandle = (children: Map<string, EntryData>, dirName: string = ""): FileSystemDirectoryHandle => {
         const handle: FileSystemDirectoryHandle = {
@@ -116,7 +126,8 @@ const createMockFileSystem = () => {
         } as unknown as FileSystemDirectoryHandle
         return handle
     }
-    return {root, limits, faults, close, flush, createDirectoryHandle: () => createDirectoryHandle(root)}
+    return {root, limits, faults, close, flush, opened, advertisedSize, read, maximumActive: () => maximumActive,
+        createDirectoryHandle: () => createDirectoryHandle(root)}
 }
 
 let protocol: OpfsProtocol
@@ -146,6 +157,47 @@ beforeEach(async () => {
 })
 
 describe("OpfsWorker", () => {
+    it("serializes alias writes and releases exclusion after failure", async () => {
+        const entered = Promise.withResolvers<void>()
+        const resume = Promise.withResolvers<void>()
+        mockFs.opened.mockImplementationOnce(async () => {entered.resolve(); await resume.promise})
+        const first = protocol.write("alias.bin", new Uint8Array([1]))
+        await entered.promise
+        const second = protocol.write("/alias.bin/", new Uint8Array([2, 3]))
+        for (let index = 0; index < 20; index++) {await Promise.resolve()}
+        const maximum = mockFs.maximumActive()
+        resume.resolve()
+        await Promise.all([first, second])
+        expect(maximum).toBe(1)
+        expect(await protocol.read("alias.bin")).toEqual(new Uint8Array([2, 3]))
+        mockFs.limits.write = 0
+        await expect(protocol.write("/alias.bin", new Uint8Array([4]))).rejects.toThrow("Incomplete")
+        mockFs.limits.write = Infinity
+        await protocol.write("alias.bin/", new Uint8Array([5]))
+        expect(await protocol.read("alias.bin")).toEqual(new Uint8Array([5]))
+    })
+
+    it.each(["parent", "", "/"])("orders child writes before deletion of %j", async path => {
+        const entered = Promise.withResolvers<void>()
+        const resume = Promise.withResolvers<void>()
+        mockFs.opened.mockImplementationOnce(async () => {entered.resolve(); await resume.promise})
+        const write = protocol.write("parent/child.bin", new Uint8Array([1]))
+        await entered.promise
+        const deletion = protocol.delete(path)
+        for (let index = 0; index < 20; index++) {await Promise.resolve()}
+        const presentDuringWrite = mockFs.root.has("parent")
+        resume.resolve()
+        await Promise.all([write, deletion])
+        expect(presentDuringWrite).toBe(true)
+        expect(mockFs.root.size).toBe(0)
+        await protocol.write("parent/child.bin", new Uint8Array([2]))
+        expect(await protocol.read("parent/child.bin")).toEqual(new Uint8Array([2]))
+    })
+
+    it.each(["a//b", "a/../b", "./a", "a\u0000b"])("rejects invalid path %j before storage", async path => {
+        await expect(protocol.write(path, new Uint8Array([1]))).rejects.toThrow("Invalid OPFS path")
+        expect(mockFs.root.size).toBe(0)
+    })
     describe("write", () => {
         it("should write data to a new file", async () => {
             const data = new Uint8Array([1, 2, 3, 4])
@@ -312,6 +364,42 @@ describe("OpfsWorker", () => {
 
 
 describe("exact OPFS transfers", () => {
+    it("admits the opened size before allocation/read and accepts the boundary", async () => {
+        await protocol.write("budget.bin", new Uint8Array([1, 2, 3]))
+        mockFs.advertisedSize.mockReturnValueOnce(Number.MAX_SAFE_INTEGER)
+        await expect(protocol.read("budget.bin", 3)).rejects.toThrow("OPFS read byte limit exceeded")
+        expect(mockFs.read).not.toHaveBeenCalled()
+        expect(await protocol.read("budget.bin", 3)).toEqual(new Uint8Array([1, 2, 3]))
+        await expect(protocol.read("budget.bin", 2)).rejects.toThrow("OPFS read byte limit exceeded")
+    })
+
+    it.each([-1, Infinity, NaN, 1.5])("rejects invalid budget %s before opening", async budget => {
+        await expect(protocol.read("budget.bin", budget)).rejects.toThrow("Invalid OPFS read budget")
+        expect(mockFs.opened).not.toHaveBeenCalled()
+    })
+
+    it.each(["read", "write", "flush"])("retains primary %s failure with bounded close context and releases exclusion", async operation => {
+        await protocol.write("double.bin", new Uint8Array([1]))
+        const primary = new Error(`Synthetic ${operation} failure`)
+        mockFs.close.mockImplementationOnce(() => {throw new Error("x".repeat(10000))})
+        if (operation === "flush") {mockFs.flush.mockImplementationOnce(() => {throw primary})}
+        else {mockFs.faults.set(operation, primary)}
+        const result = operation === "read" ? protocol.read("double.bin")
+            : protocol.write("double.bin", new Uint8Array([2]))
+        await expect(result).rejects.toMatchObject({message: primary.message, cause: primary})
+        mockFs.faults.clear()
+        await expect(protocol.read("/double.bin/")).resolves.toEqual(expect.any(Uint8Array))
+    })
+
+    it.each(["read", "write", "exists"] as const)("reports close-only failure from %s and releases exclusion", async operation => {
+        await protocol.write("close.bin", new Uint8Array([1]))
+        const closeError = new Error("Synthetic close failure")
+        mockFs.close.mockImplementationOnce(() => {throw closeError})
+        const result = operation === "write" ? protocol.write("close.bin", new Uint8Array([2]))
+            : protocol[operation]("close.bin")
+        await expect(result).rejects.toBe(closeError)
+        expect(await protocol.exists("close.bin")).toBe(true)
+    })
     it.each([[1, 3], [0, 1], [2, 2]])("stores only the view [%i, %i)", async (start, end) => {
         const bytes = new Uint8Array([90, 1, 2, 91])
         await protocol.write("view.bin", bytes.subarray(start, end))

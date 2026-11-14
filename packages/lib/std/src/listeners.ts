@@ -1,5 +1,5 @@
 import {Subscription, Terminable} from "./terminable"
-import {int, Procedure, safeExecute} from "./lang"
+import {int, Procedure, tryCatch} from "./lang"
 
 export class Listeners<T> implements Terminable {
     readonly #set = new Set<T>()
@@ -10,10 +10,8 @@ export class Listeners<T> implements Terminable {
             get: (_: never, func: string): () => void => (...args: unknown[]): void =>
                 this.#set.forEach((entry: T) => {
                     const listener = entry as Record<string, (...args: unknown[]) => unknown>
-                    if (Object.getPrototypeOf(listener) === Object.getPrototypeOf({})) {
-                        return safeExecute(listener[func], ...args)
-                    }
-                    return listener[func]?.(...args)
+                    const result = tryCatch(() => listener[func]?.(...args))
+                    if (result.status === "failure") {console.warn("Listener failed", result.error)}
                 })
         } as const) as Required<T>
     }

@@ -82,6 +82,32 @@ An empty unweighted split returns no handlers; weighted input must not be empty.
 * Synchronous stream operations **sync-stream.ts**
 * Retry and attempt utilities **attempts.ts**
 
+`Terminator` and `Terminable.many` detach and drain the current resources in reverse order,
+including after throwing cleanups or synchronous reentry. A single error is
+rethrown unchanged; multiple failures produce an AggregateError with the first
+failure as cause and errors in cleanup order. Repeated termination of the drained
+composite does nothing. Terminator remains reusable for subsequent ownership.
+Resources acquired reentrantly belong to the next ownership snapshot.
+`CascadingSubscriptions.next().toObserver` and `append` retain only the latest
+callback result. Results returned after synchronous replacement or parent
+disposal are terminated immediately; reentry from cleanup cannot install an older
+result over the newer one.
+
+`Listeners.proxy` invokes optional object and class methods with their receiver
+as `this`. Each thrown listener error is logged once with `console.warn`, and
+delivery continues to remaining listeners. Missing methods are skipped. This
+policy applies to proxy dispatch; `forEach` remains a direct caller-owned loop.
+
+`VirtualObject.update` stages changes to plain data records before mutating live
+data. Null/scalar sections may become records; existing record identities and
+keys absent from the update are retained. New records are copied. Arrays remain
+atomic caller-owned values. Enumerable string-keyed data properties are supported;
+accessors, class records, cyclic record input and required writes to read-only or
+nonextensible targets are refused before mutation or notification. Plain records
+are required; hostile proxies are outside this contract. A valid update commits
+all values before notifying each changed root once, so observers see complete
+state. Notifications retain the existing synchronous observer-error behavior.
+
 Default, optional and mapped mutable observables register a catchup subscription
 before its initial delivery, so synchronous changes from that callback are
 observed. Failed initial delivery releases the subscription and rethrows the
