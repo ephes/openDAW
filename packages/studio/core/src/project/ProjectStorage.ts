@@ -60,7 +60,7 @@ export namespace ProjectStorage {
     }
 
     export const loadCover = async (uuid: UUID.Bytes, {strict = false}: {strict?: boolean} = {}): Promise<Option<ArrayBuffer>> => {
-        return Workers.Opfs.read(ProjectPaths.projectCover(uuid), OpfsProtocol.ReadLimits.Metadata)
+        return Workers.Opfs.read(ProjectPaths.projectCover(uuid), OpfsProtocol.ReadLimits.Media)
             .then(array => Option.wrap(array.buffer as ArrayBuffer), error => {
                 if (strict && (!(error instanceof DOMException) || error.name !== "NotFoundError")) {throw error}
                 return Option.None

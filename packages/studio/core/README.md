@@ -2,9 +2,10 @@ This package is part of the openDAW SDK
 
 ### Local storage read budgets
 
-Local OPFS reads use explicit budgets before allocation: metadata, indexes,
-journals and covers 1 MiB; project/recovery graphs 64 MiB; presets 16 MiB;
-sample/peak/soundfont binaries 1 GiB. Recovery UUID/flags admit 16/1 bytes.
+Local OPFS reads use explicit budgets before allocation: metadata, indexes and
+journals 1 MiB; project/recovery graphs 64 MiB; presets 16 MiB;
+sample/peak/soundfont binaries and project covers 1 GiB (covers use the media
+budget because bundle import admits covers up to its 512 MiB media limit). Recovery UUID/flags admit 16/1 bytes.
 Oversized files follow the existing unreadable-asset/project recovery paths.
 
 ### Soundfont import and playback
