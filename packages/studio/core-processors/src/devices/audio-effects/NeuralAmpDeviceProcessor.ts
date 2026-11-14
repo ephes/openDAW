@@ -130,8 +130,11 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
@@ -140,7 +143,10 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     handleEvent(_event: Event): void {}
 
     processAudio({s0, s1}: Block): void {
-        if (this.#terminated || this.#source.isEmpty()) {return}
+        if (this.#terminated || this.#source.isEmpty()) {
+            this.#output.clear(s0, s1)
+            return
+        }
         const [inL, inR] = this.#source.unwrap().channels() as StereoMatrix.Channels
         const [outL, outR] = this.#output.channels() as StereoMatrix.Channels
         const numFrames = s1 - s0

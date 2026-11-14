@@ -123,8 +123,11 @@ export class GateDeviceProcessor extends AudioProcessor implements AudioEffectDe
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
@@ -133,7 +136,10 @@ export class GateDeviceProcessor extends AudioProcessor implements AudioEffectDe
     handleEvent(_event: Event): void {}
 
     processAudio({s0, s1}: Block): void {
-        if (this.#source.isEmpty()) return
+        if (this.#source.isEmpty()) {
+            this.#output.clear(s0, s1)
+            return
+        }
         const source = this.#source.unwrap()
         const srcL = source.getChannel(0)
         const srcR = source.getChannel(1)

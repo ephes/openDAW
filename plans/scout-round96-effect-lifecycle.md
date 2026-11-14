@@ -37,3 +37,17 @@ load; terminated devices cannot create/apply instances. Later edits still apply.
 
 Regression: four new cases failed before the fix (including 202 loads instead of
 two for 100 pending edits); all seven NAM cases pass after it.
+
+## B03 — Connection leases and disconnected silence
+
+Every effect input attachment owns a distinct Option object, including repeated
+attachments of the same buffer. Releasing a superseded lease cannot disconnect
+its replacement; release is idempotent. The same small pattern is applied to all
+16 audio effect source setters. Disconnected effects clear their requested output
+span (Nop owns a whole render quantum). DSP and tails remain suspended while
+unconnected, as before; this change does not render a tail from an absent input.
+Reattachment resumes processing without requiring an engine reset.
+
+Regression: eight new Gate, Stereo Tool, Nop and NAM cases failed before the fix;
+all 15 connection/NAM cases pass after it. Tests cover distinct and same-buffer
+leases, duplicate disposal, irregular output spans and reattachment.

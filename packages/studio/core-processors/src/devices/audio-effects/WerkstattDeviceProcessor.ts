@@ -165,21 +165,28 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
     adapter(): AudioEffectDeviceAdapter {return this.#adapter}
 
     processAudio(block: Block): void {
+        if (this.#source.isEmpty()) {
+            this.#output.clear(block.s0, block.s1)
+            return
+        }
         if (this.#silenced) {
             if (this.#pendingUpdate > 0 && this.#pendingUpdate !== this.#currentUpdate) {
                 this.#tryLoad(this.#pendingUpdate)
             }
             if (this.#silenced) {return}
         }
-        if (this.#source.isEmpty() || this.#userProcessor.isEmpty()) {return}
+        if (this.#userProcessor.isEmpty()) {return}
         const source = this.#source.unwrap()
         const proc = this.#userProcessor.unwrap()
         this.#io.src[0] = source.getChannel(0)
