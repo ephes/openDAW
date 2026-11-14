@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Own sample loads by attempt so invalidation fences stale storage/API progress and results; deliver terminal errors to every reader joining shared work.
+
 - Release microphone tracks when post-acquisition enumeration fails, fence device inventory generations while retaining the last valid list, share worklet installations per context, and preflight recording geometry before allocation (1–32 channels, ≥2 chunks, ≤64 MiB audio).
 
 - Keep selection-based automation overlap edits on their Value track; deduplicate push-existing regions with a Set and reduce placement bounds without argument spreading.

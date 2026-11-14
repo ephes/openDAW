@@ -1,4 +1,4 @@
-import {ByteArrayInput, int, Progress, SortedSet, Subscription, Terminable, UUID} from "@opendaw/lib-std"
+import {ByteArrayInput, int, isDefined, Optional, Progress, SortedSet, Subscription, Terminable, UUID} from "@opendaw/lib-std"
 import {DefaultSampleLoader} from "./DefaultSampleLoader"
 import {SampleProvider} from "./SampleProvider"
 import {SampleLoader, SampleLoaderManager, SampleMetaData} from "@opendaw/studio-adapters"
@@ -22,7 +22,7 @@ type RefCount = {
 
 type PendingLoad = {
     uuid: UUID.Bytes
-    promise: Promise<void>
+    loaders: Set<DefaultSampleLoader>
 }
 
 export class GlobalSampleLoaderManager implements SampleLoaderManager, SampleProvider {
@@ -122,54 +122,54 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
         }
         const pending = this.#pending.opt(uuid)
         if (pending.nonEmpty()) {
-            pending.unwrap().promise.then(() => {
-                const cached = this.#cache.opt(uuid)
-                if (cached.nonEmpty()) {
-                    const {data, peaks, meta} = cached.unwrap()
-                    loader.setLoaded(data, peaks, meta)
-                }
-            })
+            pending.unwrap().loaders.add(loader)
             return
         }
-        const promise = SampleStorage.get().load(uuid).then(
-            ([data, peaks, meta]) => {
-                this.#cache.add({uuid, data, peaks, meta})
-                loader.setLoaded(data, peaks, meta)
-            },
-            () => this.#fetchFromApi(loader)
-        ).catch((error: unknown) => {
+        const attempt: PendingLoad = {uuid, loaders: new Set([loader])}
+        this.#pending.add(attempt)
+        this.#read(attempt).then(cached => {
+            if (!this.#isCurrent(attempt) || !isDefined(cached)) {return}
+            this.#cache.add(cached)
+            const {data, peaks, meta} = cached
+            attempt.loaders.forEach(loader => loader.setLoaded(data, peaks, meta))
+        }, (error: unknown) => {
+            if (!this.#isCurrent(attempt)) {return}
             console.warn("Unexpected error loading sample:", error)
-            loader.setError(error instanceof Error ? error.message : String(error))
-        }).finally(() => this.#pending.removeByKey(uuid))
-        this.#pending.add({uuid, promise})
+            attempt.loaders.forEach(loader => loader.setError(error instanceof Error ? error.message : String(error)))
+        }).finally(() => {
+            if (this.#isCurrent(attempt)) {this.#pending.removeByKey(uuid)}
+        })
     }
 
-    async #fetchFromApi(loader: DefaultSampleLoader): Promise<void> {
-        const {uuid} = loader
-        const [fetchProgress, peakProgress] = Progress.split(
-            progress => loader.setProgress(0.1 + 0.9 * progress), 2
-        )
-        const fetchResult = await Promises.tryCatch(this.#provider.fetch(uuid, fetchProgress))
-        if (fetchResult.status === "rejected") {
-            const error = fetchResult.error
-            console.warn(error)
-            loader.setError(error instanceof Error ? error.message : String(error))
-            return
+    #isCurrent(attempt: PendingLoad): boolean {
+        return this.#pending.opt(attempt.uuid).contains(attempt)
+    }
+
+    async #read(attempt: PendingLoad): Promise<Optional<CachedSample>> {
+        const {uuid} = attempt
+        const stored = await Promises.tryCatch(SampleStorage.get().load(uuid))
+        if (!this.#isCurrent(attempt)) {return undefined}
+        if (stored.status === "resolved") {
+            const [data, peaks, meta] = stored.value
+            return {uuid, data, peaks, meta}
         }
-        const [audio, meta] = fetchResult.value
+        const [fetchProgress, peakProgress] = Progress.split(
+            progress => {
+                if (this.#isCurrent(attempt)) {
+                    attempt.loaders.forEach(loader => loader.setProgress(0.1 + 0.9 * progress))
+                }
+            }, 2
+        )
+        const [audio, meta] = await this.#provider.fetch(uuid, fetchProgress)
+        if (!this.#isCurrent(attempt)) {return undefined}
         const shifts = SamplePeaks.findBestFit(audio.numberOfFrames)
         const peaksBuffer = await Workers.Peak.generateAsync(
             peakProgress, shifts, audio.frames, audio.numberOfFrames, audio.numberOfChannels
         ) as ArrayBuffer
-        const storeResult = await Promises.tryCatch(SampleStorage.get().save({uuid, audio, peaks: peaksBuffer, meta}))
-        if (storeResult.status === "resolved") {
-            const peaks = SamplePeaks.from(new ByteArrayInput(peaksBuffer))
-            this.#cache.add({uuid, data: audio, peaks, meta})
-            loader.setLoaded(audio, peaks, meta)
-        } else {
-            const error = storeResult.error
-            console.warn(error)
-            loader.setError(error instanceof Error ? error.message : String(error))
-        }
+        if (!this.#isCurrent(attempt)) {return undefined}
+        await SampleStorage.get().save({uuid, audio, peaks: peaksBuffer, meta})
+        if (!this.#isCurrent(attempt)) {return undefined}
+        const peaks = SamplePeaks.from(new ByteArrayInput(peaksBuffer))
+        return {uuid, data: audio, peaks, meta}
     }
 }
