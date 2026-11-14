@@ -7,10 +7,8 @@ import {
     isDefined,
     isInstanceOf,
     Progress,
-    RuntimeNotifier,
-    TimeSpan
+    RuntimeNotifier
 } from "@opendaw/lib-std"
-import {Wait} from "./wait"
 
 export namespace network {
     const limit = new Promises.Limit<Response>(4)
@@ -22,31 +20,64 @@ export namespace network {
         return !isInstanceOf(reason, Errors.FileNotFound) || count <= 100
     }
 
+    const abortable = <T>(promise: Promise<T>, signal?: AbortSignal | null): Promise<T> => {
+        if (!signal) {return promise}
+        return new Promise((resolve, reject) => {
+            const abort = () => reject(signal.reason)
+            signal.addEventListener("abort", abort, {once: true})
+            promise.then(value => {
+                signal.removeEventListener("abort", abort)
+                resolve(value)
+            }, reason => {
+                signal.removeEventListener("abort", abort)
+                reject(reason)
+            })
+            if (signal.aborted) {abort()}
+        })
+    }
+
+    const backoff = (signal?: AbortSignal | null): Promise<void> => new Promise((resolve, reject) => {
+        const abort = () => {
+            clearTimeout(timer)
+            signal?.removeEventListener("abort", abort)
+            reject(signal?.reason)
+        }
+        const timer = setTimeout(() => {
+            signal?.removeEventListener("abort", abort)
+            resolve()
+        }, 1000)
+        signal?.addEventListener("abort", abort, {once: true})
+        if (signal?.aborted) {abort()}
+    })
+
     export const defaultFetch = async (input: RequestInfo | URL, init?: RequestInit,
                                        handler?: Progress.Handler): Promise<Response> => {
+        const signal = init?.signal !== undefined ? init.signal
+            : typeof Request !== "undefined" && input instanceof Request ? input.signal : undefined
         const wrap = isDefined(handler) ? progress(handler) : identity
         const limit = 30
         let retryCounts = 0
         while (++retryCounts < limit) {
+            signal?.throwIfAborted()
             try {
-                return wrap(await fetch(input, init))
+                const response = await abortable(fetch(input, init), signal)
+                signal?.throwIfAborted()
+                return wrap(response)
             } catch (reason) {
-                if (isInstanceOf(reason, Errors.FileNotFound)) {throw reason}
-                if (navigator.onLine) {
-                    await Wait.timeSpan(TimeSpan.seconds(1))
-                } else {
-                    const retry = await RuntimeNotifier.approve({
+                signal?.throwIfAborted()
+                if (Errors.isAbort(reason) || isInstanceOf(reason, Errors.FileNotFound)) {throw reason}
+                if (!navigator.onLine) {
+                    const retry = await abortable(RuntimeNotifier.approve({
                         headline: "No Internet Connection",
                         message: "You appear to be offline.",
                         approveText: "Retry",
-                        cancelText: "Cancel"
-                    })
-                    if (retry) {
-                        await Wait.timeSpan(TimeSpan.seconds(1))
-                    } else {
-                        return Promise.reject(reason)
-                    }
+                        cancelText: "Cancel",
+                        abortSignal: signal ?? undefined
+                    }), signal)
+                    signal?.throwIfAborted()
+                    if (!retry) {throw reason}
                 }
+                await backoff(signal)
             }
         }
         return Promise.reject("timeout")

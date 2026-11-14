@@ -256,6 +256,12 @@ pending work explicitly. Removing a mounted placeholder also retires it. Owned
 URL fetches and readers are cancelled; caller-supplied response promises cannot
 be cancelled, but late responses are discarded and their bodies cancelled.
 
+Promise concurrency limits must be finite positive integers; invalid limits fail
+before providers run. Sequential batches append results in order with linear
+accumulation and stop on the first failure. `network.defaultFetch` treats aborts
+as terminal, uses `init.signal` or the input Request's signal, and cancels backoff
+and pending offline approval when aborted. Ordinary network failures still retry.
+
 The synthetic browser fixtures exercise real pointer events, RoomStatus copy
 outcomes and the HTML boundary. After the normal build, run locally:
 
@@ -265,7 +271,8 @@ npm run test:browser
 ```
 
 They use a local Vite fixture server and synthetic browser adapters; no account,
-clipboard contents or external service data is used.
+clipboard contents or external service data is used. See
+[the implementation and validation notes](plans/dom-runtime-contracts.md).
 
 ### Video export
 

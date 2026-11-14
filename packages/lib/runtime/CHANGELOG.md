@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Validate positive integer concurrency before scheduling; accumulate sequential batch results in linear work.
+- Treat fetch aborts as terminal and cancel backoff/offline approval through the effective request signal.
+
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.

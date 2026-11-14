@@ -119,10 +119,11 @@ export namespace Promises {
         })
     }
 
-    export const sequentialAll = <T, R>(factories: Array<Provider<Promise<R>>>): Promise<Array<R>> =>
-        factories.reduce((promise, factory) => promise
-            .then(async results => [...results, await factory()]), Promise.resolve([] as Array<R>)
-        )
+    export const sequentialAll = async <T, R>(factories: Array<Provider<Promise<R>>>): Promise<Array<R>> => {
+        const results: R[] = []
+        for (const factory of factories) {results.push(await factory())}
+        return results
+    }
 
     export const sequentialize = <A, T>(handler: Func<A, Promise<T>>): Func<A, Promise<T>> => {
         let lastPromise: Promise<unknown> = Promise.resolve()
@@ -151,8 +152,15 @@ export namespace Promises {
         }
     }
 
+    const validateConcurrency = (limit: number): void => {
+        if (!Number.isInteger(limit) || limit <= 0) {
+            throw new RangeError("Concurrency must be a finite positive integer")
+        }
+    }
+
     export const allWithLimit = async <T, U>(tasks: ReadonlyArray<Provider<Promise<T | U>>>, limit = 1)
         : Promise<Array<T | U>> => {
+        validateConcurrency(limit)
         const results: Array<T | U> = new Array(tasks.length)
         let index = 0
         let hasError = false
@@ -177,6 +185,7 @@ export namespace Promises {
 
     export const allSettledWithLimit = async <T, U>(tasks: ReadonlyArray<Provider<Promise<T | U>>>, limit = 1)
         : Promise<PromiseSettledResult<T | U>[]> => {
+        validateConcurrency(limit)
         const results: PromiseSettledResult<T | U>[] = new Array(tasks.length)
         let index = 0
         const run = async () => {
@@ -200,6 +209,7 @@ export namespace Promises {
         #running: int = 0 | 0
 
         constructor(readonly max: int = 1) {
+            validateConcurrency(max)
             this.#waiting = []
         }
 
