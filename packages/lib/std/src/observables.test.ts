@@ -9,7 +9,7 @@ describe("observable catchup ownership", () => {
         const subscribe = vi.spyOn(Notifier.prototype, "subscribe")
         const observer = vi.fn()
         mapped.subscribe(observer)
-        const downstream = subscribe.mock.contexts[0]
+        const downstream = subscribe.mock.contexts[0] as Notifier<unknown>
         subscribe.mockRestore()
         expect(downstream.isEmpty()).toBe(false)
         mapped.terminate()
@@ -68,7 +68,7 @@ describe("observable catchup ownership", () => {
         const mapped = new MappedMutableObservableValue(source, {fx: value => value, fy: value => value})
         for (const observable of [source, optional, mapped]) {
             const failure = new Error("catchup")
-            const observer = vi.fn(() => {throw failure})
+            const observer = vi.fn((): void => {throw failure})
             expect(() => observable.catchupAndSubscribe(observer)).toThrow(failure)
             observer.mockImplementation(() => {})
             source.setValue(source.getValue() + 1)

@@ -60,7 +60,7 @@ describe("SortedSet – behavioural contract", () => {
             const set = new SortedSet<number, number>(value => value, comparator)
             set.addMany([2, 4])
             const failure = new Error("iteration")
-            function* values() {
+            const values = function* () {
                 for (let index = 0; index <= 3; index++) {
                     if (index === failAt) {throw failure}
                     if (index < 3) {yield [3, 0, 1][index]}
