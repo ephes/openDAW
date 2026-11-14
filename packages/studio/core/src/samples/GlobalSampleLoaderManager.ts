@@ -46,9 +46,14 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
 
     remove(uuid: UUID.Bytes): void {
         this.#refCounts.removeByKeyIfExist(uuid)
+        const pending = this.#pending.opt(uuid)
+        this.#pending.removeByKeyIfExist(uuid)
         this.#loaders.removeByKeyIfExist(uuid)
         this.#cache.removeByKeyIfExist(uuid)
-        this.#pending.removeByKeyIfExist(uuid)
+        pending.ifSome(attempt => attempt.loaders.forEach(loader => {
+            loader.invalidate()
+            loader.setError("Sample load retired")
+        }))
     }
 
     invalidate(uuid: UUID.Bytes): void {
@@ -63,23 +68,18 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
     }
 
     register(uuid: UUID.Bytes): Terminable {
-        const current = this.#refCounts.opt(uuid)
-        if (current.nonEmpty()) {
-            current.unwrap().count++
-        } else {
-            this.#refCounts.add({uuid, count: 1})
-        }
+        const ref = this.#refCounts.getOrCreate(uuid, uuid => ({uuid, count: 0}))
+        ref.count++
+        let released = false
         return {
             terminate: () => {
-                const ref = this.#refCounts.opt(uuid)
-                if (ref.isEmpty()) {return}
-                const {count} = ref.unwrap()
-                if (count <= 1) {
-                    this.#refCounts.removeByKey(uuid)
-                    this.#loaders.removeByKeyIfExist(uuid)
-                    this.#cache.removeByKeyIfExist(uuid)
+                if (released) {return}
+                released = true
+                if (!this.#refCounts.opt(uuid).contains(ref)) {return}
+                if (ref.count <= 1) {
+                    this.remove(uuid)
                 } else {
-                    ref.unwrap().count--
+                    ref.count--
                 }
             }
         }
