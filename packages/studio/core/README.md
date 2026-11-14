@@ -291,3 +291,8 @@ and a 64 MiB audio budget are checked before allocating or constructing a node.
 The shared layout remains two Int32 pointers (8 bytes), followed by
 `channels * chunks * 128` Float32 samples in planar chunk order. The maximum
 allocation is therefore 64 MiB + 8 bytes; invalid geometry throws RangeError.
+
+Engine worklet and offline renderer RPC senders belong to their existing
+terminators. Shutdown rejects outstanding requests and retires their callbacks;
+late worker replies cannot revive them. See the
+[runtime sender contract](../../lib/runtime/README.md#rpc-sender-lifetime).

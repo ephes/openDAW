@@ -74,7 +74,7 @@ export class OfflineEngineRenderer {
                         return dispatcher.dispatchAndReturn(this.step, samples)
                     }
                     stop(): void { dispatcher.dispatchAndForget(this.stop) }
-                }
+                }, terminator
             )
             const channel = new MessageChannel()
             terminator.own({terminate: () => {channel.port1.close(); channel.port2.close()}})
@@ -156,7 +156,7 @@ export class OfflineEngineRenderer {
                     setFrozenAudio(uuid: UUID.Bytes, audioData: Nullable<AudioData>): void { dispatcher.dispatchAndForget(this.setFrozenAudio, uuid, audioData) }
                     invalidateSample(uuid: UUID.Bytes): void { dispatcher.dispatchAndForget(this.invalidateSample, uuid) }
                     terminate(): void { dispatcher.dispatchAndForget(this.terminate) }
-                }
+                }, terminator
             )
 
             channel.port2.start()

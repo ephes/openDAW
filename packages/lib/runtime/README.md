@@ -34,3 +34,22 @@ promise on rejection; an expired predecessor cannot evict its replacement.
 the reader on completion, cancellation or failure. Read and progress-handler errors fail the
 wrapped body. Byte progress, status and headers are preserved; responses without a body or
 with a zero content length are returned unchanged.
+
+## RPC sender lifetime
+
+Pass an existing `Terminator` (or `TerminableOwner`) as the optional third argument
+to `Communicator.sender(messenger, bind, owner)` to tie requests to the caller's
+lifetime. This preserves the protocol object, including protocols whose own
+`terminate` method sends a remote command. Existing two-argument callers retain
+their previous lifetime; callers managing shutdown should supply an owner.
+The sender does not terminate the caller-owned messenger or its other consumers.
+
+Each request reserves its ID before sending. A synchronous transport or transfer
+extraction failure rejects that request, removes its pending callbacks and consumes
+the ID permanently. Replies/callbacks for retired or unknown IDs are ignored.
+Owner termination is idempotent, releases the receive subscription and rejects
+all pending calls with `Error("Communicator sender terminated")`. New promise
+dispatches reject with that error; new notifications throw it synchronously.
+Failed protocol binding releases the new sender while preserving the binding
+error. Engine worklet and offline renderer senders use their existing terminators,
+so shutdown settles outstanding engine requests.

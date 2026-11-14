@@ -167,7 +167,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
                         dispatcher.dispatchAndForget(this.updateMonitoringMap, map)
                     }
                     terminate(): void {dispatcher.dispatchAndForget(this.terminate)}
-                }))
+                }, this.#terminator))
         this.#monitoringRouter = this.#terminator.own(new MonitoringRouter(this, this.#commands))
 
         const {port, sab} =

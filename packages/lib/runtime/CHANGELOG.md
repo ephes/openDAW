@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reserve RPC request identities before sending, retire failed sends, ignore late replies, and support owner-bound senders that reject pending/new work on termination.
+
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
