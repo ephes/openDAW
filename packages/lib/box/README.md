@@ -27,6 +27,12 @@ Graph-based object modeling system with serialization, transactions, and pointer
 
 ## Graph Management
 
+Vertex callbacks run in subscription order. A throwing callback stops sibling
+delivery and propagates its original error. Subscriptions created during dispatch
+remain deferred until the outermost dispatch exits, including exceptional exits;
+cancelling a deferred subscription prevents its installation. A nested event does
+not activate subscriptions created inside its enclosing event.
+
 * **graph-edges.ts** - Edge management for graph relationships
 * **pointer-hub.ts** - Hub for managing incoming pointer connections
 * **dispatchers.ts** - Event dispatching system for updates
