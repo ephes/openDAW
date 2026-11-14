@@ -45,6 +45,9 @@ export class DefaultSampleLoader implements SampleLoader {
     }
 
     setError(reason: string): void {
+        this.#data = Option.None
+        this.#peaks = Option.None
+        this.#meta = Option.None
         this.#state = {type: "error", reason}
         this.#notifier.notify(this.#state)
     }

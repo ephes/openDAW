@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Forward client sample invalidations to the live engine and retire its sample-fetch subscriptions with the engine; replacement audio is fetched without restarting it.
+
 - Make sample reference release idempotent and generation-owned; retire removed/finally released loads so late completions cannot retain PCM or start saves.
 
 - Own sample loads by attempt so invalidation fences stale storage/API progress and results; deliver terminal errors to every reader joining shared work.

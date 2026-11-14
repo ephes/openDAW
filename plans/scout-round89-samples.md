@@ -22,3 +22,16 @@ Removal/final release retires pending work and settles its readers with
 callers still retain their ordinary cache until explicit removal. Deferred storage
 and peak completions cannot restore evicted cache entries or start a save.
 Five added regressions failed before this fix.
+
+## Worklet lifecycle (B3)
+
+Worklet loaders retain their identity across invalidation but clear PCM while
+reloading. An attempt counter fences old fetch settlement; removal/termination
+retires the loader permanently. A live EngineSampleSource watches client loader
+transitions and sends the engine's `invalidateSample` command. Its watches and
+pending reads end with the engine. Error/retirement releases client loader PCM.
+The real client/worklet manager integration oracle observed stale A before the
+reload fix and B afterward. Separate regressions cover retired fulfillment,
+retired rejection, repeated removal and out-of-order reloads. Existing playing
+voices may finish with the audio captured at their attack; subsequent consumers
+read replacement PCM. Offline renders use their initial project snapshot.

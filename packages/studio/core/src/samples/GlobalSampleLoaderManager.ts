@@ -48,11 +48,11 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
         this.#refCounts.removeByKeyIfExist(uuid)
         const pending = this.#pending.opt(uuid)
         this.#pending.removeByKeyIfExist(uuid)
-        this.#loaders.removeByKeyIfExist(uuid)
+        const loader = this.#loaders.removeByKeyIfExist(uuid)
         this.#cache.removeByKeyIfExist(uuid)
-        pending.ifSome(attempt => attempt.loaders.forEach(loader => {
-            loader.invalidate()
-            loader.setError("Sample load retired")
+        if (loader instanceof DefaultSampleLoader) {loader.setError("Sample load retired")}
+        pending.ifSome(attempt => attempt.loaders.forEach(joined => {
+            if (joined !== loader) {joined.setError("Sample load retired")}
         }))
     }
 

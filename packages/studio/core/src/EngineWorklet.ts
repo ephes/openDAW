@@ -43,6 +43,7 @@ import {Project} from "./project"
 import {MIDIReceiver} from "./midi"
 import {AudioUtils} from "./AudioUtils"
 import {HRClockWorker} from "./HRClockWorker"
+import {EngineSampleSource} from "./samples/EngineSampleSource"
 import type {SoundFont2} from "soundfont2"
 
 export class EngineWorklet extends AudioWorkletNode implements Engine {
@@ -146,6 +147,9 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
                     setFrozenAudio(uuid: UUID.Bytes, audioData: Nullable<AudioData>): void {
                         dispatcher.dispatchAndForget(this.setFrozenAudio, uuid, audioData)
                     }
+                    invalidateSample(uuid: UUID.Bytes): void {
+                        dispatcher.dispatchAndForget(this.invalidateSample, uuid)
+                    }
                     noteSignal(signal: NoteSignal): void {dispatcher.dispatchAndForget(this.noteSignal, signal)}
                     ignoreNoteRegion(uuid: UUID.Bytes): void {
                         dispatcher.dispatchAndForget(this.ignoreNoteRegion, uuid)
@@ -172,6 +176,8 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
                 (deviceId, data, relativeTimeInMs) =>
                     this.#project.receivedMIDIFromEngine(deviceId, data, relativeTimeInMs)))
         this.#commands.setupMIDI(port, sab)
+        const sampleSource = this.#terminator.own(new EngineSampleSource(
+            project.sampleManager, uuid => this.#commands.invalidateSample(uuid)))
         Communicator.executor<EngineToClient>(messenger.channel("engine-to-client"), {
                 log: (message: string): void => console.log("WORKLET", message),
                 error: (reason: unknown) => this.dispatchEvent(new ErrorEvent("error", {error: reason})),
@@ -181,20 +187,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
                     }
                 },
                 ready: (): void => resolve(),
-                fetchAudio: (uuid: UUID.Bytes): Promise<AudioData> => {
-                    return new Promise((resolve, reject) => {
-                        const handler = project.sampleManager.getOrCreate(uuid)
-                        const subscription = handler.subscribe(state => {
-                            if (state.type === "error") {
-                                reject(new Error(state.reason))
-                                subscription.terminate()
-                            } else if (state.type === "loaded") {
-                                resolve(handler.data.unwrap())
-                                subscription.terminate()
-                            }
-                        })
-                    })
-                },
+                fetchAudio: (uuid: UUID.Bytes): Promise<AudioData> => sampleSource.fetchAudio(uuid),
                 fetchSoundfont: (uuid: UUID.Bytes): Promise<SoundFont2> => {
                     return new Promise((resolve, reject) => {
                         const handler = project.soundfontManager.getOrCreate(uuid)

@@ -1,18 +1,20 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest"
-import {Progress, UUID} from "@opendaw/lib-std"
+import {Progress, Terminable, UUID} from "@opendaw/lib-std"
 import {AudioData} from "@opendaw/lib-dsp"
 import {Peaks} from "@opendaw/lib-fusion"
 import {SampleMetaData} from "@opendaw/studio-adapters"
 import {GlobalSampleLoaderManager} from "./GlobalSampleLoaderManager"
 import {SampleStorage} from "./SampleStorage"
 import {Workers} from "../Workers"
+import {EngineSampleSource} from "./EngineSampleSource"
+import {EngineToClient, SampleLoaderManager} from "@opendaw/studio-adapters"
 
 vi.mock("./SampleStorage", () => ({SampleStorage: {get: () => storage}}))
 vi.mock("../Workers", () => ({Workers: {Peak: {generateAsync: vi.fn()}}}))
 const storage = {load: vi.fn(), save: vi.fn()}
 const uuid = UUID.parse("00000000-0000-4000-8000-000000000001")
 const meta: SampleMetaData = {name: "Synthetic", bpm: 0, duration: 1, sample_rate: 44100, origin: "import"}
-const audio = (value: number): AudioData => ({sampleRate: 44100, numberOfFrames: 1, numberOfChannels: 1, frames: [new Float32Array([value])]})
+const audio = (value: number): AudioData => ({sampleRate: 44100, numberOfFrames: 1, numberOfChannels: 1, frames: [new Float32Array(new SharedArrayBuffer(4)).fill(value)]})
 const stored = (value: number): [AudioData, Peaks, SampleMetaData] => [audio(value), {} as Peaks, meta]
 const flush = async () => {for (let index = 0; index < 30; index++) {await Promise.resolve()}}
 beforeEach(() => {vi.clearAllMocks(); vi.spyOn(console, "warn").mockImplementation(() => {})})
@@ -132,4 +134,20 @@ it("does not let an old registration release a new owner's generation", async ()
     old.terminate()
     expect(manager.getOrCreate(uuid)).toBe(loader)
     current.terminate()
+})
+
+it("reloads client replacement PCM through the engine source without recreating the worklet loader", async () => {
+    const {SampleManagerWorklet} = await vi.importActual<{SampleManagerWorklet: new (client: EngineToClient) => SampleLoaderManager & Terminable}>("../../../core-processors/src/SampleManagerWorklet")
+    storage.load.mockResolvedValue(stored(1))
+    const client = new GlobalSampleLoaderManager({fetch: vi.fn()})
+    const source = new EngineSampleSource(client, uuid => worklet.invalidate(uuid))
+    const worklet = new SampleManagerWorklet({fetchAudio: (uuid: UUID.Bytes) => source.fetchAudio(uuid)} as unknown as EngineToClient)
+    const consumer = worklet.getOrCreate(uuid)
+    await flush()
+    expect(consumer.data.unwrap().frames[0][0]).toBe(1)
+    storage.load.mockResolvedValue(stored(2))
+    client.invalidate(uuid); await flush()
+    expect(worklet.getOrCreate(uuid)).toBe(consumer)
+    expect(consumer.data.unwrap().frames[0][0]).toBe(2)
+    source.terminate(); worklet.terminate()
 })
