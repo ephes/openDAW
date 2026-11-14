@@ -80,3 +80,17 @@ configured device after reset, not with its initial parameter ramp before reset.
 Nine stereo/mono/self tests failed before the fix. Afterward partitioned parameter
 transitions agree within Float32 tolerance and 16→8→12 mid-transition restarts
 match exactly, including finite silent output.
+
+## B06 — Late sidechain and stereo restart
+
+Gate retains a pending sidechain resolution until the registry contains its
+live target. Repeated Before phases do not install duplicate graph edges. A
+retarget, pointer deletion or termination retires the prior edge and detector.
+An absent pointer ends pending resolution; an unresolved nonempty pointer retries.
+Stereo Tool marks its current matrix controls dirty on reset so the first new
+span reapplies them without interpolation, rather than continuing an old ramp.
+
+Three regressions failed before the fix: delayed registry registration and two
+stereo mixing modes. Afterward graph/detector ownership checks and exact partial
+restart comparisons pass. These are processor/DSP changes with no changed browser
+integration, so the browser-only integration gate is not applicable.

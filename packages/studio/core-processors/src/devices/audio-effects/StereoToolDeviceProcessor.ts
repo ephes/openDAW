@@ -67,6 +67,7 @@ export class StereoToolDeviceProcessor extends AudioProcessor implements AudioEf
         this.#output.clear()
         this.eventInput.clear()
         this.#processed = false
+        this.#needsUpdate = true
     }
 
     get uuid(): UUID.Bytes {return this.#adapter.uuid}

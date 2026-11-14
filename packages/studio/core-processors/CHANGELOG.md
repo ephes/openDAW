@@ -7,6 +7,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Reset old soundfont voices and display state on file-pointer transitions; process releases without a loaded font and own note-display disposal.
 
+- Retry unresolved Gate sidechains until registration and snap Stereo Tool matrix controls on restart.
+
 - Keep vocoder coefficient interpolation on its sample clock across partial blocks; reset coefficients and band fades to current controls.
 
 - Correct the delay limiter to 50 ms attack/250 ms release and clear modulation smoothing history on restart.
