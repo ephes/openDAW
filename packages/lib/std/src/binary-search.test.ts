@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest"
 import {BinarySearch} from "./binary-search"
+import {Comparator, Func} from "./lang"
 
 it("finds a stable insertion position in logarithmic comparisons for equal runs", () => {
     const sorted = Array.from({length: 65_536}, () => 2)
@@ -16,8 +17,6 @@ it("finds a stable insertion position in logarithmic comparisons for equal runs"
         expect(BinarySearch.stableInsert(values, key, comparator)).toBe(position)
     }
 })
-import {Comparator, Func} from "./lang"
-
 type NumObj = { id: number }
 
 const numCmp: Comparator<number> = (a, b) => a - b
