@@ -9,6 +9,47 @@ interface LocalTestContext {
 }
 
 describe("ArrayMultiMap", () => {
+    it("admits and reorders a 200k-value bucket without argument spread", () => {
+        const values = Array.from({length: 200_000}, (_, index) => 200_000 - index)
+        const map = new ArrayMultimap<string, number>(undefined, NumberComparator)
+        map.addAll("large", values)
+        map.add("before", 0)
+        expect(map.get("large")).toStrictEqual(values.toSorted(NumberComparator))
+        expect(map.sortKeys((left, right) => left.localeCompare(right))).toBe(map)
+        expect(Array.from(map.keys())).toStrictEqual(["before", "large"])
+        expect(map.get("large").length).toBe(200_000)
+        const fromEntries = new ArrayMultimap([["large", values], ["before", [0]]])
+        fromEntries.sortKeys((left, right) => left.localeCompare(right))
+        expect(fromEntries.get("large")).toStrictEqual(values)
+    })
+
+    it("does not publish buckets when bulk iteration fails", () => {
+        const map = new ArrayMultimap<string, number>([["existing", [1, 3]]])
+        const failure = new Error("iterator")
+        function* values() {
+            yield 2
+            throw failure
+        }
+        for (const key of ["new", "existing"]) {
+            expect(() => map.addAll(key, values())).toThrow(failure)
+            expect(Array.from(map)).toStrictEqual([["existing", [1, 3]]])
+        }
+    })
+
+    it("keeps buckets and key order when either comparator fails", () => {
+        let fail = false
+        const failure = new Error("comparator")
+        const map = new ArrayMultimap<string, number>([["second", [1, 3]], ["first", [4]]], (left, right) => {
+            if (fail) {throw failure}
+            return left - right
+        })
+        fail = true
+        expect(() => map.addAll("second", [2])).toThrow(failure)
+        expect(Array.from(map)).toStrictEqual([["second", [1, 3]], ["first", [4]]])
+        expect(() => map.sortKeys(() => {throw failure})).toThrow(failure)
+        expect(Array.from(map)).toStrictEqual([["second", [1, 3]], ["first", [4]]])
+    })
+
     it("clones the comparator policy and independent, stable buckets", () => {
         const first = {order: 2, name: "first"}
         const second = {order: 2, name: "second"}

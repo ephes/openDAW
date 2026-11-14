@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Stage large multimap bulk updates without argument spread, reorder keys atomically, and find stable insertion positions in logarithmic comparisons.
+
 - Recheck sorted-set factory insertions after reentrant changes and preserve sorted multimap clone policy and bucket independence.
 
 - Deduplicate bulk set updates by comparator with first-entry ownership and preserve the set on admission failure.

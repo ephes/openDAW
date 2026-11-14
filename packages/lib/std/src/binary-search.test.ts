@@ -1,5 +1,21 @@
 import {describe, expect, it} from "vitest"
 import {BinarySearch} from "./binary-search"
+
+it("finds a stable insertion position in logarithmic comparisons for equal runs", () => {
+    const sorted = Array.from({length: 65_536}, () => 2)
+    let comparisons = 0
+    const comparator = (left: number, right: number) => {
+        comparisons++
+        return left - right
+    }
+    expect(BinarySearch.stableInsert(sorted, 2, comparator)).toBe(sorted.length)
+    expect(comparisons).toBeLessThanOrEqual(17)
+    for (const [values, key, position] of [
+        [[], 2, 0], [[2, 2], 1, 0], [[2, 2], 3, 2], [[1, 2, 2, 4], 2, 3], [[1, 2, 2, 4], 3, 3]
+    ] as const) {
+        expect(BinarySearch.stableInsert(values, key, comparator)).toBe(position)
+    }
+})
 import {Comparator, Func} from "./lang"
 
 type NumObj = { id: number }

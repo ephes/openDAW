@@ -27,7 +27,7 @@ export interface Multimap<K, V> {
 }
 
 export class ArrayMultimap<K, V> implements Multimap<K, V>, Iterable<[K, Array<V>]> {
-    readonly #map: Map<K, Array<V>>
+    #map: Map<K, Array<V>>
     readonly #comparator: Option<Comparator<V>>
 
     constructor(entries?: ReadonlyArray<Readonly<[K, V[]]>>, comparator?: Comparator<V>) {
@@ -68,9 +68,10 @@ export class ArrayMultimap<K, V> implements Multimap<K, V>, Iterable<[K, Array<V
     }
 
     addAll(key: K, values: Iterable<V>): void {
-        const array = Maps.createIfAbsent(this.#map, key, () => [])
-        array.push(...values)
+        const array = Array.from(this.get(key))
+        for (const value of values) {array.push(value)}
         if (this.#comparator.nonEmpty()) {array.sort(this.#comparator.unwrap())}
+        this.#map.set(key, array)
     }
 
     remove(key: K, value: V): boolean {
@@ -137,10 +138,8 @@ export class ArrayMultimap<K, V> implements Multimap<K, V>, Iterable<[K, Array<V
     keys(): Iterable<K> {return this.#map.keys()}
 
     sortKeys(comparator: Comparator<K>): this {
-        const clone: Multimap<K, V> = this.clone()
-        const keys: K[] = Array.from(this.keys()).sort(comparator)
-        this.#map.clear()
-        for (const key of keys) {this.addAll(key, clone.get(key))}
+        const entries = Array.from(this.#map.entries()).sort((left, right) => comparator(left[0], right[0]))
+        this.#map = new Map(entries)
         return this
     }
 

@@ -39,6 +39,12 @@ until it can check whether its result was returned.
 
 `ArrayMultimap.clone` retains its value comparator and stable order of equal
 values. Bucket arrays are independent; the value objects themselves are shared.
+`addAll` stages the complete bucket without argument spread, so large iterables
+are supported and iterator/comparator failures preserve the original bucket and
+key order. Successful bulk updates can replace the bucket returned by `get`.
+`sortKeys` publishes a fully sorted map without replaying value insertion; key
+comparator failures preserve the original map. `BinarySearch.stableInsert` finds
+the upper bound in logarithmic comparisons, even for a run of equal values.
 
 ## Algorithms & Search
 
