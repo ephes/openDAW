@@ -3,11 +3,11 @@ import {Exec, int, Nullable, Terminable} from "@opendaw/lib-std"
 export namespace AnimationFrame {
     const nonrecurring = new Set<Exec>()
     const recurring = new Set<Exec>()
-    const queue = new Array<Exec>()
 
     let id: int = -1
     let driver: Nullable<WindowProxy> = null
-    let lastTimestamp: number = 0.0
+    let generation: int = 0
+    let lastTimestamp: number = Number.NEGATIVE_INFINITY
 
     export const add = (exec: Exec): Terminable => {
         recurring.add(exec)
@@ -18,12 +18,15 @@ export namespace AnimationFrame {
 
     export const start = (owner: WindowProxy): void => {
         if (driver === owner) {return}
-        driver?.cancelAnimationFrame(id)
+        stop()
         driver = owner
-        id = owner.requestAnimationFrame(exe)
+        const currentGeneration = generation
+        id = owner.requestAnimationFrame(timestamp => exe(timestamp, owner, currentGeneration))
     }
 
     export const stop = (): void => {
+        generation++
+        lastTimestamp = Number.NEGATIVE_INFINITY
         driver?.cancelAnimationFrame(id)
         driver = null
         id = -1
@@ -31,23 +34,25 @@ export namespace AnimationFrame {
 
     export const terminate = (): void => {
         stop()
-        queue.length = 0
         recurring.clear()
         nonrecurring.clear()
     }
 
-    const exe = (timestamp: DOMHighResTimeStamp): void => {
-        id = driver?.requestAnimationFrame(exe) ?? -1
+    const exe = (timestamp: DOMHighResTimeStamp, owner: WindowProxy, currentGeneration: int): void => {
+        if (driver !== owner || generation !== currentGeneration) {return}
+        id = owner.requestAnimationFrame(time => exe(time, owner, currentGeneration))
         if (timestamp - lastTimestamp < 16.0) {return}
         lastTimestamp = timestamp
-        if (recurring.size > 0 || nonrecurring.size > 0) {
-            recurring.forEach((exec: Exec) => queue.push(exec))
-            nonrecurring.forEach((exec: Exec) => queue.push(exec))
-            nonrecurring.clear()
-            queue.forEach((exec: Exec) => exec())
-            queue.length = 0
+        // Detach one-shot work before calling clients, including those that throw
+        // or enqueue more work. This snapshot belongs only to this generation.
+        const queue = [...recurring, ...nonrecurring]
+        nonrecurring.clear()
+        for (const exec of queue) {
+            if (generation !== currentGeneration) {break}
+            try {exec()} catch (error) {console.error(error)}
         }
     }
+
 }
 
 export const deferNextFrame = (exec: Exec): DeferExec => new DeferExec(exec)

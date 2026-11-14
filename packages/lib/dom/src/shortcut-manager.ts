@@ -53,6 +53,7 @@ export class ShortcutManager {
     }
 
     handleEvent(event: KeyboardEvent): void {
+        if (event.isComposing) {return}
         for (const context of this.#contexts) {
             if (context.active && this.#tryHandle(event, context)) {
                 console.debug("consumed by", context.name)
@@ -63,7 +64,7 @@ export class ShortcutManager {
 
     #tryHandle(event: KeyboardEvent, context: ShortcutContext): boolean {
         for (const {shortcut, consume, options} of context.entries) {
-            if (!options.activeInTextField && Events.isTextInput(event.target)) {continue}
+            if (!options.activeInTextField && Events.isTextInput(event.composedPath()[0] ?? event.target)) {continue}
             if (!options.allowRepeat && event.repeat) {continue}
             if (!shortcut.matches(event)) {continue}
             if (options.preventDefault ?? true) {event.preventDefault()}
@@ -101,7 +102,10 @@ export class ShortcutContext implements Terminable {
         const index = BinarySearch.leftMostMapped(
             this.#entries, entry.options.priority ?? 0, NumberComparator, ({options: {priority}}) => priority ?? 0)
         this.#entries.splice(index, 0, entry)
-        return this.#terminator.own({terminate: () => this.#entries.splice(this.#entries.indexOf(entry), 1)})
+        return this.#terminator.own({terminate: (): void => {
+            const index = this.#entries.indexOf(entry)
+            if (index !== -1) {this.#entries.splice(index, 1)}
+        }})
     }
 
     hasConflict(shortcut: Shortcut): boolean {return this.#entries.some(entry => entry.shortcut.equals(shortcut))}
@@ -131,7 +135,7 @@ export class Shortcut {
     }
 
     static fromEvent(event: KeyboardEvent): Option<Shortcut> {
-        if (Events.isAutofillEvent(event)) {return Option.None}
+        if (event.isComposing || Events.isAutofillEvent(event)) {return Option.None}
         const code = event.code
         if (code.startsWith("Shift")
             || code.startsWith("Control")
@@ -213,7 +217,7 @@ export class Shortcut {
     }
 
     matches(event: KeyboardEvent): boolean {
-        if (Events.isAutofillEvent(event)) {return false}
+        if (event.isComposing || Events.isAutofillEvent(event)) {return false}
         const resolvedCode = Shortcut.resolveCode(event)
         const codeMatches = resolvedCode === this.#code
             || (this.#code === Key.DeleteAction && Keyboard.isDelete(event))

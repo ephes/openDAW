@@ -1,4 +1,4 @@
-import {isAbsent, isDefined, Nullable, Procedure, Subscription} from "@opendaw/lib-std"
+import {isAbsent, Nullable, Procedure, Subscription} from "@opendaw/lib-std"
 
 type KnownEventMap = WindowEventMap & MIDIInputEventMap & MIDIPortEventMap
 
@@ -52,7 +52,7 @@ export class Events {
     static readonly isTextInput = (target: Nullable<EventTarget>): boolean => {
         return target instanceof HTMLInputElement
             || target instanceof HTMLTextAreaElement
-            || (target instanceof HTMLElement && isDefined(target.getAttribute("contenteditable")))
+            || (target instanceof HTMLElement && target.isContentEditable)
     }
 
     /**
