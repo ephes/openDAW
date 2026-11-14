@@ -24,3 +24,16 @@ complete model load succeeds.
 Regression: shared rejected attempt then concurrent successful retry; false and
 throwing right-channel loads, mono output, candidate retirement and stereo retry.
 All three tests failed before the B01 fix and pass afterward.
+
+## B02 — NAM ownership and pending work
+
+Termination retires instance ownership before attempting cleanup. Base teardown,
+left/right unload and destruction are all attempted independently; the first
+failure is rethrown after cleanup. Repeated termination cannot destroy twice.
+Mono transitions and failed stereo candidates likewise attempt destruction even
+if unloading throws (transition errors are reported and usable mode retained).
+One continuation per device applies the latest model after a pending module
+load; terminated devices cannot create/apply instances. Later edits still apply.
+
+Regression: four new cases failed before the fix (including 202 loads instead of
+two for 100 pending edits); all seven NAM cases pass after it.
