@@ -4,7 +4,6 @@ import {AudioData} from "@opendaw/lib-dsp"
 import {Peaks} from "@opendaw/lib-fusion"
 import {SampleMetaData} from "@opendaw/studio-adapters"
 import {GlobalSampleLoaderManager} from "./GlobalSampleLoaderManager"
-import {SampleStorage} from "./SampleStorage"
 import {Workers} from "../Workers"
 import {EngineSampleSource} from "./EngineSampleSource"
 import {EngineToClient, SampleLoaderManager} from "@opendaw/studio-adapters"
@@ -30,6 +29,17 @@ it("keeps the replacement pending and its result when old storage completes afte
     old.resolve(stored(1)); await flush()
     expect(loader.data.isEmpty()).toBe(true)
     replacement.resolve(stored(2)); await flush()
+    expect((await manager.getAudioData(uuid)).frames[0][0]).toBe(2)
+})
+
+it("does not overwrite a newer success with a late old storage result", async () => {
+    const old = Promise.withResolvers<ReturnType<typeof stored>>()
+    storage.load.mockReturnValueOnce(old.promise).mockResolvedValue(stored(2))
+    const manager = new GlobalSampleLoaderManager({fetch: vi.fn()})
+    manager.getOrCreate(uuid)
+    manager.invalidate(uuid)
+    await flush()
+    old.resolve(stored(1)); await flush()
     expect((await manager.getAudioData(uuid)).frames[0][0]).toBe(2)
 })
 
@@ -136,18 +146,36 @@ it("does not let an old registration release a new owner's generation", async ()
     current.terminate()
 })
 
-it("reloads client replacement PCM through the engine source without recreating the worklet loader", async () => {
-    const {SampleManagerWorklet} = await vi.importActual<{SampleManagerWorklet: new (client: EngineToClient) => SampleLoaderManager & Terminable}>("../../../core-processors/src/SampleManagerWorklet")
-    storage.load.mockResolvedValue(stored(1))
-    const client = new GlobalSampleLoaderManager({fetch: vi.fn()})
-    const source = new EngineSampleSource(client, uuid => worklet.invalidate(uuid))
-    const worklet = new SampleManagerWorklet({fetchAudio: (uuid: UUID.Bytes) => source.fetchAudio(uuid)} as unknown as EngineToClient)
-    const consumer = worklet.getOrCreate(uuid)
-    await flush()
-    expect(consumer.data.unwrap().frames[0][0]).toBe(1)
-    storage.load.mockResolvedValue(stored(2))
-    client.invalidate(uuid); await flush()
-    expect(worklet.getOrCreate(uuid)).toBe(consumer)
-    expect(consumer.data.unwrap().frames[0][0]).toBe(2)
-    source.terminate(); worklet.terminate()
+for (const preloaded of [false, true]) {
+    it(`reloads client replacement PCM through the engine source (preloaded: ${preloaded})`, async () => {
+        const {SampleManagerWorklet} = await vi.importActual<{SampleManagerWorklet: new (client: EngineToClient) => SampleLoaderManager & Terminable}>("../../../core-processors/src/SampleManagerWorklet")
+        storage.load.mockResolvedValue(stored(1))
+        const client = new GlobalSampleLoaderManager({fetch: vi.fn()})
+        if (preloaded) {await client.getAudioData(uuid)}
+        const source = new EngineSampleSource(client, uuid => worklet.invalidate(uuid))
+        const worklet = new SampleManagerWorklet({fetchAudio: (uuid: UUID.Bytes) => source.fetchAudio(uuid)} as unknown as EngineToClient)
+        const consumer = worklet.getOrCreate(uuid)
+        await flush()
+        expect(consumer.data.unwrap().frames[0][0]).toBe(1)
+        storage.load.mockResolvedValue(stored(2))
+        client.invalidate(uuid); await flush()
+        expect(worklet.getOrCreate(uuid)).toBe(consumer)
+        expect(consumer.data.unwrap().frames[0][0]).toBe(2)
+        source.terminate(); worklet.terminate()
+    })
+}
+
+it("retires pending engine reads and invalidation watches with the engine source", async () => {
+    const pending = Promise.withResolvers<ReturnType<typeof stored>>()
+    storage.load.mockReturnValue(pending.promise)
+    const manager = new GlobalSampleLoaderManager({fetch: vi.fn()})
+    const invalidate = vi.fn()
+    const source = new EngineSampleSource(manager, invalidate)
+    const result = source.fetchAudio(uuid).then(() => "loaded", error => error.message)
+    source.terminate()
+    expect(await result).toBe("Sample source terminated")
+    pending.resolve(stored(1)); await flush()
+    manager.invalidate(uuid); await flush()
+    expect(invalidate).not.toHaveBeenCalled()
+    await expect(source.fetchAudio(uuid)).rejects.toThrow("terminated")
 })

@@ -1,4 +1,4 @@
-import {Notifier, Observer, Option, Subscription, Terminable, UUID} from "@opendaw/lib-std"
+import {Notifier, Observer, Option, Subscription, UUID} from "@opendaw/lib-std"
 import {Peaks} from "@opendaw/lib-fusion"
 import {SampleLoader, SampleLoaderState, SampleMetaData} from "@opendaw/studio-adapters"
 import {AudioData} from "@opendaw/lib-dsp"
@@ -20,7 +20,6 @@ export class DefaultSampleLoader implements SampleLoader {
     subscribe(observer: Observer<SampleLoaderState>): Subscription {
         if (this.#state.type === "loaded" || this.#state.type === "error") {
             observer(this.#state)
-            return Terminable.Empty
         }
         return this.#notifier.subscribe(observer)
     }

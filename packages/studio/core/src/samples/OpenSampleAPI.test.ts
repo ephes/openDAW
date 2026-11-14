@@ -167,3 +167,28 @@ it("does not restart a queued header retry after the deadline", async () => {
     expect(network.limitFetch).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
 })
+
+it("settles a throwing progress observer and cleans the reader exactly once", async () => {
+    const transfer = stream([new Uint8Array([0]), new Uint8Array([1])], "2")
+    serve(transfer.response)
+    const decode = vi.spyOn(WavFile, "decodeFloats")
+    const outcome = api.load(uuid, () => {throw new Error("observer failed")}).then(() => "loaded", error => error.message)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBe("observer failed")
+    expect(transfer.cancel).toHaveBeenCalledTimes(1)
+    expect(transfer.release).toHaveBeenCalledTimes(1)
+    expect(decode).not.toHaveBeenCalled()
+})
+
+for (const length of [undefined, "0", "invalid", "-1", "Infinity", "1"]) {
+    it(`reports finite bounded progress for Content-Length ${length}`, async () => {
+        const wav = new Uint8Array(WavFile.encodeFloats({sampleRate: 44100, numberOfFrames: 1,
+            numberOfChannels: 1, frames: [new Float32Array(new SharedArrayBuffer(4))]}))
+        serve(stream([wav], length).response)
+        const progress = vi.fn()
+        await api.load(uuid, progress)
+        expect(progress).toHaveBeenCalled()
+        expect(progress.mock.calls.every(([value]) => Number.isFinite(value) && value >= 0 && value <= 1)).toBe(true)
+        expect(progress.mock.calls.at(-1)).toEqual([1])
+    })
+}

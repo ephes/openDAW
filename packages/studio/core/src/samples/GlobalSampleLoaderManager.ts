@@ -131,11 +131,15 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
             if (!this.#isCurrent(attempt) || !isDefined(cached)) {return}
             this.#cache.add(cached)
             const {data, peaks, meta} = cached
-            attempt.loaders.forEach(loader => loader.setLoaded(data, peaks, meta))
+            attempt.loaders.forEach(loader => {
+                if (this.#isCurrent(attempt)) {loader.setLoaded(data, peaks, meta)}
+            })
         }, (error: unknown) => {
             if (!this.#isCurrent(attempt)) {return}
             console.warn("Unexpected error loading sample:", error)
-            attempt.loaders.forEach(loader => loader.setError(error instanceof Error ? error.message : String(error)))
+            attempt.loaders.forEach(loader => {
+                if (this.#isCurrent(attempt)) {loader.setError(error instanceof Error ? error.message : String(error))}
+            })
         }).finally(() => {
             if (this.#isCurrent(attempt)) {this.#pending.removeByKey(uuid)}
         })
@@ -156,7 +160,9 @@ export class GlobalSampleLoaderManager implements SampleLoaderManager, SamplePro
         const [fetchProgress, peakProgress] = Progress.split(
             progress => {
                 if (this.#isCurrent(attempt)) {
-                    attempt.loaders.forEach(loader => loader.setProgress(0.1 + 0.9 * progress))
+                    attempt.loaders.forEach(loader => {
+                        if (this.#isCurrent(attempt)) {loader.setProgress(0.1 + 0.9 * progress)}
+                    })
                 }
             }, 2
         )

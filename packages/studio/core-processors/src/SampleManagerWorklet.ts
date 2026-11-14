@@ -43,6 +43,7 @@ class SampleLoaderWorklet implements SampleLoader, Terminable {
     terminate(): void {
         this.#retired = true
         this.#data = Option.None
+        this.#state = {type: "idle"}
         this.#notifier.terminate()
     }
 

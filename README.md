@@ -261,6 +261,28 @@ retrigger and the latest note ends at the last release. Live input presses are
 owned per input, channel and pitch: a release only ends a press from the same
 input and channel, and closing the input stream releases each held press once.
 
+### Sample loading and MIDI export
+
+Sample invalidation reloads the current client and live engine loaders without an
+engine restart. Retired attempts cannot publish cache data or progress. Removal
+or the last registered release retires pending readers with an error; callers
+using unregistered `getOrCreate` retain their load until explicit removal.
+
+Stock catalog reads share in-flight discovery and cache successful lists, including
+empty lists. A failed catalog read rejects and the next explicit read retries.
+Stock metadata must match the requested UUID (case-insensitive, returned in
+lowercase). Stock WAV downloads allow at most 64 MiB declared or streamed bytes
+and 60 seconds total for metadata, retries and body transfer. Overflow, timeout
+and progress observer failures reject the load and clean up its reader. Unknown
+length reports zero progress until completion; known lengths are clamped to [0, 1].
+
+MIDI export uses 96 ticks per quarter note. Positive-duration, positive-velocity
+notes get at least one tick and attack velocity 1/127. Silent and nonpositive-duration
+notes are omitted so they cannot release another sounding note. At equal ticks,
+note-offs precede note-ons; overlapping notes retain their endpoint pairs and
+attacks quantized to the same tick remain simultaneous. Individual receivers
+determine how overlapping notes of the same pitch sound.
+
 ### Flow Charts
 
 <img width="6551" height="7057" alt="image" src="https://github.com/user-attachments/assets/266a9fb2-4b72-4752-bcf1-85fda2ff2cf1" />

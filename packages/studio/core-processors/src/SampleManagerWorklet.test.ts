@@ -6,12 +6,7 @@ import {SampleManagerWorklet} from "./SampleManagerWorklet"
 
 const uuid = UUID.parse("00000000-0000-4000-8000-000000000001")
 const audio: AudioData = {sampleRate: 44100, numberOfChannels: 1, numberOfFrames: 1, frames: [new Float32Array(new SharedArrayBuffer(4)).fill(1)]}
-const deferred = () => {
-    let resolve = (_value: AudioData): void => {}
-    let reject = (_reason: Error): void => {}
-    const promise = new Promise<AudioData>((success, failure) => {resolve = success; reject = failure})
-    return {promise, resolve, reject}
-}
+const deferred = () => Promise.withResolvers<AudioData>()
 const flush = async () => {for (let index = 0; index < 10; index++) {await Promise.resolve()}}
 
 for (const retirement of ["remove", "terminate"] as const) {
@@ -49,5 +44,7 @@ it("keeps the latest invalidation when requests resolve out of order", async () 
     old.resolve({...audio, frames: [new Float32Array(new SharedArrayBuffer(4)).fill(2)]}); await flush()
     expect(loader.data.unwrap()).toBe(audio)
     manager.terminate()
+    expect(loader.data.isEmpty()).toBe(true)
+    expect(loader.state.type).toBe("idle")
     expect(() => manager.getOrCreate(uuid)).toThrow("terminated")
 })

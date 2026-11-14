@@ -108,7 +108,8 @@ export class OpenSampleAPI implements SampleAPI {
 
     async #readBody(response: Response, progress: Procedure<unitValue>, signal: AbortSignal): Promise<ArrayBuffer> {
         const reader = asDefined(response.body, "No body in response").getReader()
-        const total = Number(response.headers.get("Content-Length") ?? "0")
+        const declared = Number(response.headers.get("Content-Length") ?? "0")
+        const total = Number.isFinite(declared) && declared > 0 ? declared : 0
         const chunks: Array<Uint8Array<ArrayBuffer>> = []
         let loaded = 0
         let complete = false
@@ -125,13 +126,13 @@ export class OpenSampleAPI implements SampleAPI {
             for (;;) {
                 const {done, value} = await reader.read()
                 signal.throwIfAborted()
-                if (done) {complete = true; break}
+                if (done) {progress(1); complete = true; break}
                 if (value.byteLength > OpenSampleAPI.MaxDownloadBytes - loaded) {
                     return panic("Stock sample byte limit exceeded")
                 }
                 loaded += value.byteLength
                 chunks.push(new Uint8Array(value))
-                progress(loaded / total)
+                progress(total > 0 ? Math.min(1, loaded / total) : 0)
             }
             const buffer = await new Blob(chunks).arrayBuffer()
             signal.throwIfAborted()
