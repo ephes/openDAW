@@ -7,7 +7,7 @@ import {
     RuntimeNotifier,
     TimeSpan
 } from "@opendaw/lib-std"
-import {dbToGain, ppqn, RenderQuantum} from "@opendaw/lib-dsp"
+import {ppqn, RenderQuantum} from "@opendaw/lib-dsp"
 import {OfflineEngineRenderer, Project} from "@opendaw/studio-core"
 import {ShadertoyState} from "@/ui/shadertoy/ShadertoyState"
 import {ShadertoyRunner} from "@/ui/shadertoy/ShadertoyRunner"
@@ -24,11 +24,20 @@ import {waitForVideoTask} from "./VideoExportTask"
 import {validateVideoConfig} from "./VideoExportLimits"
 import {Promises} from "@opendaw/lib-runtime"
 
-const SILENCE_THRESHOLD_DB = -72.0
-const SILENCE_DURATION_SECONDS = 10
+// Automatic duration renders the arrangement plus this fixed tail (sustained effects, reverb).
+const AUTOMATIC_TAIL_SECONDS = 10
 
 const isAllocationError = (error: unknown): boolean =>
     error instanceof RangeError && /alloc|array|memory/i.test(error.message)
+
+const notifyFailure = async (failure: unknown): Promise<void> => {
+    const message = isAllocationError(failure)
+        ? "Video is too large for this browser. Please use Chrome."
+        : String(failure)
+    try {
+        await RuntimeNotifier.info({headline: "Video Export Failed", message})
+    } catch {console.warn("Video failure notification failed")}
+}
 
 export namespace VideoRenderer {
     export const render = async (source: Project, projectName: string, sampleRate: number): Promise<void> => {
@@ -38,11 +47,20 @@ export namespace VideoRenderer {
         const config = await showVideoExportDialog(sampleRate)
         const {width, height, frameRate, duration, overlay: overlayEnabled, videoBitrate} = config
         const exportConfig = {width, height, frameRate, sampleRate, numberOfChannels: 2, videoBitrate}
-        validateVideoConfig(exportConfig, duration)
-        const arrangementEnd = source.tempoMap.ppqnToSeconds(source.lastRegionAction())
-        if (!Number.isFinite(arrangementEnd) || arrangementEnd < 0) {throw new Error("Invalid arrangement duration.")}
-        const maxDuration = duration > 0 ? duration : arrangementEnd + SILENCE_DURATION_SECONDS
-        validateVideoConfig(exportConfig, maxDuration)
+        let maxDuration: number
+        try {
+            validateVideoConfig(exportConfig, duration)
+            const arrangementEnd = source.tempoMap.ppqnToSeconds(source.lastRegionAction())
+            if (!Number.isFinite(arrangementEnd) || arrangementEnd < 0) {
+                throw new Error("Invalid arrangement duration.")
+            }
+            maxDuration = duration > 0 ? duration : arrangementEnd + AUTOMATIC_TAIL_SECONDS
+            validateVideoConfig(exportConfig, maxDuration)
+        } catch (error) {
+            // Refused settings must reach the user: the menu caller ignores the rejection.
+            await notifyFailure(error)
+            throw error
+        }
         const timedExportConfig = {...exportConfig, durationSeconds: maxDuration}
         const controller = new AbortController()
         const {signal} = controller
@@ -147,10 +165,6 @@ export namespace VideoRenderer {
             const maxFrames = Math.ceil(maxDuration * frameRate)
             const estimatedNumberOfFrames = Math.ceil(estimatedDurationInSeconds * frameRate)
 
-            const silenceThreshold = dbToGain(SILENCE_THRESHOLD_DB)
-            const silenceSamplesNeeded = Math.ceil(SILENCE_DURATION_SECONDS * sampleRate)
-            let consecutiveSilentSamples = 0
-
             const idealSamplesPerFrame = sampleRate / frameRate
             let samplesRendered = 0
             let frameIndex = 0
@@ -158,7 +172,7 @@ export namespace VideoRenderer {
             while (frameIndex < maxFrames) {
                 signal.throwIfAborted()
                 if (frameIndex >= estimatedNumberOfFrames) {
-                    dialog.message = `Waiting for silence...`
+                    dialog.message = `Rendering tail...`
                 } else {
                     const progress = frameIndex / estimatedNumberOfFrames
                     dialog.message = `Frame ${frameIndex + 1} / ${estimatedNumberOfFrames} (${estimator(progress)})`
@@ -173,22 +187,6 @@ export namespace VideoRenderer {
                 signal.throwIfAborted()
                 samplesRendered += actualSamplesToRender
                 project.liveStreamReceiver.dispatch()
-                if (duration === 0) {
-                    let maxSample = 0
-                    for (const channel of channels) {
-                        for (const sample of channel) {
-                            const absoluteValue = Math.abs(sample)
-                            if (absoluteValue > maxSample) {maxSample = absoluteValue}
-                        }
-                    }
-                    if (maxSample > silenceThreshold) {
-                        consecutiveSilentSamples = 0
-                    } else if (samplesRendered / sampleRate >= arrangementEnd) {
-                        consecutiveSilentSamples += Math.min(actualSamplesToRender,
-                            Math.max(0, samplesRendered - Math.ceil(arrangementEnd * sampleRate)))
-                    }
-                }
-
                 const seconds = renderer.totalFrames / sampleRate
                 const ppqn = tempoMap.secondsToPPQN(seconds)
                 shadertoyState.setPPQN(ppqn)
@@ -206,7 +204,6 @@ export namespace VideoRenderer {
                 const timestampSeconds = frameIndex / frameRate
                 await wait(exporter.addFrame(compositionCanvas, channels, timestampSeconds))
                 frameIndex++
-                if (duration === 0 && consecutiveSilentSamples >= silenceSamplesNeeded) {break}
             }
 
             signal.throwIfAborted()
@@ -228,12 +225,7 @@ export namespace VideoRenderer {
             console.timeEnd("Render Video")
         }
         if (failed && !cancelled) {
-            const message = isAllocationError(failure)
-                ? "Video is too large for this browser. Please use Chrome."
-                : String(failure)
-            try {
-                await RuntimeNotifier.info({headline: "Video Export Failed", message})
-            } catch {console.warn("Video failure notification failed")}
+            await notifyFailure(failure)
             throw failure
         }
     }

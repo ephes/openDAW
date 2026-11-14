@@ -13,7 +13,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Roll back partial video encoder construction and close native audio samples on failed submissions.
 
-- Timestamp video audio from its sample cursor; preserve internal arrangement gaps and bound automatic tails, including silent projects.
+- Timestamp video audio from its sample cursor; preserve internal arrangement gaps and render a fixed ten-second automatic tail, including for silent projects.
+
+- Show refused video export settings (limits, one-hour work limit, buffered budget) as a "Video Export Failed" notice instead of silently doing nothing.
 
 - Validate video export configuration and frame audio geometry before allocating or submitting media.
 

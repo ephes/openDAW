@@ -1,10 +1,7 @@
 # Video export safety
 
-Round 88 implementation uses Codex to add focused synthetic regression fixtures,
-then change the existing exporter and renderer. No production audio or browser
-profile is used. Lifecycle tests fake WebCodecs and mediabunny; renderer fixtures
-use deterministic stereo tones and silence. Local build, lint and test gates
-validate the final branch. External cross-family review is left to the clerk.
+Limits and lifecycle of the studio's video export (`packages/app/studio/src/video/`).
+Tests fake WebCodecs and Mediabunny and use deterministic synthetic audio.
 
 ## Admission
 
@@ -31,10 +28,10 @@ sample budget; samples are neither repeated nor discarded. Native AudioData
 represents the cursor rounded to the nearest microsecond; AudioSample.setTimestamp
 retains the precise seconds derived from the sample cursor for muxing.
 
-Automatic duration preserves the complete arrangement, including silent gaps.
-Tail silence is counted only after the final scheduled region. Empty/silent
-projects finish within ten seconds after the arrangement end. All automatic
-tails, including sustained effects, are capped at ten seconds. Automatic projects
+Automatic duration preserves the complete arrangement, including silent gaps,
+and then renders a fixed ten-second tail for sustained effects. Empty/silent
+projects therefore finish ten seconds after the arrangement end, and longer
+tails are cut at ten seconds; there is no early stop on silence. Automatic projects
 whose arrangement plus tail exceeds the one-hour work limit are refused; use an
 explicit shorter duration. Explicit duration ignores silence.
 
@@ -86,8 +83,15 @@ file commit/download that has already been started.
 Without the direct file picker, duration must have a resolved positive upper
 budget. Admission uses `(video bitrate + audio bitrate) × seconds / 8`, with
 25% headroom and 1 MiB for metadata, and refuses budgets over 256 MiB. The
-upper duration includes the automatic ten-second tail. Use a shorter export or
-Chrome's direct file streaming for larger output.
+upper duration includes the automatic ten-second tail. That allows about 209 s
+in total at the Medium preset (8 Mbit/s), about 106 s at the default High preset
+(16 Mbit/s) and about 53 s at Very High (32 Mbit/s); subtract the tail for
+automatic duration. Use a lower quality preset, a shorter export or Chrome's
+direct file streaming for larger output.
+
+Every refused configuration (geometry, rate, duration, the one-hour work limit
+or the buffered budget) is shown as a "Video Export Failed" notice; the export
+never silently does nothing.
 
 A public Mediabunny StreamTarget writes into seekable bounded storage instead of
 BufferTarget. Actual output offsets plus bytes may never exceed 256 MiB; crossing
@@ -102,27 +106,17 @@ asset loads have a ten-second deadline covering fetch, body and bitmap decoding,
 check HTTP success and observe cancellation. A late bitmap is closed. Asset
 refusal/timeout uses the same render cleanup and controlled export error path.
 
-## Round 88 validation and remaining review boundary
+## Known limitation: finalize cancellation
 
-The six bundles were implemented in brief order on a fresh ephes/openDAW main
-checkout (`73e54ebb`). All twelve scout scopes still applied. Each bundle's new
-regressions was run against the preceding implementation and failed before its
-fix; the geometry, native ownership/precision and low-rate quantum follow-ups
-also have recorded red runs. Logs are retained outside the clone in the worker's
-coordination log directory. Tests use synthetic data only.
+Cancelling stops active muxers and fences retired exports. A native flush that is
+already inside Mediabunny's `finalize` cannot be interrupted through its public
+API: after cancel the output still reports `finalizing`, then `finalized` once the
+deferred finalization completes. The result is never saved. Hard interruption
+there needs an upstream public lifecycle change or a different encoder owner.
 
-The local gate is Node >=23, `npm ci --ignore-scripts`, `npm run build`, then
-`npm run lint` and `npm test`. Focused validation also runs studio TypeScript
-and lint checks. Fixtures cover fake codec lifecycle failures, one second of
-stereo through renderer/exporter, and real Mediabunny MP4 target finalize/abort.
-No native browser codec/decode smoke test is claimed.
+## Validation
 
-The active muxer cancellation portion of B04 is implemented. Hard interruption
-of a native flush already inside Mediabunny finalize remains unresolved: a probe
-of the installed public API observes `finalizing` after cancel, then `finalized`
-after the deferred finalization is released. Supporting hard cancellation there
-requires an upstream public lifecycle change or an alternative encoder owner;
-that portion is parked for the clerk/owner, not claimed complete. Other bundles
-have no owner decisions. The feature branch is for external review and merge;
-no Claude command, Actions wait, release or default-branch push is part of this
-worker closeout.
+Node >=23: `npm ci --ignore-scripts`, `npm run build`, then `npm run lint` and
+`npm test`. Fixtures cover fake codec lifecycle failures, one second of stereo
+through renderer/exporter, and real Mediabunny MP4 target finalize/abort. No
+native browser codec/decode smoke test is claimed.

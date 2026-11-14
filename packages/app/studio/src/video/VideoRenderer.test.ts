@@ -89,8 +89,18 @@ for (const invalid of [{width: 0}, {height: 1.5}, {duration: NaN}, {duration: -1
         expect(picker).not.toHaveBeenCalled()
         expect(m.canvas).not.toHaveBeenCalled()
         expect(m.create).not.toHaveBeenCalled()
+        // The menu caller ignores the rejection, so the user must see why.
+        expect(m.info).toHaveBeenCalledTimes(1)
+        expect(m.info.mock.calls[0][0]).toMatchObject({headline: "Video Export Failed"})
     })
 }
+it("reports an automatic project beyond the one-hour work limit", async () => {
+    end = 3595
+    m.dialog.mockResolvedValue({...config, duration: 0})
+    await expect(VideoRenderer.render(source, "Long", 48000)).rejects.toThrow()
+    expect(m.info).toHaveBeenCalledTimes(1)
+    expect(m.create).not.toHaveBeenCalled()
+})
 it("exports a deterministic one-second stereo fixture", async () => {
     await VideoRenderer.render(source, "Synthetic", 48000)
     expect(m.add).toHaveBeenCalledTimes(30)
