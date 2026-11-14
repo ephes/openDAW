@@ -54,3 +54,14 @@ also covers lost capture. Pointer-lock requests are single-flight per target,
 including across attachment replacement. A late success from a settled drag is
 released; the replacement can request its own lock on a subsequent move. Locks
 already held by another owner are left alone.
+
+## Frame scheduler
+
+`AnimationFrame` dispatches an owned snapshot: one-shot callbacks run at most once,
+callbacks queued during dispatch wait for the next eligible frame, and a throwing
+callback is reported through `console.error` while siblings continue. Stop,
+terminate or a switch of window driver retires the current dispatch immediately.
+Stop preserves registered recurring and pending one-shot work; terminate clears
+both. Undispatched one-shot work already in a retired snapshot is discarded.
+The first callback of a new driver is accepted regardless of its timestamp; later
+callbacks retain the 16 ms throttle. Cancelled callbacks cannot revive an old driver.

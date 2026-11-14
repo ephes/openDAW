@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Isolate frame callback failures and fence retired dispatches when stopping or changing window drivers.
+
 - Compensate failed drag setup and retire delayed pointer locks without affecting replacement drags.
 
 - Settle drags once even when terminal hooks fail; cancel active edits on owner disposal.
