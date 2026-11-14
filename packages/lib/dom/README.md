@@ -46,3 +46,11 @@ listeners and frame updates, releases owned capture/lock, and calls `finally`
 exactly once, including when approve/cancel throws. The first failure is preserved.
 Disposing an attachment is idempotent and rolls back its provisional edit before
 removing the pointerdown listener.
+
+Factory success acquires a process even if setup fails. An already-aborted signal,
+failed pointer capture or throwing initial update cancels/finalizes it and removes
+all subscriptions; setup failures surface through the event error path. Cleanup
+also covers lost capture. Pointer-lock requests are single-flight per target,
+including across attachment replacement. A late success from a settled drag is
+released; the replacement can request its own lock on a subsequent move. Locks
+already held by another owner are left alone.

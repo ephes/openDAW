@@ -4,7 +4,7 @@ import {Option, Terminable} from "@opendaw/lib-std"
 import {Dragging} from "./dragging"
 import {AnimationFrame} from "./frames"
 
-export const pointer = (target: EventTarget, type: string, pointerId = 1): void => {
+const pointer = (target: EventTarget, type: string, pointerId = 1): void => {
     const event = new MouseEvent(type, {bubbles: true, cancelable: true, buttons: 1, clientX: 100, clientY: 100})
     Object.defineProperties(event, {pointerId: {value: pointerId}, isPrimary: {value: true}})
     target.dispatchEvent(event)
@@ -31,6 +31,7 @@ afterEach(() => {
     AnimationFrame.terminate()
     window.removeEventListener("error", onError)
     target.remove()
+    Dragging.usePointerLock = false
     vi.restoreAllMocks()
 })
 
@@ -80,5 +81,70 @@ describe("drag settlement", () => {
         expect(process.finally).toHaveBeenCalledTimes(1)
         expect(process.approve).not.toHaveBeenCalled()
         expect(target.hasPointerCapture(1)).toBe(false)
+    })
+})
+
+describe("drag acquisition", () => {
+    it.each(["aborted", "capture", "update"] as const)("compensates failed %s setup", mode => {
+        const controller = new AbortController()
+        if (mode === "aborted") {controller.abort()}
+        const failure = new Error(mode)
+        if (mode === "capture") {target.setPointerCapture = vi.fn(() => {throw failure})}
+        const process = {
+            update: vi.fn(() => {if (mode === "update") {throw failure}}),
+            cancel: vi.fn(), approve: vi.fn(), finally: vi.fn(), abortSignal: controller.signal
+        }
+        attachment = Dragging.attach(target, () => Option.wrap(process), {immediate: true, permanentUpdates: true})
+        pointer(target, "pointerdown")
+        expect(process.cancel).toHaveBeenCalledTimes(1)
+        expect(process.finally).toHaveBeenCalledTimes(1)
+        expect(process.approve).not.toHaveBeenCalled()
+        process.update.mockClear()
+        pointer(target, "pointermove")
+        pointer(target, "pointerup")
+        window.dispatchEvent(new KeyboardEvent("keyup", {key: "Shift"}))
+        expect(process.update).not.toHaveBeenCalled()
+        expect(target.hasPointerCapture(1)).toBe(false)
+        if (mode === "update") {expect(errors).toEqual([failure])}
+    })
+
+    it.each(["pointerup", "pointercancel", "dispose", "replacement"])("retires a deferred lock after %s", async end => {
+        // Exported preference is mutable in the studio too.
+        Dragging.usePointerLock = true
+        let locked: Element | null = null
+        Object.defineProperty(document, "pointerLockElement", {configurable: true, get: () => locked})
+        document.exitPointerLock = vi.fn(() => {locked = null})
+        const resolvers: Array<() => void> = []
+        target.requestPointerLock = vi.fn(() => new Promise<void>(resolve => {
+            resolvers.push(() => {locked = target; resolve()})
+        }))
+        const process = {update: vi.fn(), cancel: vi.fn(), approve: vi.fn(), finally: vi.fn()}
+        attachment = Dragging.attach(target, () => Option.wrap(process), {pointerLock: true, pointerLockThreshold: 200})
+        pointer(target, "pointerdown")
+        pointer(target, "pointermove")
+        pointer(target, "pointermove")
+        expect(target.requestPointerLock).toHaveBeenCalledTimes(1)
+        if (end === "dispose") {attachment.terminate()}
+        else if (end !== "replacement") {pointer(target, end)}
+        if (end === "replacement") {
+            pointer(target, "pointerdown", 2)
+            pointer(target, "pointermove", 2)
+            expect(target.requestPointerLock).toHaveBeenCalledTimes(1)
+        }
+        resolvers[0]()
+        await Promise.resolve()
+        expect(locked).toBe(null)
+        expect(document.exitPointerLock).toHaveBeenCalledTimes(1)
+        if (end === "replacement") {
+            pointer(target, "pointermove", 2)
+            expect(target.requestPointerLock).toHaveBeenCalledTimes(2)
+            resolvers[1]()
+            await Promise.resolve()
+            expect(locked).toBe(target)
+            pointer(target, "pointerup", 2)
+            expect(locked).toBe(null)
+            expect(document.exitPointerLock).toHaveBeenCalledTimes(2)
+        }
+        Dragging.usePointerLock = false
     })
 })

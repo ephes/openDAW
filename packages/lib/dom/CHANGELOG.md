@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Compensate failed drag setup and retire delayed pointer locks without affecting replacement drags.
+
 - Settle drags once even when terminal hooks fail; cancel active edits on owner disposal.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
