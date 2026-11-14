@@ -84,6 +84,14 @@ the empty transition, then calls the disposal procedure with the old value.
 Reentrant replacement survives; disposal runs even if notification throws. If
 both notification and disposal fail, the notification error remains primary.
 
+`Notifier.subscribeMany` acquires subscriptions in order. Failed acquisition
+releases every earlier subscription in reverse order, even if a cleanup throws,
+and propagates the acquisition error. `MappedMutableObservableValue.terminate`
+idempotently releases upstream and downstream subscriptions. Later `subscribe`
+and `catchupAndSubscribe` calls return an inert subscription without delivery.
+Reading/writing a retired mapping still delegates to the source; termination
+retires its notification lifetime.
+
 ## Specialized
 
 * Geometric operations and utilities **geom.ts**

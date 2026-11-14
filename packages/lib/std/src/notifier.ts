@@ -1,12 +1,22 @@
 import {Subscription, Terminable} from "./terminable"
 import {Observer} from "./observers"
 import {Observable} from "./observables"
+import {tryCatch} from "./lang"
 
 export class Notifier<T> implements Observable<T>, Terminable {
     static subscribeMany<T extends Observable<unknown>>(observer: Observer<T>,
                                                     ...observables: ReadonlyArray<T>): Subscription {
-        return Terminable.many(...observables
-            .map(observable => observable.subscribe(() => observer(observable))))
+        const subscriptions: Subscription[] = []
+        const result = tryCatch(() => {
+            for (const observable of observables) {
+                subscriptions.push(observable.subscribe(() => observer(observable)))
+            }
+        })
+        if (result.status === "failure") {
+            while (subscriptions.length > 0) {tryCatch(() => subscriptions.pop()!.terminate())}
+            throw result.error
+        }
+        return Terminable.many(...subscriptions)
     }
 
     readonly #observers: Set<Observer<T>> = new Set<Observer<T>>() // A set allows us to remove while iterating

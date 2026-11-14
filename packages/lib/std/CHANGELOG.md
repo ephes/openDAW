@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Roll back partial multi-source subscription acquisition and release mapped downstream observers on terminal disposal.
+
 - Subscribe before observable catchup, release failed catchup subscriptions, and detach optional resources before reentrant clear notifications/disposal.
 
 - Stage large multimap bulk updates without argument spread, reorder keys atomically, and find stable insertion positions in logarithmic comparisons.
