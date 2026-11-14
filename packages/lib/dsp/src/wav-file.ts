@@ -1,4 +1,4 @@
-import {Arrays, int, panic} from "@opendaw/lib-std"
+import {int, panic} from "@opendaw/lib-std"
 import {AudioData} from "./audio-data"
 
 export namespace WavFile {
@@ -89,6 +89,31 @@ export namespace WavFile {
         getChannelData(channel: number): Float32Array
     }
 
+    const source = (audio: AudioData | AudioBufferLike, maxLength: number, bytesPerSample: number) => {
+        const {sampleRate, numberOfChannels} = audio
+        const numberOfFrames = "getChannelData" in audio ? audio.length : audio.numberOfFrames
+        const blockAlign = numberOfChannels * bytesPerSample
+        if (!Number.isInteger(sampleRate) || sampleRate < 1 || sampleRate > 0xffffffff
+            || !Number.isInteger(numberOfChannels) || numberOfChannels < 1 || blockAlign > 0xffff
+            || sampleRate * blockAlign > 0xffffffff
+            || !Number.isSafeInteger(numberOfFrames) || numberOfFrames < 0
+            || !Number.isSafeInteger(maxLength) || maxLength < 0) {
+            throw new Error("Invalid WAV source geometry or maxLength")
+        }
+        const frames = "getChannelData" in audio
+            ? Array.from({length: numberOfChannels}, (_, index) => audio.getChannelData(index)) : audio.frames
+        if (frames.length !== numberOfChannels) {throw new Error("Invalid WAV source channel count")}
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+            if (frames[channel]?.length !== numberOfFrames) {throw new Error("Invalid WAV source channel planes")}
+        }
+        const length = Math.min(maxLength, numberOfFrames)
+        const dataSize = length * blockAlign
+        if (!Number.isSafeInteger(dataSize) || dataSize > 0xffffffff - 36) {
+            throw new Error("WAV output exceeds RIFF size limit")
+        }
+        return {sampleRate, numberOfChannels, numberOfFrames: length, frames, dataSize}
+    }
+
     /**
      * Encode the audio as a 16-bit PCM WAV file. Float samples are clamped
      * to [-1, 1] and scaled to int16. Same input shape as `encodeFloats`
@@ -98,21 +123,7 @@ export namespace WavFile {
      */
     export const encodeInts16 = (audio: AudioData | AudioBufferLike, maxLength: int = Number.MAX_SAFE_INTEGER): ArrayBuffer => {
         const bytesPerSample = 2
-        const sampleRate = audio.sampleRate
-        let numberOfFrames: number
-        let numberOfChannels: number
-        let frames: ReadonlyArray<Float32Array>
-        if ("getChannelData" in audio) {
-            frames = Arrays.create(index => audio.getChannelData(index), audio.numberOfChannels)
-            numberOfFrames = audio.length
-            numberOfChannels = audio.numberOfChannels
-        } else {
-            frames = audio.frames
-            numberOfFrames = audio.numberOfFrames
-            numberOfChannels = audio.frames.length
-        }
-        numberOfFrames = Math.min(maxLength, numberOfFrames)
-        const dataSize = numberOfFrames * numberOfChannels * bytesPerSample
+        const {sampleRate, numberOfFrames, numberOfChannels, frames, dataSize} = source(audio, maxLength, bytesPerSample)
         const size = 44 + dataSize
         const buf = new ArrayBuffer(size)
         const view = new DataView(buf)
@@ -143,21 +154,8 @@ export namespace WavFile {
 
     export const encodeFloats = (audio: AudioData | AudioBufferLike, maxLength: int = Number.MAX_SAFE_INTEGER): ArrayBuffer => {
         const bytesPerChannel = Float32Array.BYTES_PER_ELEMENT
-        const sampleRate = audio.sampleRate
-        let numberOfFrames: number
-        let numberOfChannels: number
-        let frames: ReadonlyArray<Float32Array>
-        if ("getChannelData" in audio) {
-            frames = Arrays.create(index => audio.getChannelData(index), audio.numberOfChannels)
-            numberOfFrames = audio.length
-            numberOfChannels = audio.numberOfChannels
-        } else {
-            frames = audio.frames
-            numberOfFrames = audio.numberOfFrames
-            numberOfChannels = audio.frames.length
-        }
-        numberOfFrames = Math.min(maxLength, numberOfFrames)
-        const size = 44 + numberOfFrames * numberOfChannels * bytesPerChannel
+        const {sampleRate, numberOfFrames, numberOfChannels, frames, dataSize} = source(audio, maxLength, bytesPerChannel)
+        const size = 44 + dataSize
         const buf = new ArrayBuffer(size)
         const view = new DataView(buf)
         view.setUint32(0, MAGIC_RIFF, true)
