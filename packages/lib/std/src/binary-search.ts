@@ -58,21 +58,8 @@ export namespace BinarySearch {
     /**
      * stableInsert
      *
-     * A hybrid binary-search variant is used when inserting into a sorted array
-     * that must remain both numerically sorted and stable for equal values.
-     *
-     * - `leftMost` inserts before existing equal elements → breaks stability
-     *   (newer equal values appear before older ones)
-     * - `rightMost` inserts after existing equal elements → preserves stability
-     *   but may misplace smaller values if used naively
-     *
-     * `stableInsert` combines both:
-     * it finds the first element greater than the key (not equal),
-     * ensuring correct ascending order while appending after any equals.
-     *
-     * This pattern is common in associative containers like multimaps,
-     * priority queues, or event lists where items share the same key
-     * but must preserve their original insertion order.
+     * Upper-bound binary search: returns the first position greater than the key
+     * in O(log n) comparisons, preserving insertion order among equal values.
      */
     export const stableInsert = <T>(sorted: ReadonlyArray<T>, key: T, comparator: Comparator<T>): int => {
         let l = 0
@@ -80,14 +67,11 @@ export namespace BinarySearch {
         while (l < r) {
             const m = (l + r) >>> 1
             const cmp = comparator(sorted[m], key)
-            if (cmp < 0) {
+            if (cmp <= 0) {
                 l = m + 1
             } else {
                 r = m
             }
-        }
-        while (l < sorted.length && comparator(sorted[l], key) === 0) {
-            l++
         }
         return l
     }

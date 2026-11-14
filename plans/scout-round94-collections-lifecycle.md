@@ -23,3 +23,12 @@ retains resource ownership until it compares its result to the returned entry.
 Clone bucket arrays independently while retaining the optional comparator.
 All three regressions failed before repair; all 82 sorted-set/multimap tests pass
 after repair, including sorted equal-value stability and mutation in both clones.
+
+## O3: large multimap operations
+
+Stage bulk buckets using iteration and publish only after sorting succeeds.
+Reorder complete map entries without replaying value admission. Stable insertion
+uses an upper-bound binary search instead of scanning equal runs. Four new tests
+failed before repair (200k admission, iterator-created empty bucket, comparator
+rollback, 65,536-equal-key comparison count). All 85 multimap/binary-search tests
+pass after repair. The O2 clone test also exercises stable equal-value insertion.
