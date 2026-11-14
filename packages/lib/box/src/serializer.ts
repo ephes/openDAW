@@ -12,12 +12,12 @@ export namespace Serializer {
     }
     const MAGIC_HEADER = 0x464c4453
     export const writeFields = <FIELDS extends Fields>(output: DataOutput, fields: FIELDS) => {
-        const entries = Object.entries(fields).filter(([_, field]) => !field.deprecated)
+        const entries = Object.entries(fields).filter(([, field]) => !field.deprecated)
         if (entries.length > MAX_FIELDS) {throw new EncodeError("Invalid field count")}
         entries.forEach(([key]) => {
             if (!isFieldKey(key)) {throw new EncodeError("Invalid field key")}
         })
-        entries.forEach(([_, field]) => {
+        entries.forEach(([, field]) => {
             const counter = new ByteCounter()
             field.write(counter)
             if (counter.count > MAX_FIELD_BYTES) {throw new EncodeError("Field frame exceeds 64 MiB")}

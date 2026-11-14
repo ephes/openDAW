@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preflight canonical known box JSON keys and exact fixed-array shapes; roll back failed graph JSON imports instead of accepting partial boxes.
+
 - Reject duplicate binary field keys and decoder residue; enforce matching writer/reader field count, signed key and 64 MiB payload limits.
 
 - Restore vertex dispatch ownership after callback errors and defer subscriptions until the outermost nested event exits.

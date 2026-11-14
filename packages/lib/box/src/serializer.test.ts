@@ -20,7 +20,7 @@ const frame = (count: number, length?: number, payload = new ArrayBuffer(0)) => 
 
 afterEach(() => vi.restoreAllMocks())
 describe("binary field compatibility", () => {
-    it.each([0, 2])("rejects duplicate key %s in either order before decoding fields", key => {
+    it.each([0, 2] as const)("rejects duplicate key %s in either order before decoding fields", key => {
         const source = graph()
         source.beginTransaction()
         const box = TestBox.create(source)
@@ -79,6 +79,7 @@ describe("binary field compatibility", () => {
         Serializer.writeFields(boundary, {"-32768": field, 32767: field})
         Serializer.readFields(new ByteArrayInput(boundary.toArrayBuffer()), {})
         const generation = source.toArrayBuffer()
+        let published = generation
         const output = ByteArrayOutput.create()
         const chunk = new Int8Array(65536)
         // A counting writer models a large synthetic payload without allocating audio.
@@ -89,6 +90,8 @@ describe("binary field compatibility", () => {
         })
         expect(() => Serializer.writeFields(output, {0: field})).toThrow(/64 MiB/)
         expect(output.position).toBe(0)
+        expect(() => {published = source.toArrayBuffer()}).toThrow(/64 MiB/)
+        expect(published).toBe(generation)
         vi.restoreAllMocks()
         expect(source.toArrayBuffer()).toEqual(generation)
     })

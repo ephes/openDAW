@@ -48,6 +48,12 @@ Standard library providing core utilities and data structures for TypeScript pro
 
 ## Async & Reactive
 
+`Progress.split` and `Progress.splitWithWeights` aggregate each child's latest
+report, including repeated or decreasing values. Setup is O(children), and each
+report updates a running total in O(1) time. Weights must be finite and positive;
+normalization also supports finite weights whose unscaled sum would overflow.
+An empty unweighted split returns no handlers; weighted input must not be empty.
+
 * Observer pattern implementations **observers.ts**
 * Event listener utilities **listeners.ts**
 * Terminable resource management **terminable.ts**

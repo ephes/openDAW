@@ -51,6 +51,15 @@ trailing bytes produce bounded `Serializer.DecodeError` messages. Unknown fields
 remain forward compatible and are skipped by their admitted frame length.
 Import through `BoxGraph.fromArrayBuffer` rolls back a failed graph installation.
 
+`Box.fromJSON` preflights every property name before changing values. Keys must
+be canonical signed 16-bit integers present in that box; unknown JSON fields are
+rejected (unlike opaque binary frames). Deprecated known fields retain their
+decoder's no-op policy. Fixed arrays require exactly their declared length and
+all element slots; deprecated arrays ignore JSON input. Use `BoxEditing.modify`
+when decoding into existing boxes so child decoder failures roll back earlier
+changes. `BoxGraph.fromJSON` aborts its whole import on a thrown decoder error
+and preserves the prior graph, instead of logging and accepting partial boxes.
+
 * **serializer.ts** - Serialization utilities for objects
 * **sync.ts** - Synchronization utilities
 * **sync-source.ts** - Source-side synchronization

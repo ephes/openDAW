@@ -73,6 +73,9 @@ export class ArrayField<FIELD extends Field = Field>
     fromJSON(values: JSONValue): void {
         if (this.deprecated) {return}
         if (Array.isArray(values)) {
+            if (values.length !== this.#fields.length || this.#fields.some((_, index) => !Object.hasOwn(values, index))) {
+                return panic("Invalid fixed array shape")
+            }
             values.forEach((value, index) => this.#fields[index].fromJSON(value))
         } else {
             return panic("Type mismatch")
