@@ -163,3 +163,13 @@ it("silences disconnected NAM output after a distinct replacement", async () => 
     expect(f.processor.audioOutput.getChannel(0)).toEqual(new Float32Array(128))
     f.processor.terminate()
 })
+it("retries module initialization failure without duplicating concurrent initialization", async () => {
+    bridge.create.mockRejectedValueOnce(new Error("module initialization"))
+    const client = {fetchNamWasm: vi.fn().mockResolvedValue(new ArrayBuffer(0))} as unknown as EngineToClient
+    expect((await Promise.allSettled([NeuralAmp.fetchWasm(client), NeuralAmp.fetchWasm(client)])).map(x => x.status))
+        .toEqual(["rejected", "rejected"])
+    await Promise.all([NeuralAmp.fetchWasm(client), NeuralAmp.fetchWasm(client)])
+    expect(client.fetchNamWasm).toHaveBeenCalledTimes(2)
+    expect(bridge.create).toHaveBeenCalledTimes(2)
+    expect(bridge.from).toHaveBeenCalledTimes(1)
+})

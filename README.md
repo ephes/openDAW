@@ -289,6 +289,12 @@ Shared collection and subscription ownership contracts are documented in
 [`lib-runtime`](packages/lib/runtime/README.md). See the
 [round 94 repair plan](plans/scout-round94-collections-lifecycle.md) for regression evidence.
 
+### Audio effect lifecycle
+
+See the [core processor contracts](packages/studio/core-processors/README.md) for
+input connection ownership, disconnected silence, NAM loading and deterministic
+Delay, Vocoder and Stereo Tool restart behavior.
+
 ### Video export
 
 See [video export limits and lifecycle](plans/video-export-safety.md) for

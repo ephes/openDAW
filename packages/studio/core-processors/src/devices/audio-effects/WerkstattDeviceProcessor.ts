@@ -176,15 +176,15 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
     adapter(): AudioEffectDeviceAdapter {return this.#adapter}
 
     processAudio(block: Block): void {
-        if (this.#source.isEmpty()) {
-            this.#output.clear(block.s0, block.s1)
-            return
-        }
         if (this.#silenced) {
             if (this.#pendingUpdate > 0 && this.#pendingUpdate !== this.#currentUpdate) {
                 this.#tryLoad(this.#pendingUpdate)
             }
             if (this.#silenced) {return}
+        }
+        if (this.#source.isEmpty()) {
+            this.#output.clear(block.s0, block.s1)
+            return
         }
         if (this.#userProcessor.isEmpty()) {return}
         const source = this.#source.unwrap()

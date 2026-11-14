@@ -94,3 +94,23 @@ Three regressions failed before the fix: delayed registry registration and two
 stereo mixing modes. Afterward graph/detector ownership checks and exact partial
 restart comparisons pass. These are processor/DSP changes with no changed browser
 integration, so the browser-only integration gate is not applicable.
+
+## Final local validation
+
+Fresh origin/main was 39dab9f4d01eb6998ef128f905ecdd3140c26664; none of the
+12 slices was already fixed or needed an owner decision. Node 26.13.1 was used.
+All 32 added regressions were observed failing against the relevant pre-fix
+implementation (including an additional module-initialization rejection case).
+The final run passes all 128 core-processor tests and 2,579 tests repository-wide.
+`npm ci`, `npm run build` (24 tasks), `npm run lint` (24 tasks plus browser-fixture
+lint), `npm test` (44 build/test tasks), and each bundle's processor typecheck
+pass. No local gate is sandbox-blocked. Browser execution is not applicable to
+these processor/DSP-only changes. No Actions run is requested or awaited.
+
+The input lease pattern also covers equivalent effect setters; Werkstatt retains
+its existing pending-code retry order before checking input absence. Documentation
+is linked from the root README and processor README, with Unreleased notes and
+no version changes. Logs are stored outside the clone under
+`coordination/codex/logs/cx-r96-opendaw/` in the planning workspace. Work remains
+on `codex-q/r96-openDAW` for the external Claude clerk's review and merge; no
+cross-family review verdict is claimed by this worker.
