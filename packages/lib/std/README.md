@@ -24,6 +24,13 @@ Standard library providing core utilities and data structures for TypeScript pro
 * Map utilities and extensions **maps.ts**
 * Set utilities and operations **sets.ts**
 
+`SortedSet.addMany` uses comparator equality, including UUID byte keys. Existing
+entries win over incoming duplicates; among incoming duplicates the first wins,
+as with repeated `add` calls. It returns false if any duplicate was encountered.
+Iteration, key extraction, sorting and deduplication finish before publication;
+if any throws, the set remains unchanged. `values()` is a read-only view of the
+current backing array; bulk publication can replace that array.
+
 ## Algorithms & Search
 
 * Binary search implementations **binary-search.ts**
