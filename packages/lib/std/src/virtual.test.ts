@@ -100,6 +100,79 @@ describe("VirtualObject", () => {
     })
 
     describe("update batching", () => {
+        it("replaces null/scalar sections atomically and notifies each changed root once", () => {
+            const data: {a: number, b: null | number | {x: number, y?: number}} = {a: 0, b: null}
+            const object = new VirtualObject(data), observed: unknown[] = []
+            object.subscribeAll(key => observed.push([key, structuredClone(data)]))
+            object.update({a: 1, b: {x: 2, y: 3}})
+            expect(data).toEqual({a: 1, b: {x: 2, y: 3}})
+            expect(observed).toEqual([["a", {a: 1, b: {x: 2, y: 3}}], ["b", {a: 1, b: {x: 2, y: 3}}]])
+            object.update({a: 1, b: 4})
+            object.update({a: 2, b: {x: 5}})
+            expect(data).toEqual({a: 2, b: {x: 5}})
+        })
+
+        it("preserves earlier roots and notifications when a later target is read-only", () => {
+            const data = {a: 0, b: {x: 1}}
+            Object.freeze(data.b)
+            const object = new VirtualObject(data), notify = vi.fn()
+            object.subscribeAll(notify)
+            expect(() => object.update({a: 1, b: {x: 2}})).toThrow()
+            expect(data).toEqual({a: 0, b: {x: 1}})
+            expect(notify).not.toHaveBeenCalled()
+        })
+
+        it("refuses accessor input before mutating any root", () => {
+            const data = {a: 0, b: {x: 1}}, object = new VirtualObject(data), notify = vi.fn()
+            const getter = vi.fn(() => {throw new Error("synthetic getter")})
+            object.subscribeAll(notify)
+            const update = {a: 2, get b(): {x: number} {return getter()}}
+            expect(() => object.update(update)).toThrow()
+            expect(data).toEqual({a: 0, b: {x: 1}})
+            expect(notify).not.toHaveBeenCalled()
+            expect(getter).not.toHaveBeenCalled()
+        })
+
+        it("refuses a later nonextensible replacement target without partial updates", () => {
+            const data = {a: 0, b: Object.preventExtensions({x: 1})}
+            const object = new VirtualObject(data), notify = vi.fn()
+            object.subscribeAll(notify)
+            expect(() => object.update({a: 2, b: {x: 2, y: 3}} as typeof data)).toThrow()
+            expect(data).toEqual({a: 0, b: {x: 1}})
+            expect(notify).not.toHaveBeenCalled()
+        })
+
+        it("preserves nested identities and clones newly installed records", () => {
+            const retained = {x: 1}, replacement = {y: 2}
+            const data: {a: {x: number}, b: null | {y: number}} = {a: retained, b: null}
+            const object = new VirtualObject(data)
+            object.update({a: {x: 2}, b: replacement})
+            replacement.y = 9
+            expect(data.a).toBe(retained)
+            expect(data).toEqual({a: {x: 2}, b: {y: 2}})
+        })
+
+        it("refuses cyclic and class-record input before publication", () => {
+            const data: {a: number, b: object} = {a: 0, b: {x: 1}}
+            const object = new VirtualObject(data), notify = vi.fn()
+            object.subscribeAll(notify)
+            const cycle: {self?: object} = {}
+            cycle.self = cycle
+            for (const b of [cycle, new Date(0)]) {
+                expect(() => object.update({a: 2, b})).toThrow("plain records")
+                expect(data).toEqual({a: 0, b: {x: 1}})
+                expect(notify).not.toHaveBeenCalled()
+            }
+        })
+
+        it("installs special property names without invoking inherited setters", () => {
+            const data: Record<string, unknown> = {a: 0}
+            const object = new VirtualObject(data)
+            object.update(JSON.parse('{"a":1,"__proto__":{"synthetic":2}}'))
+            expect(Object.getPrototypeOf(data)).toBe(Object.prototype)
+            expect(Object.hasOwn(data, "__proto__")).toBe(true)
+            expect(data["__proto__"]).toEqual({synthetic: 2})
+        })
         it("should notify root key only once when multiple nested properties change", () => {
             const obj = new VirtualObject(createTestData())
             const observer = vi.fn()

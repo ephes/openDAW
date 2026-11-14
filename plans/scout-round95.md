@@ -55,3 +55,16 @@ and object listener regression variants also failed before repair. Unlike the
 scout's assumption, safeExecute only checks presence and does not catch failures;
 proxy dispatch now uses tryCatch and one warning per failure with correct this
 binding. All targeted messenger/listener tests pass.
+
+## B06: preference sync and atomic updates
+
+Five host-sync regressions failed before repair: queued sends survived sync/host
+disposal, RPC subscriptions leaked, retired hosts accepted new syncs and failed
+initial sends retained their sender. Syncs now own the sender/source together and
+invalidate queued tasks first. Five VirtualObject regressions failed before repair:
+null/scalar replacements threw, late read-only/nonextensible failures changed
+earlier roots, and getters were invoked during partial mutation. Updates now
+preflight plain-record descriptors, stage assignments and publish all values before
+one notification per changed root. Nested record identities remain stable and new
+records are copied. Arrays keep their existing atomic-value behavior. Targeted
+tests pass; unsupported input is refused without state changes.

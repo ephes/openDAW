@@ -62,3 +62,9 @@ persisted sections survive schema changes. Queued facade updates coalesce to the
 latest settings and only reach the current host binding; replacement, release and
 termination invalidate already queued work. Run `npm test --workspace=@opendaw/lib-fusion`
 after the root build for synthetic storage and microtask lifecycle regressions.
+
+`PreferencesHost.syncWith` owns its outbound source subscription and RPC sender.
+Unsubscribing retires the owner before releasing either subscription, so queued
+microtasks cannot send afterward. Host termination retires all active syncs and
+later sync attempts are inert. Active syncs still send an initial snapshot and
+coalesce changes to the latest settings once per microtask.

@@ -98,6 +98,16 @@ as `this`. Each thrown listener error is logged once with `console.warn`, and
 delivery continues to remaining listeners. Missing methods are skipped. This
 policy applies to proxy dispatch; `forEach` remains a direct caller-owned loop.
 
+`VirtualObject.update` stages changes to plain data records before mutating live
+data. Null/scalar sections may become records; existing record identities and
+keys absent from the update are retained. New records are copied. Arrays remain
+atomic caller-owned values. Enumerable string-keyed data properties are supported;
+accessors, class records, cyclic record input and required writes to read-only or
+nonextensible targets are refused before mutation or notification. Plain records
+are required; hostile proxies are outside this contract. A valid update commits
+all values before notifying each changed root once, so observers see complete
+state. Notifications retain the existing synchronous observer-error behavior.
+
 Default, optional and mapped mutable observables register a catchup subscription
 before its initial delivery, so synchronous changes from that callback are
 observed. Failed initial delivery releases the subscription and rethrows the
