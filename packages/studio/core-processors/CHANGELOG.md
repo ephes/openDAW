@@ -7,6 +7,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Reset old soundfont voices and display state on file-pointer transitions; process releases without a loaded font and own note-display disposal.
 
+- Correct the delay limiter to 50 ms attack/250 ms release and clear modulation smoothing history on restart.
+
 - Give effect inputs independent connection leases and silence disconnected output spans instead of replaying stale samples.
 
 - Retire all owned NAM instances despite teardown errors and coalesce pending model edits to the latest request.

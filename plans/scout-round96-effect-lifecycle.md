@@ -51,3 +51,15 @@ Reattachment resumes processing without requiring an engine reset.
 Regression: eight new Gate, Stereo Tool, Nop and NAM cases failed before the fix;
 all 15 connection/NAM cases pass after it. Tests cover distinct and same-buffer
 leases, duplicate disposal, irregular output spans and reattachment.
+
+## B04 — Delay timing and restart
+
+The linked-channel limiter uses 50 ms attack and 250 ms release (constants are
+converted to seconds in the per-sample coefficient). Reset starts modulation
+depth smoothing from zero, exactly like a fresh equally configured delay, while
+preserving the current depth target and other controls.
+
+Regression: overload, silence and an attenuated probe match the closed-form
+exponential time law at 44.1/48/96 kHz on both channels. A warmed modulated delay
+reset twice matches a fresh device's split-span impulse response. All four tests
+failed before the fix and pass afterward.
