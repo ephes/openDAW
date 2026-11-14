@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cache only successful stock catalogs (including empty lists), coalesce reads and allow explicit retry after discovery failure. Bind stock metadata to the requested UUID before asset download, accepting UUID case differences canonically.
+
 - Forward client sample invalidations to the live engine and retire its sample-fetch subscriptions with the engine; replacement audio is fetched without restarting it.
 
 - Make sample reference release idempotent and generation-owned; retire removed/finally released loads so late completions cannot retain PCM or start saves.

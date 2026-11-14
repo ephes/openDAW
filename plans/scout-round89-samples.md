@@ -35,3 +35,12 @@ reload fix and B afterward. Separate regressions cover retired fulfillment,
 retired rejection, repeated removal and out-of-order reloads. Existing playing
 voices may finish with the audio captured at their attack; subsequent consumers
 read replacement PCM. Offline renders use their initial project snapshot.
+
+## Catalog identity and retry (B4)
+
+Catalog reads coalesce and cache successful results, including genuine empty
+catalogs. HTTP, transport and schema failures reject that read and clear the
+cached promise so a later explicit read retries. Metadata must match the requested
+UUID by bytes before following its asset URL; accepted uppercase spellings are
+returned as canonical lowercase UUIDs. Catalog retry/coalescing and UUID binding
+regressions failed before the fix; successful empty discovery remains covered.

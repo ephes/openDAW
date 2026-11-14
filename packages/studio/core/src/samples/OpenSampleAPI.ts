@@ -2,6 +2,8 @@ import {
     asDefined,
     DefaultObservableValue,
     Lazy,
+    isDefined,
+    Optional,
     panic,
     Procedure,
     RuntimeNotifier,
@@ -27,10 +29,18 @@ export class OpenSampleAPI implements SampleAPI {
 
     private constructor() {}
 
-    @Lazy
-    async all(): Promise<ReadonlyArray<Sample>> {
-        return network.defaultFetch(`${OpenSampleAPI.ApiRoot}/list.php`, OpenDAWHeaders)
-            .then(x => x.json().then(x => z.array(Sample).parse(x)), () => [])
+    #catalog: Optional<Promise<ReadonlyArray<Sample>>>
+
+    all(): Promise<ReadonlyArray<Sample>> {
+        if (isDefined(this.#catalog)) {return this.#catalog}
+        const catalog = network.defaultFetch(`${OpenSampleAPI.ApiRoot}/list.php`, OpenDAWHeaders)
+            .then(response => {
+                if (!response.ok) {return panic(`Sample catalog unavailable: ${response.status}`)}
+                return response.json().then(json => z.array(Sample).parse(json))
+            })
+        this.#catalog = catalog
+        void catalog.catch(() => {if (this.#catalog === catalog) {this.#catalog = undefined}})
+        return catalog
     }
 
     async get(uuid: UUID.Bytes): Promise<Sample> {
@@ -44,7 +54,8 @@ export class OpenSampleAPI implements SampleAPI {
             return panic(json.error)
         }
         const sample = Sample.parse(json)
-        return Object.freeze({...sample, origin: "openDAW"})
+        if (!UUID.equals(UUID.parse(sample.uuid), uuid)) {return panic("Sample identity does not match requested UUID")}
+        return Object.freeze({...sample, uuid: UUID.toString(uuid), origin: "openDAW"})
     }
 
     async load(uuid: UUID.Bytes, progress: Procedure<unitValue>): Promise<[AudioData, Sample]> {
