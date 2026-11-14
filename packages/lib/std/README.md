@@ -31,6 +31,15 @@ Iteration, key extraction, sorting and deduplication finish before publication;
 if any throws, the set remains unchanged. `values()` is a read-only view of the
 current backing array; bulk publication can replace that array.
 
+`SortedSet.getOrCreate` rechecks the requested key after calling the factory. If
+the factory installed that key reentrantly, that installed entry wins and is
+returned. Factories must produce the requested key. Unused factory results are
+not automatically disposed; a factory allocating resources must retain ownership
+until it can check whether its result was returned.
+
+`ArrayMultimap.clone` retains its value comparator and stable order of equal
+values. Bucket arrays are independent; the value objects themselves are shared.
+
 ## Algorithms & Search
 
 * Binary search implementations **binary-search.ts**

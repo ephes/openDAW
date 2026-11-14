@@ -57,12 +57,12 @@ export class SortedSet<K, V> implements Iterable<V> {
     }
 
     getOrCreate(key: K, factory: (key: K) => V): V {
-        const insertIndex: int = BinarySearch.leftMostMapped(this.#array, key, this.#comparator, this.#extractor)
-        const current: Maybe<V> = this.#array[insertIndex]
-        if (isDefined(current) && this.#comparator(this.#extractor(current), key) === 0) {
-            return current
-        }
+        const current = this.#lookup(key)
+        if (isDefined(current)) {return current}
         const value = factory(key)
+        const insertIndex = BinarySearch.leftMostMapped(this.#array, key, this.#comparator, this.#extractor)
+        const installed = this.#array[insertIndex]
+        if (isDefined(installed) && this.#comparator(this.#extractor(installed), key) === 0) {return installed}
         this.#array.splice(insertIndex, 0, value)
         return value
     }

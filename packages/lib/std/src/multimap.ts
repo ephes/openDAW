@@ -145,7 +145,7 @@ export class ArrayMultimap<K, V> implements Multimap<K, V>, Iterable<[K, Array<V
     }
 
     clone(): ArrayMultimap<K, V> {
-        const copy: ArrayMultimap<K, V> = new ArrayMultimap<K, V>()
+        const copy: ArrayMultimap<K, V> = new ArrayMultimap<K, V>(undefined, this.#comparator.unwrapOrUndefined())
         this.#map.forEach((values: Array<V>, key: K): void => {
             copy.#map.set(key, values.map((value: V) => value))
         })

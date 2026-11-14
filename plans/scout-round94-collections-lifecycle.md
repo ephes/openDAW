@@ -14,3 +14,12 @@ The three new tests failed on the original source (comparator identity, iterator
 rollback, extractor/comparator rollback); all ten sorted-set tests pass after repair.
 Fault injection visits every comparison/extraction in a successful admission and
 each iterator step including completion. Fixtures use synthetic UUIDs/numbers.
+
+## O2: factory and clone ownership
+
+Recompute insertion positions after factory code and keep a reentrantly installed
+entry. The collection has no disposal policy for unused results; the factory
+retains resource ownership until it compares its result to the returned entry.
+Clone bucket arrays independently while retaining the optional comparator.
+All three regressions failed before repair; all 82 sorted-set/multimap tests pass
+after repair, including sorted equal-value stability and mutation in both clones.
