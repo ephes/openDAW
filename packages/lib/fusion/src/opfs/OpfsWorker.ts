@@ -1,4 +1,4 @@
-import {Arrays, asDefined, Errors, isNotUndefined, panic} from "@opendaw/lib-std"
+import {Arrays, asDefined, Errors} from "@opendaw/lib-std"
 import {Communicator, Messenger, Promises} from "@opendaw/lib-runtime"
 import {OpfsProtocol} from "./OpfsProtocol"
 
@@ -7,10 +7,10 @@ export namespace OpfsWorker {
 
     export const init = (messenger: Messenger) =>
         Communicator.executor(messenger.channel("opfs"), new class implements OpfsProtocol {
-            readonly #locks = new Map<string, Promise<void>>()
+            #tail = Promise.resolve()
 
             async write(path: string, data: Uint8Array): Promise<void> {
-                await this.#acquireLock(path, async () => {
+                await this.#acquireLock(path, async path => {
                     if (DEBUG) {console.debug(`write ${data.length}b to ${path}`)}
                     const handle = await this.#resolveFile(path, {create: true})
                     try {
@@ -35,7 +35,7 @@ export namespace OpfsWorker {
             }
 
             async read(path: string): Promise<Uint8Array> {
-                return await this.#acquireLock(path, async () => {
+                return await this.#acquireLock(path, async path => {
                     if (DEBUG) {console.debug(`read ${path}`)}
                     const handle = await this.#resolveFile(path)
                     try {
@@ -56,7 +56,7 @@ export namespace OpfsWorker {
             }
 
             async exists(path: string): Promise<boolean> {
-                return await this.#acquireLock(path, async () => {
+                return await this.#acquireLock(path, async path => {
                     if (DEBUG) {console.debug(`exists ${path}`)}
                     const segments = pathToSegments(path)
                     try {
@@ -83,9 +83,9 @@ export namespace OpfsWorker {
             }
 
             async delete(path: string): Promise<void> {
-                await this.#acquireLock(path, async () => {
+                await this.#acquireLock(path, async path => {
                     const segments = pathToSegments(path)
-                    if (segments.length === 0) {return this.clear()}
+                    if (segments.length === 0) {return this.#clear()}
                     const result = await Promises.tryCatch(this.#resolveFolder(segments.slice(0, -1))
                         .then(folder => folder.removeEntry(asDefined(segments.at(-1)), {recursive: true})))
                     if (result.status === "rejected" && !isMissing(result.error)) {throw result.error}
@@ -93,6 +93,10 @@ export namespace OpfsWorker {
             }
 
             async list(path: string): Promise<ReadonlyArray<OpfsProtocol.Entry>> {
+                return this.#acquireLock(path, path => this.#list(path))
+            }
+
+            async #list(path: string): Promise<ReadonlyArray<OpfsProtocol.Entry>> {
                 const segments = pathToSegments(path)
                 const result = await Promises.tryCatch(this.#resolveFolder(segments))
                 if (result.status === "rejected") {
@@ -107,7 +111,7 @@ export namespace OpfsWorker {
                 return entries
             }
 
-            async clear(): Promise<void> {
+            async #clear(): Promise<void> {
                 const root = await getOpfsRoot()
                 for await (const [name, handle] of root.entries()) {
                     if (handle.kind === "file") {
@@ -118,24 +122,16 @@ export namespace OpfsWorker {
                 }
             }
 
-            async #acquireLock<T>(path: string, operation: () => Promise<T>): Promise<T> {
-                for (;;) {
-                    const existingLock = this.#locks.get(path)
-                    if (isNotUndefined(existingLock)) {
-                        await existingLock
-                        continue
-                    }
-                    let releaseLock: () => void = () => panic("Lock not acquired")
-                    const lockPromise = new Promise<void>(resolve => releaseLock = resolve)
-                    this.#locks.set(path, lockPromise)
-                    try {
-                        return await operation()
-                    } finally {
-                        if (this.#locks.get(path) === lockPromise) {
-                            this.#locks.delete(path)
-                        }
-                        releaseLock()
-                    }
+            async #acquireLock<T>(path: string, operation: (path: string) => Promise<T>): Promise<T> {
+                const canonical = pathToSegments(path).join("/")
+                const previous = this.#tail
+                const {promise, resolve} = Promise.withResolvers<void>()
+                this.#tail = promise
+                await previous
+                try {
+                    return await operation(canonical)
+                } finally {
+                    resolve()
                 }
             }
 
@@ -161,6 +157,11 @@ export namespace OpfsWorker {
 
     const pathToSegments = (path: string): ReadonlyArray<string> => {
         const noSlashes = path.replace(/^\/+|\/+$/g, "")
-        return noSlashes === "" ? [] : noSlashes.split("/")
+        const segments = noSlashes === "" ? [] : noSlashes.split("/")
+        if (segments.some(segment => segment === "" || segment === "." || segment === ".."
+            || segment.includes("\u0000") || segment.includes("\\"))) {
+            throw new Error("Invalid OPFS path")
+        }
+        return segments
     }
 }

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Canonicalize OPFS paths and serialize access with recursive directory/root deletion.
+
 - Fall back safely on preference storage discovery/read errors and fence queued updates to retired hosts.
 
 - Validate live structures/payloads before mutation, resize cached arrays and release failed subscriber frames.

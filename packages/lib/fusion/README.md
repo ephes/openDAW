@@ -28,6 +28,11 @@ OPFS writes accept `Uint8Array` subviews and store only the supplied byte range,
 Reads and writes complete short transfers using explicit offsets and reject zero progress; handles always close.
 `exists` treats empty files as absent. Missing entries normalize to `false`/an empty listing/a no-op deletion;
 permission, access-state and other operational errors reject through the protocol.
+Leading/trailing slashes are aliases. Empty internal segments, dot segments, NUL
+and backslashes are refused before storage access. All operations share one FIFO
+worker queue, including reads/listings and recursive parent/root deletion. A
+completed child write is therefore followed by a queued deletion, or a later
+write recreates the subtree after deletion. Exclusion covers this worker only.
 
 ### Sample peak format
 

@@ -226,6 +226,10 @@ for configuration rationale and the narrowly documented generic type boundaries.
 
 ### DOM and runtime helper contracts
 
+OPFS access uses canonical paths and a worker-wide FIFO queue so parent/root
+deletion and descendant writes have a defined order. See the
+[fusion contracts](packages/lib/fusion/README.md) for path admission and storage limits.
+
 Double-pointer subscriptions pair gestures within 200 ms and 5 CSS pixels, with
 matching button and pointer kind. A recognized pair resets the history. Shortcut
 handlers returning `false` allow later entries and lower contexts to try; only a

@@ -12,6 +12,9 @@ const createMockFileSystem = () => {
     const fail = (operation: string) => {if (faults.has(operation)) {throw faults.get(operation)}}
     const close = vi.fn()
     const flush = vi.fn()
+    const opened = vi.fn(async () => {})
+    let active = 0
+    let maximumActive = 0
     const resolveDir = (segments: ReadonlyArray<string>, create: boolean): Map<string, EntryData> => {
         let current = root
         for (const segment of segments) {
@@ -54,14 +57,18 @@ const createMockFileSystem = () => {
         },
         truncate: (size: number) => {fileEntry.data = new Uint8Array(size)},
         flush,
-        close
+        close: () => {active--; close()}
     } as unknown as FileSystemSyncAccessHandle)
     const createFileHandle = (name: string, fileEntry: FileData): FileSystemFileHandle => ({
         kind: "file",
         name,
         isSameEntry: async (_other: FileSystemHandle) => false,
         getFile: async () => new File([fileEntry.data.slice()], name),
-        createSyncAccessHandle: async () => createSyncAccessHandle(fileEntry)
+        createSyncAccessHandle: async () => {
+            maximumActive = Math.max(maximumActive, ++active)
+            await opened()
+            return createSyncAccessHandle(fileEntry)
+        }
     } as unknown as FileSystemFileHandle)
     const createDirectoryHandle = (children: Map<string, EntryData>, dirName: string = ""): FileSystemDirectoryHandle => {
         const handle: FileSystemDirectoryHandle = {
@@ -116,7 +123,8 @@ const createMockFileSystem = () => {
         } as unknown as FileSystemDirectoryHandle
         return handle
     }
-    return {root, limits, faults, close, flush, createDirectoryHandle: () => createDirectoryHandle(root)}
+    return {root, limits, faults, close, flush, opened, maximumActive: () => maximumActive,
+        createDirectoryHandle: () => createDirectoryHandle(root)}
 }
 
 let protocol: OpfsProtocol
@@ -146,6 +154,47 @@ beforeEach(async () => {
 })
 
 describe("OpfsWorker", () => {
+    it("serializes alias writes and releases exclusion after failure", async () => {
+        const entered = Promise.withResolvers<void>()
+        const resume = Promise.withResolvers<void>()
+        mockFs.opened.mockImplementationOnce(async () => {entered.resolve(); await resume.promise})
+        const first = protocol.write("alias.bin", new Uint8Array([1]))
+        await entered.promise
+        const second = protocol.write("/alias.bin/", new Uint8Array([2, 3]))
+        for (let index = 0; index < 20; index++) {await Promise.resolve()}
+        const maximum = mockFs.maximumActive()
+        resume.resolve()
+        await Promise.all([first, second])
+        expect(maximum).toBe(1)
+        expect(await protocol.read("alias.bin")).toEqual(new Uint8Array([2, 3]))
+        mockFs.limits.write = 0
+        await expect(protocol.write("/alias.bin", new Uint8Array([4]))).rejects.toThrow("Incomplete")
+        mockFs.limits.write = Infinity
+        await protocol.write("alias.bin/", new Uint8Array([5]))
+        expect(await protocol.read("alias.bin")).toEqual(new Uint8Array([5]))
+    })
+
+    it.each(["parent", "", "/"])("orders child writes before deletion of %j", async path => {
+        const entered = Promise.withResolvers<void>()
+        const resume = Promise.withResolvers<void>()
+        mockFs.opened.mockImplementationOnce(async () => {entered.resolve(); await resume.promise})
+        const write = protocol.write("parent/child.bin", new Uint8Array([1]))
+        await entered.promise
+        const deletion = protocol.delete(path)
+        for (let index = 0; index < 20; index++) {await Promise.resolve()}
+        const presentDuringWrite = mockFs.root.has("parent")
+        resume.resolve()
+        await Promise.all([write, deletion])
+        expect(presentDuringWrite).toBe(true)
+        expect(mockFs.root.size).toBe(0)
+        await protocol.write("parent/child.bin", new Uint8Array([2]))
+        expect(await protocol.read("parent/child.bin")).toEqual(new Uint8Array([2]))
+    })
+
+    it.each(["a//b", "a/../b", "./a", "a\u0000b"])("rejects invalid path %j before storage", async path => {
+        await expect(protocol.write(path, new Uint8Array([1]))).rejects.toThrow("Invalid OPFS path")
+        expect(mockFs.root.size).toBe(0)
+    })
     describe("write", () => {
         it("should write data to a new file", async () => {
             const data = new Uint8Array([1, 2, 3, 4])
