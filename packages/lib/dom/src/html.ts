@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify"
 import {asDefined, assert, Color, int, isDefined, panic, Rect, RGBA, Subscription} from "@opendaw/lib-std"
 
 export namespace Html {
@@ -21,16 +22,28 @@ export namespace Html {
     export const queryAll = <E extends Element>(selectors: string, parent: ParentNode = document): ReadonlyArray<E> =>
         Array.from(parent.querySelectorAll(selectors))
 
-    export const sanitize = (element: Element) => {
-        element.querySelectorAll("script").forEach(node => node.remove())
-        element.querySelectorAll("*").forEach(element => {
-            [...element.attributes].forEach(attribute => {
-                if (attribute.name.toLowerCase().startsWith("on")) {
-                    element.removeAttribute(attribute.name)
-                }
-            })
-        })
+    // Documentation markup only: no styles, embedded documents, forms or executable SVG.
+    const markupPolicy = {
+        ALLOWED_TAGS: ["div", "span", "p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6",
+            "a", "img", "strong", "em", "b", "i", "u", "s", "del", "sub", "sup", "code", "pre",
+            "blockquote", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot",
+            "tr", "th", "td", "caption", "figure", "figcaption", "details", "summary",
+            "svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "text", "tspan", "title", "desc"],
+        ALLOWED_ATTR: ["id", "class", "title", "href", "src", "alt", "width", "height", "colspan", "rowspan",
+            "scope", "start", "reversed", "open", "viewBox", "d", "fill", "stroke", "stroke-width",
+            "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "points", "transform"],
+        ALLOW_DATA_ATTR: false,
+        ALLOW_ARIA_ATTR: true
     }
+
+    /** Sanitize the root and descendants in place; unsupported root elements are refused. */
+    export const sanitize = (element: Element): void => {
+        DOMPurify.sanitize(element, {...markupPolicy, IN_PLACE: true})
+    }
+
+    /** Parse untrusted documentation without first assigning raw markup to a live DOM element. */
+    export const sanitizeMarkup = (source: string): DocumentFragment =>
+        DOMPurify.sanitize(source, {...markupPolicy, RETURN_DOM_FRAGMENT: true})
 
     export const nextID = (() => {
         let id: int = 0 | 0

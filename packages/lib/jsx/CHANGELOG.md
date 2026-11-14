@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Sanitize HTML before insertion, bound response status/UTF-8 bytes (1 MiB) and whole-attempt duration (15 seconds), and display a controlled failure fallback.
+- Retire pending HTML work through an optional lifecycle or placeholder removal; cancel owned fetch/read work and fence late responses.
+- Defer literal HTML publication until the caller can attach the placeholder.
+
 - Retain all keys of reusable attribute injectors and support class-list bindings on SVG.
 - Give Await repeats generation ownership, fence stale retries, and settle factory/render failures; type rejection reasons as unknown.
 - Require full route consumption and observe redirects during initial location delivery; `LocalLink` keeps section (prefix) highlighting via `RouteMatcher.isWithin`.
