@@ -52,3 +52,40 @@ all eleven notifier/observable tests pass afterward. Synthetic sources fail at
 the second and third acquisition, with every earlier cleanup also throwing.
 The mapped test inspects its notifier via a subscription spy, using public
 `isEmpty`, and verifies no retained listeners or post-termination catchup delivery.
+
+## O6: RPC request lifecycle
+
+Reserve request IDs before sending and remove the exact pending entry on failure.
+Ignore retired/unknown replies and callbacks. Sender creation accepts an optional
+existing lifetime owner without changing the protocol object or colliding with a
+remote `terminate` method. Termination rejects/clears pending work, releases the
+receive subscription, and refuses new dispatches. Engine worklet and offline
+renderer pass their current terminators. Failed binding also releases the sender.
+
+The three primary regressions failed before repair: transport failure followed
+by stale first-ID traffic, synchronous reentrant send, and owner termination of
+two stalled requests. They pass after repair using real paired `Messenger`
+wrappers over deterministic structured-cloning port stubs, plus a real executor
+for the stalled request test. A fourth test covers failed binding and failing
+unsubscribe while preserving the binding error. No network or worker service is
+needed; the existing BroadcastChannel protocol suite also passes.
+
+## Local validation and handoff
+
+- `npm ci --ignore-scripts`: passed (Node 26.13.1, npm 11.20.0).
+- `npm run build`: passed, 24 tasks, including production TypeScript checks and studio/worker bundles.
+- `npm run lint`: passed, 24 tasks; existing warnings remain, no errors.
+- `npm test`: passed, 2,456 tests in 231 files, 44 tasks (including dependency builds).
+- `npx tsc --noEmit -p packages/lib/std/tsconfig.test.json`: passed.
+- `npx tsc --noEmit -p packages/lib/runtime/tsconfig.test.json`: passed.
+- Focused final collection/observable/notifier tests: 108 passed; paired RPC and BroadcastChannel tests: 10 passed.
+- `git diff --check`: passed.
+
+The extra test typecheck found a spy-context type and an overly narrow throwing
+mock return type; both were corrected. Lint found a block-scoped generator
+declaration, changed to a function expression; the 108 focused tests passed again.
+No gate was blocked by the sandbox. Logs are outside the checkout under
+`~/workspaces/ws-work-planning/coordination/codex/logs/cx-r94-opendaw/`.
+No owner decisions or skipped slices remain. No versions, workflows, releases or
+deployments changed. Park `codex-q/r94-openDAW` after the push-remote guard and
+verify its SHA with `git ls-remote`; external review and merge remain pending.
