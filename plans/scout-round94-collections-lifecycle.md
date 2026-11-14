@@ -32,3 +32,12 @@ uses an upper-bound binary search instead of scanning equal runs. Four new tests
 failed before repair (200k admission, iterator-created empty bucket, comparator
 rollback, 65,536-equal-key comparison count). All 85 multimap/binary-search tests
 pass after repair. The O2 clone test also exercises stable equal-value insertion.
+
+## O4: observable reentrancy
+
+Register default/optional/mapped catchup observers before calling them and release
+on failure. Clearing an option commits and notifies empty before disposing its
+detached resource; a nested replacement survives. Disposal also runs when an
+observer throws, retaining the primary notification error. Five of seven new
+observable tests failed on the previous source; all seven pass after repair.
+Tests cover reentrant updates, failed initial delivery and disposal/observer errors.
