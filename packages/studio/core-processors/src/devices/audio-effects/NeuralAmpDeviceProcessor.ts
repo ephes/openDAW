@@ -23,7 +23,7 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
         if (isDefined(this.#wasmLoading)) {
             return this.#wasmLoading
         }
-        this.#wasmLoading = (async () => {
+        const loading = (async () => {
             const wasmBinary = await engineToClient.fetchNamWasm()
             const emscriptenModule = await createNamModule({
                 wasmBinary,
@@ -32,10 +32,14 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
             const module = NamWasmModule.fromModule(emscriptenModule)
             module.setSampleRate(sampleRate)
             this.#wasmModule = Option.wrap(module)
-            this.#wasmLoading = null
             return module
         })()
-        return this.#wasmLoading
+        this.#wasmLoading = loading
+        try {
+            return await loading
+        } finally {
+            if (this.#wasmLoading === loading) {this.#wasmLoading = null}
+        }
     }
 
     readonly #id: int = NeuralAmpDeviceProcessor.ID++
@@ -236,11 +240,14 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
 
     #onMonoChanged(mono: boolean): void {
         if (this.#terminated) {return}
-        this.#mono = mono
         const module = NeuralAmpDeviceProcessor.#wasmModule
-        if (module.isEmpty()) {return}
+        if (module.isEmpty()) {
+            this.#mono = mono
+            return
+        }
         const wasm = module.unwrap()
         if (mono) {
+            this.#mono = true
             if (this.#instances[1] >= 0) {
                 try {
                     wasm.unloadModel(this.#instances[1])
@@ -252,15 +259,27 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
             }
         } else {
             if (this.#instances[1] < 0) {
-                this.#instances[1] = wasm.createInstance()
-                if (this.#pendingModelJson.length > 0) {
-                    try {
-                        wasm.loadModel(this.#instances[1], this.#pendingModelJson)
-                    } catch (error) {
-                        console.error("NAM loadModel failed in onMonoChanged:", error)
+                let instance = -1
+                try {
+                    instance = wasm.createInstance()
+                    if (instance < 0 || (this.#modelLoaded && !wasm.loadModel(instance, this.#pendingModelJson))) {
+                        throw new Error("NAM right model was not loaded")
                     }
+                    this.#instances[1] = instance
+                } catch (error) {
+                    if (instance >= 0) {
+                        try {
+                            wasm.unloadModel(instance)
+                            wasm.destroyInstance(instance)
+                        } catch (cleanupError) {
+                            console.error("NAM right instance cleanup failed:", cleanupError)
+                        }
+                    }
+                    console.error("NAM stereo activation failed:", error)
+                    return
                 }
             }
+            this.#mono = false
         }
     }
 
