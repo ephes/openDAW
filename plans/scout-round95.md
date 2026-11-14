@@ -44,3 +44,14 @@ afterward. Cascades reserve a generation before cleanup/callback and dispose sta
 results; append uses next so synchronous initial delivery gets the correct nested
 owner. An additional cleanup-reentry test protects the generation check before
 callback invocation. All terminable regressions pass.
+
+## B05: messenger ownership and listener delivery
+
+Four messenger tests failed before repair: repeated old-owner cleanup erased the
+replacement handlers, first cleanup erased foreign replacement handlers, retired
+sends still posted and disposed channels still posted. Native handlers now have
+identity ownership and terminal fences; channels retire independently. Both class
+and object listener regression variants also failed before repair. Unlike the
+scout's assumption, safeExecute only checks presence and does not catch failures;
+proxy dispatch now uses tryCatch and one warning per failure with correct this
+binding. All targeted messenger/listener tests pass.

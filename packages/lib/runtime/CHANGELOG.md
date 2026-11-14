@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Fence retired messenger owners and channels; clear only owned port handlers and keep replacement transports receiving.
+
 - Validate positive integer concurrency before scheduling; accumulate sequential batch results in linear work.
 - Treat fetch aborts as terminal and cancel backoff/offline approval through the effective request signal.
 

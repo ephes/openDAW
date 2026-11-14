@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Isolate listener proxy errors consistently for object/class methods while preserving their receiver binding.
+
 - Drain composite cleanup after individual failures and retain secondary errors; fence cascading callback results against reentrant replacement and parent disposal.
 
 - Account for child progress with constant-time replacement deltas and reject nonfinite weights; normalize large finite weights without overflow.

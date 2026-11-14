@@ -93,6 +93,11 @@ callback result. Results returned after synchronous replacement or parent
 disposal are terminated immediately; reentry from cleanup cannot install an older
 result over the newer one.
 
+`Listeners.proxy` invokes optional object and class methods with their receiver
+as `this`. Each thrown listener error is logged once with `console.warn`, and
+delivery continues to remaining listeners. Missing methods are skipped. This
+policy applies to proxy dispatch; `forEach` remains a direct caller-owned loop.
+
 Default, optional and mapped mutable observables register a catchup subscription
 before its initial delivery, so synchronous changes from that callback are
 observed. Failed initial delivery releases the subscription and rethrows the
