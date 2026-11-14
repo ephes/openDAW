@@ -34,3 +34,13 @@ pending/empty pointer retained voices/display, and stops were ignored when a
 loader lost its font. They now pass with the real processor/note-display path,
 synthetic adapter/loader data and a tracked voice implementation. No soundfont
 download or personal media is used.
+
+## B04: composite and cascading ownership
+
+Eight regressions failed before repair: both composite forms abandoned resources
+after errors, and both cascading forms retained results superseded by reentry or
+returned after owner termination. Composites now drain first and report failures
+afterward. Cascades reserve a generation before cleanup/callback and dispose stale
+results; append uses next so synchronous initial delivery gets the correct nested
+owner. An additional cleanup-reentry test protects the generation check before
+callback invocation. All terminable regressions pass.

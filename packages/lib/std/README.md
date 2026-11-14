@@ -82,6 +82,17 @@ An empty unweighted split returns no handlers; weighted input must not be empty.
 * Synchronous stream operations **sync-stream.ts**
 * Retry and attempt utilities **attempts.ts**
 
+`Terminator` and `Terminable.many` detach and drain the current resources in reverse order,
+including after throwing cleanups or synchronous reentry. A single error is
+rethrown unchanged; multiple failures produce an AggregateError with the first
+failure as cause and errors in cleanup order. Repeated termination of the drained
+composite does nothing. Terminator remains reusable for subsequent ownership.
+Resources acquired reentrantly belong to the next ownership snapshot.
+`CascadingSubscriptions.next().toObserver` and `append` retain only the latest
+callback result. Results returned after synchronous replacement or parent
+disposal are terminated immediately; reentry from cleanup cannot install an older
+result over the newer one.
+
 Default, optional and mapped mutable observables register a catchup subscription
 before its initial delivery, so synchronous changes from that callback are
 observed. Failed initial delivery releases the subscription and rethrows the
