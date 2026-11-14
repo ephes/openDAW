@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Deduplicate bulk set updates by comparator with first-entry ownership and preserve the set on admission failure.
+
 - Expose the optional remaining-byte query on DataInput for bounded framed decoders.
 
 - Add isolated RuntimeSignal lifetime/nested-dispatch and deterministic TimeSpan estimate/unit-boundary tests.

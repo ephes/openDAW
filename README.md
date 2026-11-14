@@ -223,6 +223,11 @@ shared rules allow the project's public namespace-merging convention; other
 recommended source rules remain enabled. See [the baseline lint plan](plans/baseline-lint-green.md)
 for configuration rationale and the narrowly documented generic type boundaries.
 
+Shared collection and subscription ownership contracts are documented in
+[`lib-std`](packages/lib/std/README.md); RPC sender lifetime is documented in
+[`lib-runtime`](packages/lib/runtime/README.md). See the
+[round 94 repair plan](plans/scout-round94-collections-lifecycle.md) for regression evidence.
+
 ### Video export
 
 See [video export limits and lifecycle](plans/video-export-safety.md) for

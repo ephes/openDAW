@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest"
 import {SortedSet} from "./sorted-set"
+import {UUID} from "./uuid"
 
 interface Item {
     key: number
@@ -10,6 +11,80 @@ const extractor = (v: Item) => v.key
 const comparator = (a: number, b: number) => a - b
 
 describe("SortedSet – behavioural contract", () => {
+    it("deduplicates bulk UUID keys by comparator with the first value winning", () => {
+        const first = {key: UUID.parse("00000000-0000-0000-0000-000000000001"), value: "first"}
+        const duplicate = {key: first.key.slice(), value: "duplicate"}
+        const later = {key: UUID.parse("00000000-0000-0000-0000-000000000002"), value: "later"}
+        const bulk = new SortedSet((item: typeof first) => item.key, UUID.Comparator)
+        const repeated = new SortedSet((item: typeof first) => item.key, UUID.Comparator)
+        bulk.add(first)
+        repeated.add(first)
+        const values = [later, duplicate, {...later, key: later.key.slice()}]
+        expect(bulk.addMany(values)).toBe(false)
+        values.forEach(value => repeated.add(value))
+        expect(bulk.values()).toStrictEqual(repeated.values())
+        expect(bulk.size()).toBe(2)
+        expect(bulk.get(duplicate.key)).toBe(first)
+        expect(bulk.removeByKey(duplicate.key)).toBe(first)
+        expect(bulk.hasKey(first.key)).toBe(false)
+        const empty = new SortedSet((item: typeof first) => item.key, UUID.Comparator)
+        expect(empty.addMany([first, duplicate])).toBe(false)
+        expect(empty.get(first.key)).toBe(first)
+    })
+
+    it("preserves the original set at every iterator failure", () => {
+        for (let failAt = 0; failAt <= 3; failAt++) {
+            const set = new SortedSet<number, number>(value => value, comparator)
+            set.addMany([2, 4])
+            const failure = new Error("iteration")
+            function* values() {
+                for (let index = 0; index <= 3; index++) {
+                    if (index === failAt) {throw failure}
+                    if (index < 3) {yield [3, 0, 1][index]}
+                }
+            }
+            expect(() => set.addMany(values())).toThrow(failure)
+            expect(set.values()).toStrictEqual([2, 4])
+            expect(set.get(4)).toBe(4)
+            set.add(3)
+            expect(set.values()).toStrictEqual([2, 3, 4])
+        }
+    })
+
+    it("preserves the original set at every extractor or comparator failure", () => {
+        for (const operation of ["extract", "compare"]) {
+            let calls = 0
+            let failAt = Infinity
+            const failure = new Error(operation)
+            const check = () => {if (++calls === failAt) {throw failure}}
+            const create = () => new SortedSet<number, number>(value => {
+                if (operation === "extract") {check()}
+                return value
+            }, (left, right) => {
+                if (operation === "compare") {check()}
+                return comparator(left, right)
+            })
+            const probe = create()
+            probe.addMany([2, 4])
+            calls = 0
+            probe.addMany([3, 0, 1])
+            const totalCalls = calls
+            for (let index = 1; index <= totalCalls; index++) {
+                failAt = Infinity
+                const set = create()
+                set.addMany([2, 4])
+                calls = 0
+                failAt = index
+                expect(() => set.addMany([3, 0, 1])).toThrow(failure)
+                failAt = Infinity
+                expect(set.values()).toStrictEqual([2, 4])
+                expect(set.get(2)).toBe(2)
+                set.add(3)
+                expect(set.values()).toStrictEqual([2, 3, 4])
+            }
+        }
+    })
+
     it("keeps elements ordered as they are added", () => {
         const set = new SortedSet<number, number>(v => v, comparator)
         set.add(3)

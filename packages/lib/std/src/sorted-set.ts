@@ -33,7 +33,7 @@ import {BinarySearch} from "./binary-search"
 export class SortedSet<K, V> implements Iterable<V> {
     readonly #extractor: Func<V, K>
     readonly #comparator: Comparator<K>
-    readonly #array: Array<V>
+    #array: Array<V>
 
     constructor(extractor: Func<V, K>, comparator: Comparator<K>) {
         this.#extractor = extractor
@@ -68,23 +68,21 @@ export class SortedSet<K, V> implements Iterable<V> {
     }
 
     addMany(values: Iterable<V>): boolean {
-        for (const value of values) {this.#array.push(value)}
-        try {
-            this.#array.sort((a: V, b: V) => {
-                const delta: int = this.#comparator(this.#extractor(a), this.#extractor(b))
-                if (delta === 0) {throw "cancel"}
-                return delta
-            })
-            return true
-        } catch (reason: unknown) {
-            if (reason === "cancel") {
-                const uniqueKeys: Map<K, V> = new Map<K, V>(this.entries())
-                this.#array.splice(0, this.#array.length, ...uniqueKeys.values())
-                this.#array.sort((a: V, b: V) => this.#comparator(this.#extractor(a), this.#extractor(b)))
-                return false
+        const candidate = this.#array.map(value => ({key: this.#extractor(value), value}))
+        for (const value of values) {candidate.push({key: this.#extractor(value), value})}
+        candidate.sort((left, right) => this.#comparator(left.key, right.key))
+        const unique: V[] = []
+        let allUnique = true
+        for (let index = 0; index < candidate.length; index++) {
+            const entry = candidate[index]
+            if (index > 0 && this.#comparator(candidate[index - 1].key, entry.key) === 0) {
+                allUnique = false
+            } else {
+                unique.push(entry.value)
             }
-            return panic(reason)
         }
+        this.#array = unique
+        return allUnique
     }
 
     removeByValue(value: V): V {return this.removeByKey(this.#extractor(value))}
