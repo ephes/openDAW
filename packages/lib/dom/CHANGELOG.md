@@ -7,6 +7,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Match double-pointer gesture identity and reset recognized pairs; preserve single-event delivery.
 - Continue declined shortcut handlers using stable dispatch snapshots; skip retired owners and prevent defaults only on consumption.
+- Propagate clipboard write failures after notification, observe compression producer/consumer failures and isolate weak-watch cleanup errors.
 
 - Make shortcut unsubscription idempotent and preserve IME, inherited editable and shadow-input ownership.
 

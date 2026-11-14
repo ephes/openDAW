@@ -232,6 +232,13 @@ consuming handler prevents the browser default (unless disabled in its options).
 Dispatch snapshots contexts and entries; additions wait for the next event and
 retired owners are skipped.
 
+`Clipboard.writeText` notifies once on refusal and rejects with the original
+error, including missing or synchronously throwing browser APIs. Callers must
+observe rejection and acknowledge a copy only after success. Compression helpers
+observe both stream ends and cancel/abort and unlock them on failure. Weak-watch
+cleanup retires each dead owner before calling it, logs failures once, continues
+other cleanups and stops its timer when empty.
+
 ### Video export
 
 See [video export limits and lifecycle](plans/video-export-safety.md) for

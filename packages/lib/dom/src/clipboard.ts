@@ -3,12 +3,18 @@ import {Promises} from "@opendaw/lib-runtime"
 
 export namespace Clipboard {
     export const writeText = async (text: string): Promise<void> => {
-        const result = await Promises.tryCatch(navigator.clipboard.writeText(text))
-        if (result.status === "rejected") {
-            await RuntimeNotifier.info({
-                headline: "Clipboard Error",
-                message: "Could not write to clipboard. Please check your browser permissions."
-            })
+        try {
+            await navigator.clipboard.writeText(text)
+        } catch (reason) {
+            try {
+                await RuntimeNotifier.info({
+                    headline: "Clipboard Error",
+                    message: "Could not write to clipboard. Please check your browser permissions."
+                })
+            } catch {
+                // Notification failure must not replace the clipboard failure.
+            }
+            throw reason
         }
     }
     export const readText = async (): Promise<string> => {

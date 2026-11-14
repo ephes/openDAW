@@ -72,7 +72,7 @@ export namespace ClipboardManager {
         let installed = true
         const writeEntry = (entry: E): void => {
             fallbackEntry = Option.wrap(entry)
-            Clipboard.writeText(encode(entry))
+            void Clipboard.writeText(encode(entry)).catch(() => {})
         }
         const performCopy = (): boolean => {
             if (!installed || !handler.canCopy(noClient)) {return false}
