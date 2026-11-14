@@ -28,6 +28,7 @@ and SysEx payloads are intentionally not retained. Exactly one final end-of-trac
 preserves the latest retained event or terminal tick. Multiple tracks use format 1.
 
 Run synthetic byte-fixture and round-trip regressions with `npm test -w @opendaw/lib-midi`.
+Typecheck test fixtures with `npm exec -w @opendaw/lib-midi -- tsc -p tsconfig.test.json`.
 
 Export admits 1–65535 tracks before calling any track encoder. Channel and
 metadata lists must have nonnegative, safe-integer, nondecreasing absolute ticks;
