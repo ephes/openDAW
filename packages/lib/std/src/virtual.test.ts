@@ -122,6 +122,16 @@ describe("VirtualObject", () => {
             expect(notify).not.toHaveBeenCalled()
         })
 
+        it("discards a staged shape replacement when a later section refuses its update", () => {
+            const data: {a: number, b: null | {x: number}, c: {x: number}} = {a: 0, b: null, c: {x: 1}}
+            Object.freeze(data.c)
+            const object = new VirtualObject(data), notify = vi.fn()
+            object.subscribeAll(notify)
+            expect(() => object.update({a: 1, b: {x: 2}, c: {x: 3}})).toThrow()
+            expect(data).toEqual({a: 0, b: null, c: {x: 1}})
+            expect(notify).not.toHaveBeenCalled()
+        })
+
         it("refuses accessor input before mutating any root", () => {
             const data = {a: 0, b: {x: 1}}, object = new VirtualObject(data), notify = vi.fn()
             const getter = vi.fn(() => {throw new Error("synthetic getter")})

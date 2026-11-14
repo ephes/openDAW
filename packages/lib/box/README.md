@@ -27,6 +27,12 @@ Graph-based object modeling system with serialization, transactions, and pointer
 
 ## Graph Management
 
+General transaction and all-update listeners use the standard `Listeners.proxy`
+policy: method receivers are retained, failures warn once and later listeners
+still run. They are notifications, so their errors do not veto an edit.
+Vertex callbacks retain the fail-fast contract below; use that public path for
+transactional callback-failure recovery tests.
+
 Vertex callbacks run in subscription order. A throwing callback stops sibling
 delivery and propagates its original error. Subscriptions created during dispatch
 remain deferred until the outermost dispatch exits, including exceptional exits;

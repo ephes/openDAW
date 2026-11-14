@@ -69,7 +69,7 @@ export const readModelFromPack = async (packId: string, modelId: number, signal?
     const toneId = parseInt(packId, 10)
     const path = modelPath(toneId, modelId)
     if (await Workers.Opfs.exists(path)) {
-        const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Metadata)
+        const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Media)
         return new TextDecoder().decode(bytes)
     }
     const meta = await readPackMeta(toneId)

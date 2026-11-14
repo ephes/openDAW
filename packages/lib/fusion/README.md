@@ -25,7 +25,7 @@ Web-based audio workstation fusion utilities for TypeScript projects.
 * **types.ts** - Type definitions for fusion operations
 
 OPFS writes accept `Uint8Array` subviews and store only the supplied byte range, including empty views.
-Reads and writes complete short transfers using explicit offsets and reject zero progress; handles always close.
+Reads and writes complete short transfers using explicit offsets and reject zero progress; handle closure is always attempted.
 `exists` treats empty files as absent. Missing entries normalize to `false`/an empty listing/a no-op deletion;
 permission, access-state and other operational errors reject through the protocol.
 Leading/trailing slashes are aliases. Empty internal segments, dot segments, NUL
@@ -41,7 +41,7 @@ integer; the opened handle's size is checked before allocating or reading.
 Metadata, project/recovery graphs use Project, and sample/soundfont binaries use
 Media explicitly. Inference uses its existing 512 MiB model limit and Metadata
 for its sidecar. Oversized files reject through normal load/recovery paths.
-All opened handles are closed. A close-only failure rejects; a simultaneous
+Closing each opened handle is attempted. A close-only failure rejects; a simultaneous
 operation/close failure is an AggregateError whose cause and first error are the
 original operation failure, with bounded secondary cleanup context. Queue slots
 are released in every case.

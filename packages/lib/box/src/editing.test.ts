@@ -3,9 +3,10 @@ import {BooleanField, BoxGraph, Field} from "./"
 import {PointerField, UnreferenceableType} from "./pointer"
 import {Box, BoxConstruct} from "./box"
 import {NoPointers, VertexVisitor} from "./vertex"
-import {Maybe, Option, panic, Procedure, safeExecute, UUID} from "@opendaw/lib-std"
+import {Maybe, Option, panic, Procedure, safeExecute, Terminable, UUID} from "@opendaw/lib-std"
 import {BoxEditing} from "./editing"
 import {PrimitiveUpdate} from "./updates"
+import {Propagation} from "./dispatchers"
 
 enum PointerType {A, B}
 
@@ -1046,11 +1047,13 @@ describe("graph and history failure settlement", () => {
     it("releases a modification process whose transaction cannot begin", () => {
         const {graph, editing, a} = setup()
         const boom = new Error("begin failed")
-        const subscription = graph.subscribeTransaction({
-            onBeginTransaction: () => {throw boom}, onEndTransaction: () => {}
+        const beginTransaction = graph.beginTransaction.bind(graph)
+        const begin = vi.spyOn(graph, "beginTransaction").mockImplementationOnce(() => {
+            beginTransaction()
+            throw boom
         })
         expect(() => editing.beginModification()).toThrow(boom)
-        subscription.terminate()
+        begin.mockRestore()
         expect(graph.inTransaction()).toBe(false)
         graph.beginTransaction()
         expect(() => editing.beginModification()).toThrow(/Transaction already in progress/)
@@ -1073,16 +1076,11 @@ describe("graph and history failure settlement", () => {
         const failing = direction === "undo" ? [a, b] : [b, a]
         const target = direction === "undo" ? [false, true] : [true, false]
         let armed = true
-        const subscription = graph.subscribeToAllUpdates({
-            onUpdate: update => {
+        const subscription = Terminable.many(...failing.map((box, index) =>
+            graph.subscribeVertexUpdates(Propagation.This, box.bool.address, update => {
                 if (!armed || !(update instanceof PrimitiveUpdate)) {return}
-                failing.forEach((box, index) => {
-                    if (UUID.equals(update.address.uuid, box.address.uuid) && update.newValue === target[index]) {
-                        throw new Error(`${direction} step failed`)
-                    }
-                })
-            }
-        })
+                if (update.newValue === target[index]) {throw new Error(`${direction} step failed`)}
+            })))
         let notified = 0
         editing.subscribe(() => notified++)
         expect(editing[direction]()).toBe(false)
@@ -1093,5 +1091,33 @@ describe("graph and history failure settlement", () => {
         expect(direction === "undo" ? editing.canUndo() : editing.canRedo()).toBe(true)
         editing.modify(() => b.bool.setValue(direction === "undo"))
         expect(b.bool.getValue()).toBe(direction === "undo")
+    })
+
+    it.each(["class", "object"])("isolates %s graph listeners without losing edits or later delivery", kind => {
+        const {graph, editing, a} = setup()
+        const calls: string[] = []
+        class ThrowingListener {
+            readonly label = "first"
+            onBeginTransaction(): void {calls.push(`${this.label}:begin`); throw new Error("synthetic begin observer")}
+            onEndTransaction(): void {calls.push(`${this.label}:end`); throw new Error("synthetic end observer")}
+            onUpdate(): void {calls.push(`${this.label}:update`); throw new Error("synthetic update observer")}
+        }
+        const listener = kind === "class" ? new ThrowingListener() : {
+            label: "first", onBeginTransaction: ThrowingListener.prototype.onBeginTransaction,
+            onEndTransaction: ThrowingListener.prototype.onEndTransaction, onUpdate: ThrowingListener.prototype.onUpdate
+        }
+        const first = Terminable.many(graph.subscribeTransaction(listener), graph.subscribeToAllUpdates(listener))
+        const later = Terminable.many(graph.subscribeTransaction({onBeginTransaction: () => calls.push("later:begin"),
+            onEndTransaction: () => calls.push("later:end")}), graph.subscribeToAllUpdates({onUpdate: () => calls.push("later:update")}))
+        const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+        try {
+            expect(() => editing.modify(() => a.bool.setValue(true))).not.toThrow()
+            expect(a.bool.getValue()).toBe(true)
+            expect(graph.inTransaction()).toBe(false)
+            expect(calls).toEqual(["first:begin", "later:begin", "first:update", "later:update", "first:end", "later:end"])
+            expect(warning).toHaveBeenCalledTimes(3)
+        } finally {warning.mockRestore(); first.terminate(); later.terminate()}
+        expect(editing.undo()).toBe(true)
+        expect(a.bool.getValue()).toBe(false)
     })
 })

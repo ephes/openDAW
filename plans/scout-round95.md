@@ -55,6 +55,11 @@ and object listener regression variants also failed before repair. Unlike the
 scout's assumption, safeExecute only checks presence and does not catch failures;
 proxy dispatch now uses tryCatch and one warning per failure with correct this
 binding. All targeted messenger/listener tests pass.
+The full suite exposed three older editing tests injecting transactional failures
+through general notifications. Those are now isolated by the requested policy.
+Recovery oracles inject at beginTransaction and the existing fail-fast vertex
+subscription API instead; additional object/class graph tests verify edits,
+later listeners and undo remain intact after notification failures.
 
 ## B06: preference sync and atomic updates
 
@@ -68,3 +73,19 @@ preflight plain-record descriptors, stage assignments and publish all values bef
 one notification per changed root. Nested record identities remain stable and new
 records are copied. Arrays keep their existing atomic-value behavior. Targeted
 tests pass; unsupported input is refused without state changes.
+
+## Local acceptance and handoff
+
+- Node 26.13.1; `npm ci --ignore-scripts` succeeded.
+- `npm run build` succeeded for all 24 packages; this includes production type checks.
+- `npm run lint` succeeded, with existing unused-variable warnings.
+- `npm test` succeeded across all 17 test workspaces (2552 passing tests).
+- Chromium was installed into the workspace cache. The exact blocked command is
+  `PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r95-opendaw/.cache/playwright npm run test:browser`.
+  All three existing flows fail before execution because macOS sandbox permission
+  denies Chromium's `bootstrap_check_in … MachPortRendezvousServer` (1100/SIGTRAP).
+  These browser flows still need execution outside the sandbox; they are not
+  claimed green. Logs are in the coordinator's `logs/cx-r95-opendaw` directory.
+- All bundles are parked together on `codex-q/r95-openDAW` for the external Claude
+  clerk. No review CLI, merge, Actions wait/run, release, deployment or work-app
+  write was performed. No owner decision was required and no slice was skipped.

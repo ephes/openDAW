@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Verify graph notifications follow shared listener isolation while retaining transactional failure recovery through fail-fast vertex callbacks.
+
 - Preflight canonical known box and nested object JSON keys and exact fixed-array shapes; roll back failed graph JSON imports instead of accepting partial boxes.
 
 - Reject duplicate binary field keys and decoder residue; enforce matching writer/reader field count, signed key and 64 MiB payload limits. Size admission counts each nested field once.
