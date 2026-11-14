@@ -52,11 +52,17 @@ export class MidiTrack {
                 readonly metaEvents: Array<MetaEvent>) {}
 
     encode(): ArrayBufferLike {
+        const checkTick = (tick: number, previous: number): void => {
+            if (!Number.isSafeInteger(tick) || tick < previous) {throw new Error("Invalid or unordered MIDI tick")}
+        }
         const timeline: {ticks: number, bytes: number[]}[] = []
         // Numeric channel order, then original event order, breaks equal-tick ties.
         for (const channel of Array.from(this.controlEvents.keys()).sort((a, b) => a - b)) {
             if (!Number.isInteger(channel) || channel < 0 || channel > 15) {throw new Error("Invalid MIDI channel")}
+            let previous = 0
             for (const event of this.controlEvents.get(channel)) {
+                checkTick(event.ticks, previous)
+                previous = event.ticks
                 let length: number
                 switch (event.type) {
                     case ControlType.NOTE_ON:
@@ -76,7 +82,10 @@ export class MidiTrack {
             }
         }
         let endTick = 0
+        let previousMetaTick = 0
         for (const event of this.metaEvents) {
+            checkTick(event.ticks, previousMetaTick)
+            previousMetaTick = event.ticks
             switch (event.type) {
                 case MetaType.SET_TEMPO: {
                     const tempo = Math.round(60_000_000 / (event.value as number))
@@ -105,6 +114,14 @@ export class MidiTrack {
         timeline.sort((a, b) => a.ticks - b.ticks || (b.bytes[0] === 0xff ? 1 : 0) - (a.bytes[0] === 0xff ? 1 : 0))
         endTick = Math.max(endTick, timeline.at(-1)?.ticks ?? 0)
         timeline.push({ticks: endTick, bytes: [0xff, MetaType.END_OF_TRACK, 0]})
+        let previousTick = 0
+        for (const event of timeline) {
+            const delta = event.ticks - previousTick
+            if (!Number.isSafeInteger(delta) || delta < 0 || delta > 0x0fffffff) {
+                throw new Error("MIDI delta exceeds four-byte domain")
+            }
+            previousTick = event.ticks
+        }
         const output = ByteArrayOutput.create()
         const writeVarInt = (value: int): void => {
             const bytes = [value % 128]

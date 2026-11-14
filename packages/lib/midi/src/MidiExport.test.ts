@@ -1,5 +1,5 @@
-import {describe, expect, it} from "vitest"
-import {ArrayMultimap} from "@opendaw/lib-std"
+import {describe, expect, it, vi} from "vitest"
+import {ArrayMultimap, ByteArrayOutput} from "@opendaw/lib-std"
 import {MidiFile} from "./MidiFile"
 import {MidiTrack} from "./MidiTrack"
 import {Channel} from "./Channel"
@@ -57,5 +57,42 @@ describe("channel event export", () => {
         expect(bytes(decoded)).toEqual(body)
         expect(roundTrip(decoded).metaEvents).toEqual(decoded.metaEvents)
         expect(roundTrip(decoded).metaEvents.filter(event => event.type === MetaType.END_OF_TRACK)).toHaveLength(1)
+    })
+})
+
+describe("export admission", () => {
+    it.each([NaN, Infinity, -1, 0.5, 0x10000000, 0x80000000])("rejects invalid tick/delta %s before output allocation", ticks => {
+        const allocate = vi.spyOn(ByteArrayOutput, "create").mockImplementation(() => {throw new Error("output allocated")})
+        try {
+            expect(() => track([[0, [note(ticks)]]]).encode()).toThrow(/tick|delta/i)
+            expect(allocate).not.toHaveBeenCalled()
+        } finally {allocate.mockRestore()}
+    })
+    it("refuses unsorted per-channel input instead of repairing it silently", () => {
+        expect(() => track([[0, [note(2), note(1)]]]).encode()).toThrow(/tick/i)
+    })
+    it.each([[127, [127]], [128, [0x81, 0]], [16383, [0xff, 0x7f]],
+        [0x0fffffff, [0xff, 0xff, 0xff, 0x7f]]] as [number, number[]][])
+    ("encodes canonical boundary delta %i", (ticks, delta) => {
+        expect(bytes(track([[0, [note(ticks)]]])).slice(0, delta.length)).toEqual(delta)
+    })
+    it("allows safe absolute ticks larger than one delta", () => {
+        const value = track([[0, [note(0x0fffffff), note(0x1ffffffe)]]])
+        expect(roundTrip(value).controlEvents.get(0).map(event => event.ticks)).toEqual([0x0fffffff, 0x1ffffffe])
+    })
+    it.each([0, 65536])("rejects %i tracks before invoking any track encoder", count => {
+        const encode = vi.fn(() => new ArrayBuffer(0))
+        const encoder = MidiFile.encoder()
+        const fake = {encode} as unknown as MidiTrack
+        for (let index = 0; index < count; index++) {encoder.addTrack(fake)}
+        expect(() => encoder.encode()).toThrow(/track count/i)
+        expect(encode).not.toHaveBeenCalled()
+    })
+    it.each([1, 2])("writes the right header for %i tracks", count => {
+        const encoder = MidiFile.encoder()
+        for (let index = 0; index < count; index++) {encoder.addTrack(MidiTrack.createEmpty())}
+        const header = new DataView(encoder.encode().toArrayBuffer() as ArrayBuffer)
+        expect(header.getUint16(8)).toBe(count === 1 ? 0 : 1)
+        expect(header.getUint16(10)).toBe(count)
     })
 })

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preflight export ticks, four-byte deltas and nonzero uint16 track counts before serialization.
+
 - Merge channel and tempo/signature timelines on export, preserve release velocity, and serialize all channel message kinds.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.

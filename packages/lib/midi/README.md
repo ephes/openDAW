@@ -28,3 +28,10 @@ and SysEx payloads are intentionally not retained. Exactly one final end-of-trac
 preserves the latest retained event or terminal tick. Multiple tracks use format 1.
 
 Run synthetic byte-fixture and round-trip regressions with `npm test -w @opendaw/lib-midi`.
+
+Export admits 1–65535 tracks before calling any track encoder. Channel and
+metadata lists must have nonnegative, safe-integer, nondecreasing absolute ticks;
+interleaved channels are merged before delta calculation. Each resulting delta
+must fit 0–0x0fffffff. Tick/delta validation completes before track output
+allocation; arithmetic VLQ encoding never uses signed shifts. Invalid channels,
+message kinds or seven-bit data are refused instead of producing partial bytes.

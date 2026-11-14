@@ -1,4 +1,4 @@
-import {byte, ByteArrayInput, ByteArrayOutput} from "@opendaw/lib-std"
+import {ByteArrayInput, ByteArrayOutput} from "@opendaw/lib-std"
 import {MidiTrack} from "./MidiTrack"
 import {Chunk} from "./Chunk"
 import {MidiFileDecoder} from "./MidiFileDecoder"
@@ -8,18 +8,6 @@ export namespace MidiFile {
     export const encoder = (): MidiFileEncoder => new MidiFileEncoder()
 
     class MidiFileEncoder {
-        static writeVarLen(output: ByteArrayOutput, value: number): void {
-            const bytes: Array<byte> = []
-            while (value > 0x7F) {
-                bytes.push((value & 0x7F) | 0x80)
-                value >>= 7
-            }
-            bytes.push(value & 0x7F)
-            for (let i = bytes.length - 1; i >= 0; i--) {
-                output.writeByte(bytes[i])
-            }
-        }
-
         readonly #tracks: Array<MidiTrack> = []
 
         addTrack(track: MidiTrack): this {
@@ -28,6 +16,9 @@ export namespace MidiFile {
         }
 
         encode(): ByteArrayOutput {
+            if (this.#tracks.length < 1 || this.#tracks.length > 0xffff) {
+                throw new Error("Invalid MIDI track count: expected 1 through 65535")
+            }
             const output = ByteArrayOutput.create()
             output.littleEndian = false
             output.writeInt(Chunk.MTHD)
