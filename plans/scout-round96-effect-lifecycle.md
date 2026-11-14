@@ -63,3 +63,20 @@ Regression: overload, silence and an attenuated probe match the closed-form
 exponential time law at 44.1/48/96 kHz on both channels. A warmed modulated delay
 reset twice matches a fresh device's split-span impulse response. All four tests
 failed before the fix and pass afterward.
+
+## B05 — Vocoder sample cadence and restart
+
+All three DSP entry points carry their position within the render quantum across
+calls. Coefficients advance at 64-sample boundaries and cold bands are trimmed at
+128-sample boundaries, preserving the full-quantum cadence. Controls changed
+inside a partial subblock take effect at the next coefficient boundary; splitting
+an otherwise identical span does not accelerate smoothing. No hot-loop allocation
+is added. Invocation boundaries still store filter state as Float32, so partition
+comparisons allow small rounding differences (relative/absolute 1e-5).
+
+Reset snaps frequency/Q coefficients and band fades to current targets, clears
+filter/envelope history and restarts the sample clock. Compare with another
+configured device after reset, not with its initial parameter ramp before reset.
+Nine stereo/mono/self tests failed before the fix. Afterward partitioned parameter
+transitions agree within Float32 tolerance and 16→8→12 mid-transition restarts
+match exactly, including finite silent output.

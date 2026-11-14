@@ -1,4 +1,4 @@
-import {BiquadCoeff, dbToGain} from "@opendaw/lib-dsp"
+import {BiquadCoeff, dbToGain, RenderQuantum} from "@opendaw/lib-dsp"
 import {int} from "@opendaw/lib-std"
 
 export type NoiseColor = "white" | "pink" | "brown"
@@ -118,6 +118,7 @@ export class VocoderDsp {
     #targetQMin: number = 2.0
     #targetQMax: number = 20.0
     #coeffsDirty: boolean = true
+    #samplePosition: int = 0
 
     // ── Current (lerped) per-band frequencies & Q ─────────────────────────
     readonly #curCarrierFreq: Float32Array
@@ -220,22 +221,11 @@ export class VocoderDsp {
             this.#bandGainCurrent[i] = 1.0
         }
 
-        // Snap cur = target for every slot so the first geometric lerp has a valid
-        // non-zero denominator. Use fallback values that mirror the defaults.
-        this.#computeBandTargets()
-        for (let i = 0; i < N; i++) {
-            const t = Math.min(i, this.#targetBandCount - 1)
-            this.#curCarrierFreq[i] = this.#tmpTargetCarrierFreq[t]
-            this.#curModulatorFreq[i] = this.#tmpTargetModulatorFreq[t]
-            this.#curCarrierQ[i] = this.#tmpTargetQ[t]
-            this.#curModulatorQ[i] = this.#tmpTargetQ[t]
-        }
+        this.#snapCoefficients()
 
         this.#fadeCoeff = Math.exp(-1 / (sampleRate * VocoderDsp.BAND_FADE_SECONDS))
         this.setAttackSeconds(0.005)
         this.setReleaseSeconds(0.030)
-        this.#recomputeBandGain()
-        this.#writeAllCoefficients()
     }
 
     // ── Parameter setters ─────────────────────────────────────────────────
@@ -325,6 +315,22 @@ export class VocoderDsp {
             this.#bandGainCurrent[i] = this.#targetActive[i]
         }
         this.#processedBands = this.#targetBandCount
+        this.#samplePosition = 0
+        this.#snapCoefficients()
+    }
+
+    #snapCoefficients(): void {
+        this.#computeBandTargets()
+        for (let i = 0; i < VocoderDsp.MAX_BANDS; i++) {
+            const t = Math.min(i, this.#targetBandCount - 1)
+            this.#curCarrierFreq[i] = this.#tmpTargetCarrierFreq[t]
+            this.#curModulatorFreq[i] = this.#tmpTargetModulatorFreq[t]
+            this.#curCarrierQ[i] = this.#tmpTargetQ[t]
+            this.#curModulatorQ[i] = this.#tmpTargetQ[t]
+        }
+        this.#recomputeBandGain()
+        this.#writeAllCoefficients()
+        this.#coeffsDirty = false
     }
 
     // ── Entry points ──────────────────────────────────────────────────────
@@ -335,12 +341,14 @@ export class VocoderDsp {
                      fromIndex: int, toIndex: int): void {
         let from = fromIndex
         while (from < toIndex) {
-            const to = Math.min(from + VocoderDsp.SUB_BLOCK, toIndex)
-            this.#interpolateCoeffs()
+            const offset = this.#samplePosition % VocoderDsp.SUB_BLOCK
+            if (offset === 0) {this.#interpolateCoeffs()}
+            const to = Math.min(from + VocoderDsp.SUB_BLOCK - offset, toIndex)
             this.#innerStereoMod(carL, carR, modL, modR, outL, outR, from, to)
+            this.#samplePosition = (this.#samplePosition + to - from) % RenderQuantum
+            if (this.#samplePosition === 0) {this.#trimProcessedBands()}
             from = to
         }
-        this.#trimProcessedBands()
     }
 
     processMonoMod(carL: Float32Array, carR: Float32Array, mod: Float32Array,
@@ -348,12 +356,14 @@ export class VocoderDsp {
                    fromIndex: int, toIndex: int): void {
         let from = fromIndex
         while (from < toIndex) {
-            const to = Math.min(from + VocoderDsp.SUB_BLOCK, toIndex)
-            this.#interpolateCoeffs()
+            const offset = this.#samplePosition % VocoderDsp.SUB_BLOCK
+            if (offset === 0) {this.#interpolateCoeffs()}
+            const to = Math.min(from + VocoderDsp.SUB_BLOCK - offset, toIndex)
             this.#innerMonoMod(carL, carR, mod, outL, outR, from, to)
+            this.#samplePosition = (this.#samplePosition + to - from) % RenderQuantum
+            if (this.#samplePosition === 0) {this.#trimProcessedBands()}
             from = to
         }
-        this.#trimProcessedBands()
     }
 
     processSelf(carL: Float32Array, carR: Float32Array,
@@ -361,12 +371,14 @@ export class VocoderDsp {
                 fromIndex: int, toIndex: int): void {
         let from = fromIndex
         while (from < toIndex) {
-            const to = Math.min(from + VocoderDsp.SUB_BLOCK, toIndex)
-            this.#interpolateCoeffs()
+            const offset = this.#samplePosition % VocoderDsp.SUB_BLOCK
+            if (offset === 0) {this.#interpolateCoeffs()}
+            const to = Math.min(from + VocoderDsp.SUB_BLOCK - offset, toIndex)
             this.#innerSelf(carL, carR, outL, outR, from, to)
+            this.#samplePosition = (this.#samplePosition + to - from) % RenderQuantum
+            if (this.#samplePosition === 0) {this.#trimProcessedBands()}
             from = to
         }
-        this.#trimProcessedBands()
     }
 
     // ── Internals: band target spread & coefficient interpolation ────────
@@ -437,7 +449,7 @@ export class VocoderDsp {
     }
 
     #writeAllCoefficients(): void {
-        // Constructor-time initial write using the already-snapped cur values.
+        // Constructor/reset write using the already-snapped current values.
         const sr = this.#sampleRate
         const cc = this.#scratchCarrierCoeff
         const mc = this.#scratchModulatorCoeff
