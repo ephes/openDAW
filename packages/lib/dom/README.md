@@ -37,3 +37,12 @@ DOM utilities and web browser interaction helpers for TypeScript projects.
 * Animation frame utilities **frames.ts**
 * Stream processing for DOM operations **stream.ts**
 * Resource cleanup and termination handling **terminable.ts**
+
+## Drag ownership
+
+`Dragging.attach` owns its current process. Pointerup approves it; pointercancel,
+Escape, abort, window unload and attachment disposal cancel it. Settlement retires
+listeners and frame updates, releases owned capture/lock, and calls `finally`
+exactly once, including when approve/cancel throws. The first failure is preserved.
+Disposing an attachment is idempotent and rolls back its provisional edit before
+removing the pointerdown listener.

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Settle drags once even when terminal hooks fail; cancel active edits on owner disposal.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.83](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-dom@0.0.82...@opendaw/lib-dom@0.0.83) (2026-05-22)

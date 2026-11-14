@@ -36,13 +36,15 @@ export namespace Dragging {
     export const attach = <T extends PointerCaptureTarget>(target: T,
                                                            factory: Func<PointerEvent, Option<Process>>,
                                                            options?: ProcessOptions): Terminable => {
-        const processCycle = new Terminator()
         // Cancel any active drag when a new one starts. On some platforms (e.g., ChromeOS),
         // isPrimary may be true for multiple simultaneous touchpoints, bypassing the
         // multitouch guard above. Without this, listeners from the previous drag accumulate
         // and can reference stale state.
         let cancelActive: Exec = EmptyExec
-        return Terminable.many(processCycle, Events.subscribe(target, "pointerdown", (event: PointerEvent) => {
+        let disposed = false
+        const subscription = Events.subscribe(target, "pointerdown", (event: PointerEvent) => {
+            if (disposed) {return}
+            const processCycle = new Terminator()
             if (event.defaultPrevented) {return}
             if (options?.multiTouch !== true && !event.isPrimary) {return}
             if (event.buttons !== 1 || (Browser.isMacOS() && event.ctrlKey)) {return}
@@ -127,39 +129,49 @@ export namespace Dragging {
                     }
                 }))
             }
-            const cancel = () => {
+            let settled = false
+            const settle = (approve: boolean): void => {
+                if (settled) {return}
+                settled = true
                 cancelActive = EmptyExec
-                if (pointerLockActive && targetElement !== null && document.pointerLockElement === targetElement) {
-                    document.exitPointerLock()
-                }
-                process.cancel?.call(process)
-                process.finally?.call(process)
+                // Retire subscriptions before user hooks can start another drag.
                 processCycle.terminate()
+                let failed = false
+                let failure: unknown
+                const attempt = (exec: Exec): void => {
+                    try {exec()} catch (error) {
+                        if (!failed) {failed = true; failure = error}
+                    }
+                }
+                attempt(() => {
+                    if (pointerLockActive && targetElement !== null && document.pointerLockElement === targetElement) {
+                        document.exitPointerLock()
+                    }
+                })
+                attempt(() => {
+                    if (target.hasPointerCapture(pointerId)) {target.releasePointerCapture(pointerId)}
+                })
+                attempt(() => approve ? process.approve?.call(process) : process.cancel?.call(process))
+                attempt(() => process.finally?.call(process))
+                if (failed) {throw failure}
             }
+            const cancel = () => settle(false)
             cancelActive = cancel
             const owner = safeRead(target, "ownerDocument", "defaultView") as WindowProxy ?? self
             processCycle.ownAll(
                 Events.subscribe(target, "pointerup", (event: PointerEvent) => {
                     if (event.pointerId === pointerId) {
-                        cancelActive = EmptyExec
-                        if (pointerLockActive && targetElement !== null && document.pointerLockElement === targetElement) {
-                            document.exitPointerLock()
-                        }
-                        process.approve?.call(process)
-                        process.finally?.call(process)
-                        processCycle.terminate()
+                        settle(true)
                     }
                 }, {capture: true}),
                 Events.subscribe(target, "pointercancel", (event: PointerEvent) => {
                     console.debug(event.type)
                     if (event.pointerId === pointerId) {
-                        target.releasePointerCapture(pointerId)
                         cancel()
                     }
                 }, {capture: true}),
                 Events.subscribe(owner, "beforeunload", (_event: BeforeUnloadEvent) => {
                     // Workaround for Chrome (does not release or cancel the pointer)
-                    target.releasePointerCapture(pointerId)
                     cancel()
                 }, {capture: true}),
                 Events.subscribe(owner, "keydown", (event: KeyboardEvent) => {
@@ -177,10 +189,14 @@ export namespace Dragging {
             )
             if (isDefined(process.abortSignal)) {
                 processCycle.own(Events.subscribe(process.abortSignal, "abort", () => {
-                    target.releasePointerCapture(pointerId)
                     cancel()
                 }))
             }
-        }))
+        })
+        return {terminate: (): void => {
+            if (disposed) {return}
+            disposed = true
+            try {cancelActive()} finally {subscription.terminate()}
+        }}
     }
 }
