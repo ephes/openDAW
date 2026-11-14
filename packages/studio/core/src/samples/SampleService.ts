@@ -1,5 +1,5 @@
 import {Arrays, Class, isDefined, Progress, tryCatch, UUID} from "@opendaw/lib-std"
-import {Box} from "@opendaw/lib-box"
+import {Box, BoxGraph} from "@opendaw/lib-box"
 import {AudioData, estimateBpm} from "@opendaw/lib-dsp"
 import {Promises} from "@opendaw/lib-runtime"
 import {SamplePeaks} from "@opendaw/lib-fusion"
@@ -58,6 +58,15 @@ export class SampleService extends AssetService<Sample, AudioData> {
         await SampleStorage.get().save({uuid, audio: audioData, peaks, meta})
         this.notifier.notify([sample, audioData])
         return sample
+    }
+
+    async replaceMissingFiles(boxGraph: BoxGraph, manager: { invalidate: (uuid: UUID.Bytes) => void }): Promise<void> {
+        const {status, value} = await Promises.tryCatch(OpenSampleAPI.get().all())
+        if (status === "rejected") {
+            console.warn("Stock sample catalog unavailable; skipping the missing-sample check", value)
+            return
+        }
+        return super.replaceMissingFiles(boxGraph, manager)
     }
 
     protected async collectAllFiles(): Promise<ReadonlyArray<Sample>> {
