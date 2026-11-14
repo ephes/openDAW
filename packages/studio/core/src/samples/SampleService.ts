@@ -61,9 +61,9 @@ export class SampleService extends AssetService<Sample, AudioData> {
     }
 
     async replaceMissingFiles(boxGraph: BoxGraph, manager: { invalidate: (uuid: UUID.Bytes) => void }): Promise<void> {
-        const {status, value} = await Promises.tryCatch(OpenSampleAPI.get().all())
-        if (status === "rejected") {
-            console.warn("Stock sample catalog unavailable; skipping the missing-sample check", value)
+        const result = await Promises.tryCatch(OpenSampleAPI.get().all())
+        if (result.status === "rejected") {
+            console.warn("Stock sample catalog unavailable; skipping the missing-sample check", result.error)
             return
         }
         return super.replaceMissingFiles(boxGraph, manager)

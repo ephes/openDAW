@@ -271,7 +271,8 @@ using unregistered `getOrCreate` retain their load until explicit removal.
 Stock catalog reads share in-flight discovery and cache successful lists, including
 empty lists. A failed catalog read rejects and the next explicit read retries;
 opening a project while the catalog is unreachable skips the missing-sample check
-(availability is unknown), so no stock sample is offered for replacement.
+(availability is unknown), so no stock sample is offered for replacement; missing
+local samples are then also reported only on the next online open.
 Stock metadata must match the requested UUID (case-insensitive, returned in
 lowercase). Stock WAV downloads allow at most 64 MiB declared or streamed bytes.
 A download fails after 60 seconds without progress (metadata, response headers or

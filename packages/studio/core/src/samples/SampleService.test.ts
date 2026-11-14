@@ -14,11 +14,13 @@ afterEach(() => {vi.restoreAllMocks()})
 it("opens projects while the stock catalog is unreachable without missing-sample prompts", async () => {
     vi.mocked(OpenSampleAPI.get).mockReturnValue({all: () => Promise.reject(new Error("offline"))} as never)
     vi.mocked(SampleStorage.get).mockReturnValue({list: () => Promise.resolve([])} as never)
-    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const check = vi.spyOn(AssetService.prototype, "replaceMissingFiles")
     const service = new SampleService({} as AudioContext)
     await expect(service.replaceMissingFiles(new BoxGraph(), {invalidate: vi.fn()})).resolves.toBeUndefined()
     expect(check).not.toHaveBeenCalled()
+    expect(warn.mock.calls[0][1]).toBeInstanceOf(Error)
+    expect(String(warn.mock.calls[0][1])).toContain("offline")
 })
 
 it("checks for missing samples when the stock catalog is available", async () => {
