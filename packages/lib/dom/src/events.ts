@@ -21,29 +21,30 @@ export class Events {
 
     static DOUBLE_DOWN_THRESHOLD = 200 as const
 
-    static subscribeDblDwn = (eventTarget: EventTarget, listener: (event: PointerEvent) => void): Subscription => {
-        let lastDownTime: number = 0.0
-        return this.subscribe(eventTarget, "pointerdown", event => {
-            const now = performance.now()
-            if (now - lastDownTime < this.DOUBLE_DOWN_THRESHOLD) {
-                event.preventDefault()
-                event.stopImmediatePropagation()
-                listener(event)
-            }
-            lastDownTime = now
-        }, {capture: true})
-    }
+    /** Matching pointer gestures must be within 200 ms and 5 CSS pixels. */
+    static subscribeDblDwn = (eventTarget: EventTarget, listener: (event: PointerEvent) => void): Subscription =>
+        this.subscribeDoublePointer(eventTarget, "pointerdown", listener)
 
-    static subscribeDblUp = (eventTarget: EventTarget, listener: (event: PointerEvent) => void): Subscription => {
-        let lastDownTime: number = 0.0
-        return this.subscribe(eventTarget, "pointerup", event => {
+    static subscribeDblUp = (eventTarget: EventTarget, listener: (event: PointerEvent) => void): Subscription =>
+        this.subscribeDoublePointer(eventTarget, "pointerup", listener)
+
+    private static subscribeDoublePointer(eventTarget: EventTarget, type: "pointerdown" | "pointerup",
+                                          listener: (event: PointerEvent) => void): Subscription {
+        let previous: {time: number, button: number, kind: string, x: number, y: number} | undefined
+        return this.subscribe(eventTarget, type, event => {
             const now = performance.now()
-            if (now - lastDownTime < this.DOUBLE_DOWN_THRESHOLD) {
+            const matches = previous !== undefined
+                && now - previous.time >= 0 && now - previous.time < this.DOUBLE_DOWN_THRESHOLD
+                && previous.button === event.button && previous.kind === event.pointerType
+                && Math.hypot(previous.x - event.clientX, previous.y - event.clientY) <= 5
+            previous = matches ? undefined : {
+                time: now, button: event.button, kind: event.pointerType, x: event.clientX, y: event.clientY
+            }
+            if (matches) {
                 event.preventDefault()
                 event.stopImmediatePropagation()
                 listener(event)
             }
-            lastDownTime = now
         }, {capture: true})
     }
 

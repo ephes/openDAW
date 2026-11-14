@@ -223,6 +223,15 @@ shared rules allow the project's public namespace-merging convention; other
 recommended source rules remain enabled. See [the baseline lint plan](plans/baseline-lint-green.md)
 for configuration rationale and the narrowly documented generic type boundaries.
 
+### DOM and runtime helper contracts
+
+Double-pointer subscriptions pair gestures within 200 ms and 5 CSS pixels, with
+matching button and pointer kind. A recognized pair resets the history. Shortcut
+handlers returning `false` allow later entries and lower contexts to try; only a
+consuming handler prevents the browser default (unless disabled in its options).
+Dispatch snapshots contexts and entries; additions wait for the next event and
+retired owners are skipped.
+
 ### Video export
 
 See [video export limits and lifecycle](plans/video-export-safety.md) for

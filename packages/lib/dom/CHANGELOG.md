@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Match double-pointer gesture identity and reset recognized pairs; preserve single-event delivery.
+- Continue declined shortcut handlers using stable dispatch snapshots; skip retired owners and prevent defaults only on consumption.
+
 - Make shortcut unsubscription idempotent and preserve IME, inherited editable and shadow-input ownership.
 
 - Isolate frame callback failures and fence retired dispatches when stopping or changing window drivers.
