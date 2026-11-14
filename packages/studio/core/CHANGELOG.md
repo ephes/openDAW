@@ -5,6 +5,19 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep stock progress finite in [0, 1] with unknown lengths, propagate observer failures and release readers. Export positive MIDI notes for at least one tick with nonzero attack velocity; omit silent/nonpositive notes and order same-tick releases before attacks.
+
+- Bound stock sample transfers to 64 MiB declared/actual bytes, a 60-second stall deadline (renewed by metadata, headers and body bytes) and a 10-minute total deadline; cancel and release failed readers, refuse decoding on overflow/timeout and allow explicit retry.
+
+- Cache only successful stock catalogs (including empty lists), coalesce reads and allow explicit retry after discovery failure; project loading skips the missing-sample check while the catalog is unreachable instead of failing or offering stock samples for replacement. Bind stock metadata to the requested UUID before asset download, accepting UUID case differences canonically.
+
+- Forward client sample invalidations to the live engine and retire its sample-fetch subscriptions with the engine; replacement audio is fetched without restarting it.
+  Keep terminal sample subscriptions attached until explicitly terminated so already-loaded samples also receive later invalidation/retry.
+
+- Make sample reference release idempotent and generation-owned; retire removed/finally released loads so late completions cannot retain PCM or start saves.
+
+- Own sample loads by attempt so invalidation fences stale storage/API progress and results; deliver terminal errors to every reader joining shared work.
+
 - Release microphone tracks when post-acquisition enumeration fails, fence device inventory generations while retaining the last valid list, share worklet installations per context, and preflight recording geometry before allocation (1–32 channels, ≥2 chunks, ≤64 MiB audio).
 
 - Keep selection-based automation overlap edits on their Value track; deduplicate push-existing regions with a Set and reduce placement bounds without argument spreading.

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add the engine `invalidateSample` command for replacing loaded client samples without an engine restart.
+
 - Keep an overlapped pitch lit in note displays until its last start is stopped; ignore stops without a displayed start.
 
 - Reject collapsed integer script declarations before mapping updates and run ScriptDeclaration regressions in local aggregate tests.

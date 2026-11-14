@@ -237,6 +237,7 @@ export class EngineProcessor extends AudioWorkletProcessor implements EngineCont
                 setFrozenAudio: (uuid: UUID.Bytes, audioData: Nullable<AudioData>): void => {
                     this.optAudioUnit(uuid).ifSome(unit => unit.setFrozenAudio(Option.wrap(audioData)))
                 },
+                invalidateSample: (uuid: UUID.Bytes): void => this.#sampleManager.invalidate(uuid),
                 updateMonitoringMap: (map: ReadonlyArray<MonitoringMapEntry>): void => {
                     this.#monitoringMap = map
                     this.#audioUnits.forEach(unit => unit.clearMonitoringChannels())

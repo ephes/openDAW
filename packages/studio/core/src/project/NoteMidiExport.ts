@@ -10,10 +10,16 @@ export namespace NoteMidiExport {
         const events: Array<ControlEvent> = []
         const toTicks = (position: ppqn, timeDivision: int = 96): int => Math.floor(position / PPQN.Quarter * timeDivision)
         for (const event of collection.asArray()) {
-            events.push(new ControlEvent(toTicks(event.position), ControlType.NOTE_ON, event.pitch, Math.round(event.velocity * 127)))
-            events.push(new ControlEvent(toTicks(EventSpan.complete(event)), ControlType.NOTE_OFF, event.pitch, 0))
+            if (event.velocity <= 0 || event.duration <= 0) {continue}
+            const start = toTicks(event.position)
+            const end = Math.max(start + 1, toTicks(EventSpan.complete(event)))
+            const velocity = Math.max(1, Math.min(127, Math.round(event.velocity * 127)))
+            events.push(new ControlEvent(start, ControlType.NOTE_ON, event.pitch, velocity))
+            events.push(new ControlEvent(end, ControlType.NOTE_OFF, event.pitch, 0))
         }
-        return new MidiTrack(new ArrayMultimap<Channel, ControlEvent>([[0, events]], ControlEvent.Comparator), [])
+        return new MidiTrack(new ArrayMultimap<Channel, ControlEvent>([[0, events]], (left, right) =>
+            ControlEvent.Comparator(left, right) ||
+            Number(left.type !== ControlType.NOTE_OFF) - Number(right.type !== ControlType.NOTE_OFF)), [])
     }
 
     export const toFile = async (collection: NoteEventCollectionBoxAdapter, suggestedName: string = "notes.mid") => {

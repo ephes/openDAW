@@ -1,15 +1,19 @@
 import {
     asDefined,
     DefaultObservableValue,
+    Exec,
     Lazy,
+    isDefined,
+    Optional,
     panic,
     Procedure,
     RuntimeNotifier,
     tryCatch,
+    TimeSpan,
     unitValue,
     UUID
 } from "@opendaw/lib-std"
-import {network, Promises} from "@opendaw/lib-runtime"
+import {IntervalRetryOption, network, Promises} from "@opendaw/lib-runtime"
 import {Sample, SampleMetaData} from "@opendaw/studio-adapters"
 import {SampleAPI} from "@opendaw/studio-core"
 import {base64Credentials, OpenDAWHeaders} from "../OpenDAWHeaders"
@@ -21,70 +25,138 @@ import {AudioData, WavFile} from "@opendaw/lib-dsp"
 export class OpenSampleAPI implements SampleAPI {
     static readonly ApiRoot = "https://api.opendaw.studio/samples"
     static readonly FileRoot = "https://assets.opendaw.studio/samples"
+    static readonly MaxDownloadBytes = 64 * 1024 * 1024
+    static readonly StallTimeoutMs = 60000
+    static readonly DownloadTimeoutMs = 600000
 
     @Lazy
     static get(): OpenSampleAPI {return new OpenSampleAPI()}
 
     private constructor() {}
 
-    @Lazy
-    async all(): Promise<ReadonlyArray<Sample>> {
-        return network.defaultFetch(`${OpenSampleAPI.ApiRoot}/list.php`, OpenDAWHeaders)
-            .then(x => x.json().then(x => z.array(Sample).parse(x)), () => [])
+    #catalog: Optional<Promise<ReadonlyArray<Sample>>>
+
+    all(): Promise<ReadonlyArray<Sample>> {
+        if (isDefined(this.#catalog)) {return this.#catalog}
+        const catalog = network.defaultFetch(`${OpenSampleAPI.ApiRoot}/list.php`, OpenDAWHeaders)
+            .then(response => {
+                if (!response.ok) {return panic(`Sample catalog unavailable: ${response.status}`)}
+                return response.json().then(json => z.array(Sample).parse(json))
+            })
+        this.#catalog = catalog
+        void catalog.catch(() => {if (this.#catalog === catalog) {this.#catalog = undefined}})
+        return catalog
     }
 
-    async get(uuid: UUID.Bytes): Promise<Sample> {
+    async get(uuid: UUID.Bytes, signal?: AbortSignal): Promise<Sample> {
         const url = `${OpenSampleAPI.ApiRoot}/get.php?uuid=${UUID.toString(uuid)}`
-        const response = await Promises.retry(() => network.limitFetch(url, OpenDAWHeaders))
+        const response = await this.#fetchResponse(url, signal)
         if (!response.ok) {
             return panic(`Sample not found: ${UUID.toString(uuid)}`)
         }
         const json = await response.json()
+        signal?.throwIfAborted()
         if ("error" in json) {
             return panic(json.error)
         }
         const sample = Sample.parse(json)
-        return Object.freeze({...sample, origin: "openDAW"})
+        if (!UUID.equals(UUID.parse(sample.uuid), uuid)) {return panic("Sample identity does not match requested UUID")}
+        return Object.freeze({...sample, uuid: UUID.toString(uuid), origin: "openDAW"})
     }
 
     async load(uuid: UUID.Bytes, progress: Procedure<unitValue>): Promise<[AudioData, Sample]> {
         console.debug(`load ${UUID.toString(uuid)}`)
-        return this.get(uuid)
-            .then(({uuid, name, bpm}) => Promises.retry(() => network
-                .limitFetch(`${OpenSampleAPI.FileRoot}/${uuid}`, OpenDAWHeaders))
-                .then(response => {
-                    if (!response.ok) {
-                        return panic(`Failed to fetch sample ${uuid}: ${response.status} ${response.statusText}`)
-                    }
-                    const total = parseInt(response.headers.get("Content-Length") ?? "0")
-                    let loaded = 0
-                    return new Promise<ArrayBuffer>((resolve, reject) => {
-                        const reader = asDefined(response.body, "No body in response").getReader()
-                        const chunks: Array<Uint8Array> = []
-                        const nextChunk = ({done, value}: ReadableStreamReadResult<Uint8Array>) => {
-                            if (done) {
-                                resolve(new Blob(chunks as Array<BlobPart>).arrayBuffer())
-                            } else {
-                                chunks.push(value)
-                                loaded += value.length
-                                progress(loaded / total)
-                                reader.read().then(nextChunk, reject)
-                            }
-                        }
-                        reader.read().then(nextChunk, reject)
-                    })
-                })
-                .then(arrayBuffer => {
-                    const audioData = WavFile.decodeFloats(arrayBuffer)
-                    return [audioData, {
-                        uuid,
-                        bpm,
-                        name,
-                        duration: audioData.numberOfFrames / audioData.sampleRate,
-                        sample_rate: audioData.sampleRate,
-                        origin: "openDAW"
-                    }] as [AudioData, Sample]
-                }))
+        const controller = new AbortController()
+        const expired = Promise.withResolvers<never>()
+        const expire = (message: string) => () => {
+            const reason = new Error(message)
+            controller.abort(reason)
+            expired.reject(reason)
+        }
+        const timer = setTimeout(expire("Stock sample download deadline exceeded"), OpenSampleAPI.DownloadTimeoutMs)
+        let stall = setTimeout(expire("Stock sample download stalled past its deadline"), OpenSampleAPI.StallTimeoutMs)
+        const touch = () => {
+            if (controller.signal.aborted) {return}
+            clearTimeout(stall)
+            stall = setTimeout(expire("Stock sample download stalled past its deadline"), OpenSampleAPI.StallTimeoutMs)
+        }
+        try {
+            const [arrayBuffer, sample] = await Promise.race([
+                this.#download(uuid, progress, controller.signal, touch), expired.promise
+            ])
+            const audioData = WavFile.decodeFloats(arrayBuffer)
+            return [audioData, {...sample,
+                duration: audioData.numberOfFrames / audioData.sampleRate,
+                sample_rate: audioData.sampleRate
+            }]
+        } finally {
+            clearTimeout(timer)
+            clearTimeout(stall)
+        }
+    }
+
+    async #fetchResponse(url: string, signal?: AbortSignal): Promise<Response> {
+        const retry = new IntervalRetryOption(3, TimeSpan.seconds(3))
+        return Promises.retry(async () => {
+            signal?.throwIfAborted()
+            const response = await network.limitFetch(url, {...OpenDAWHeaders, signal})
+            if (signal?.aborted) {
+                void response.body?.cancel().catch(() => {})
+                signal.throwIfAborted()
+            }
+            return response
+        }, {retry: (reason, exec) => !signal?.aborted && retry.retry(reason, exec)})
+    }
+
+    async #download(uuid: UUID.Bytes, progress: Procedure<unitValue>, signal: AbortSignal,
+                    touch: Exec): Promise<[ArrayBuffer, Sample]> {
+        const sample = await this.get(uuid, signal)
+        signal.throwIfAborted()
+        touch()
+        const response = await this.#fetchResponse(`${OpenSampleAPI.FileRoot}/${UUID.toString(uuid)}`, signal)
+        if (!response.ok) {return panic(`Failed to fetch sample: ${response.status} ${response.statusText}`)}
+        touch()
+        return [await this.#readBody(response, progress, signal, touch), sample]
+    }
+
+    async #readBody(response: Response, progress: Procedure<unitValue>, signal: AbortSignal,
+                    touch: Exec): Promise<ArrayBuffer> {
+        const reader = asDefined(response.body, "No body in response").getReader()
+        const declared = Number(response.headers.get("Content-Length") ?? "0")
+        const total = Number.isFinite(declared) && declared > 0 ? declared : 0
+        const chunks: Array<Uint8Array<ArrayBuffer>> = []
+        let loaded = 0
+        let complete = false
+        let cancelled = false
+        const cancel = () => {
+            if (cancelled) {return}
+            cancelled = true
+            void reader.cancel(signal.reason).catch(() => {})
+        }
+        signal.addEventListener("abort", cancel, {once: true})
+        try {
+            signal.throwIfAborted()
+            if (total > OpenSampleAPI.MaxDownloadBytes) {return panic("Stock sample byte limit exceeded")}
+            for (;;) {
+                const {done, value} = await reader.read()
+                signal.throwIfAborted()
+                if (done) {progress(1); complete = true; break}
+                if (value.byteLength > OpenSampleAPI.MaxDownloadBytes - loaded) {
+                    return panic("Stock sample byte limit exceeded")
+                }
+                loaded += value.byteLength
+                touch()
+                chunks.push(new Uint8Array(value))
+                progress(total > 0 ? Math.min(1, loaded / total) : 0)
+            }
+            const buffer = await new Blob(chunks).arrayBuffer()
+            signal.throwIfAborted()
+            return buffer
+        } finally {
+            signal.removeEventListener("abort", cancel)
+            if (!complete) {cancel()}
+            reader.releaseLock()
+        }
     }
 
     async upload(arrayBuffer: ArrayBuffer, metaData: SampleMetaData): Promise<void> {

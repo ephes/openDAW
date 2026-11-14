@@ -154,6 +154,7 @@ export class OfflineEngineRenderer {
                     updateMonitoringMap(map: ReadonlyArray<MonitoringMapEntry>): void { dispatcher.dispatchAndForget(this.updateMonitoringMap, map) }
                     loadClickSound(index: 0 | 1, data: AudioData): void { dispatcher.dispatchAndForget(this.loadClickSound, index, data) }
                     setFrozenAudio(uuid: UUID.Bytes, audioData: Nullable<AudioData>): void { dispatcher.dispatchAndForget(this.setFrozenAudio, uuid, audioData) }
+                    invalidateSample(uuid: UUID.Bytes): void { dispatcher.dispatchAndForget(this.invalidateSample, uuid) }
                     terminate(): void { dispatcher.dispatchAndForget(this.terminate) }
                 }
             )

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reload invalidated worklet samples by attempt; ignore late fetch success/error after removal, reload or manager termination.
+
 - Clear Pitch, Velocity and Zeitgeist note displays on reset, and bound the Velocity display cursor to its broadcast buffer.
 
 - Arpeggio keeps the cent detune of held notes and orders its stack by pitch, independent of note insertion order.
