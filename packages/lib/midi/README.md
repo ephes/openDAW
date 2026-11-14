@@ -18,8 +18,13 @@ F0 and F7 events each consume their own length-prefixed payload, including empty
 and escaped messages, and their delta contributes once to absolute event ticks.
 Other system statuses are refused; FF introduces a meta event.
 
-The existing note-track encoder appends exactly one zero-delta end-of-track event
-after the last encoded event, including for empty tracks. Files containing multiple
-tracks use format 1. This does not extend the encoder's existing channel/event support.
+Export merges channels and musical metadata into one absolute-tick timeline. At a
+shared tick, metadata comes first, followed by numeric channel order; original
+order within a channel or metadata list is stable. All seven channel message
+kinds use explicit statuses and their correct data lengths, including note-off
+release velocity and zero-velocity note-on. Tempo and time signature changes
+are re-encoded (signature metronome fields use canonical 24/8); other metadata
+and SysEx payloads are intentionally not retained. Exactly one final end-of-track
+preserves the latest retained event or terminal tick. Multiple tracks use format 1.
 
 Run synthetic byte-fixture and round-trip regressions with `npm test -w @opendaw/lib-midi`.

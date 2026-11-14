@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Merge channel and tempo/signature timelines on export, preserve release velocity, and serialize all channel message kinds.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 - Preserve bounded header extensions and unknown chunks without counting them as tracks.
 - Bound MIDI track reads and variable-length integers; validate headers, chunk spans and fixed-size meta events.

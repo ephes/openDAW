@@ -363,3 +363,10 @@ tooling: tar, nx, sigstore, pacote, node-gyp, js-yaml, minimatch), vitest 5
 (tinypool, vite) and monaco-editor 0.57 (dompurify). `npm audit fix` would
 also clear `@nx/devkit`, but only by moving lerna's nx toolchain back from 20
 to 18/19, so that one is left as is.
+
+### MIDI and file boundaries
+
+The [MIDI contributor notes](packages/lib/midi/README.md) describe supported
+messages, musical metadata, deterministic export ordering and import admission.
+File picker lifecycle and WAV source geometry are documented in the
+[DOM](packages/lib/dom/README.md) and [DSP](packages/lib/dsp/README.md) notes.
