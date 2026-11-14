@@ -129,7 +129,9 @@ for (const trickle of [false, true]) {
         serve(response)
         const decode = vi.spyOn(WavFile, "decodeFloats")
         const outcome = api.load(uuid, vi.fn()).then(() => "loaded", error => error.message)
-        await vi.advanceTimersByTimeAsync(60000)
+        // A stall expires after 60 s without progress; trickling bytes renew only
+        // the stall timer, never the 10-minute total budget.
+        await vi.advanceTimersByTimeAsync(trickle ? 600000 : 60000)
         expect(await Promise.race([outcome, Promise.resolve("pending")])).toContain("deadline")
         expect(cancel).toHaveBeenCalledTimes(1)
         expect(release).toHaveBeenCalledTimes(1)
@@ -141,6 +143,26 @@ for (const trickle of [false, true]) {
         expect((await api.load(uuid, vi.fn()))[0].numberOfFrames).toBe(1)
     })
 }
+
+it("lets a slow but steadily progressing body finish beyond the stall window", async () => {
+    vi.useFakeTimers()
+    const wav = new Uint8Array(WavFile.encodeFloats({sampleRate: 44100, numberOfFrames: 4,
+        numberOfChannels: 1, frames: [new Float32Array(new SharedArrayBuffer(16))]}))
+    let offset = 0
+    let timer: ReturnType<typeof setInterval> | undefined
+    const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+            timer = setInterval(() => {
+                if (offset >= wav.byteLength) {clearInterval(timer); controller.close(); return}
+                controller.enqueue(wav.slice(offset, offset + 8)); offset += 8
+            }, 30000)
+        }
+    }, {highWaterMark: 0})
+    serve(new Response(body, {headers: {"Content-Length": String(wav.byteLength)}}))
+    const outcome = api.load(uuid, vi.fn()).then(([audio]) => audio.numberOfFrames, error => error.message)
+    await vi.advanceTimersByTimeAsync(30000 * (Math.ceil(wav.byteLength / 8) + 1))
+    expect(await outcome).toBe(4)
+})
 
 it("includes metadata discovery in the deadline and prevents late asset fetches", async () => {
     vi.useFakeTimers()

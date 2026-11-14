@@ -269,10 +269,13 @@ or the last registered release retires pending readers with an error; callers
 using unregistered `getOrCreate` retain their load until explicit removal.
 
 Stock catalog reads share in-flight discovery and cache successful lists, including
-empty lists. A failed catalog read rejects and the next explicit read retries.
+empty lists. A failed catalog read rejects and the next explicit read retries;
+opening a project while the catalog is unreachable continues with local samples.
 Stock metadata must match the requested UUID (case-insensitive, returned in
-lowercase). Stock WAV downloads allow at most 64 MiB declared or streamed bytes
-and 60 seconds total for metadata, retries and body transfer. Overflow, timeout
+lowercase). Stock WAV downloads allow at most 64 MiB declared or streamed bytes.
+A download fails after 60 seconds without progress (metadata, response headers or
+body bytes) and after 10 minutes in total, so trickling bytes cannot hold it open
+while slow parallel downloads still finish. Overflow, timeout
 and progress observer failures reject the load and clean up its reader. Unknown
 length reports zero progress until completion; known lengths are clamped to [0, 1].
 

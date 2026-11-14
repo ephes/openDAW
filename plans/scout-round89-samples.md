@@ -50,8 +50,11 @@ regressions failed before the fix; successful empty discovery remains covered.
 ## Stock transfer limits (B5)
 
 Stock WAV transfers admit at most 64 MiB, checking declared length and actual
-bytes before retaining each chunk. A single 60-second timer covers metadata,
-header retries and the entire body; trickling bytes do not renew the budget.
+bytes before retaining each chunk. A 60-second stall timer is renewed by metadata,
+response headers and body bytes, and a 10-minute total timer covers metadata,
+header retries and the entire body, so trickling bytes cannot renew the total
+budget while slow parallel downloads (the limiter queues only until headers) finish.
+(Changed in review from a single 60-second total timer.)
 Abort reaches both fetch requests and the active reader. Failed readers are
 cancelled once and every acquired reader releases its lock. Expired attempts
 cannot start later asset requests, retry headers or decode. Successful short WAV,

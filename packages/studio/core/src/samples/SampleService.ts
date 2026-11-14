@@ -61,7 +61,10 @@ export class SampleService extends AssetService<Sample, AudioData> {
     }
 
     protected async collectAllFiles(): Promise<ReadonlyArray<Sample>> {
-        const stock = await OpenSampleAPI.get().all()
+        const stock = await OpenSampleAPI.get().all().catch(reason => {
+            console.warn("Stock sample catalog unavailable; continuing with local samples", reason)
+            return []
+        })
         const local = await SampleStorage.get().list()
         return Arrays.merge(stock, local, (sample, {uuid}) => sample.uuid === uuid)
     }

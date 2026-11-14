@@ -1,6 +1,7 @@
 import {
     asDefined,
     DefaultObservableValue,
+    Exec,
     Lazy,
     isDefined,
     Optional,
@@ -25,7 +26,8 @@ export class OpenSampleAPI implements SampleAPI {
     static readonly ApiRoot = "https://api.opendaw.studio/samples"
     static readonly FileRoot = "https://assets.opendaw.studio/samples"
     static readonly MaxDownloadBytes = 64 * 1024 * 1024
-    static readonly DownloadTimeoutMs = 60000
+    static readonly StallTimeoutMs = 60000
+    static readonly DownloadTimeoutMs = 600000
 
     @Lazy
     static get(): OpenSampleAPI {return new OpenSampleAPI()}
@@ -66,14 +68,21 @@ export class OpenSampleAPI implements SampleAPI {
         console.debug(`load ${UUID.toString(uuid)}`)
         const controller = new AbortController()
         const expired = Promise.withResolvers<never>()
-        const timer = setTimeout(() => {
-            const reason = new Error("Stock sample download deadline exceeded")
+        const expire = (message: string) => () => {
+            const reason = new Error(message)
             controller.abort(reason)
             expired.reject(reason)
-        }, OpenSampleAPI.DownloadTimeoutMs)
+        }
+        const timer = setTimeout(expire("Stock sample download deadline exceeded"), OpenSampleAPI.DownloadTimeoutMs)
+        let stall = setTimeout(expire("Stock sample download stalled past its deadline"), OpenSampleAPI.StallTimeoutMs)
+        const touch = () => {
+            if (controller.signal.aborted) {return}
+            clearTimeout(stall)
+            stall = setTimeout(expire("Stock sample download stalled past its deadline"), OpenSampleAPI.StallTimeoutMs)
+        }
         try {
             const [arrayBuffer, sample] = await Promise.race([
-                this.#download(uuid, progress, controller.signal), expired.promise
+                this.#download(uuid, progress, controller.signal, touch), expired.promise
             ])
             const audioData = WavFile.decodeFloats(arrayBuffer)
             return [audioData, {...sample,
@@ -82,6 +91,7 @@ export class OpenSampleAPI implements SampleAPI {
             }]
         } finally {
             clearTimeout(timer)
+            clearTimeout(stall)
         }
     }
 
@@ -98,15 +108,19 @@ export class OpenSampleAPI implements SampleAPI {
         }, {retry: (reason, exec) => !signal?.aborted && retry.retry(reason, exec)})
     }
 
-    async #download(uuid: UUID.Bytes, progress: Procedure<unitValue>, signal: AbortSignal): Promise<[ArrayBuffer, Sample]> {
+    async #download(uuid: UUID.Bytes, progress: Procedure<unitValue>, signal: AbortSignal,
+                    touch: Exec): Promise<[ArrayBuffer, Sample]> {
         const sample = await this.get(uuid, signal)
         signal.throwIfAborted()
+        touch()
         const response = await this.#fetchResponse(`${OpenSampleAPI.FileRoot}/${UUID.toString(uuid)}`, signal)
         if (!response.ok) {return panic(`Failed to fetch sample: ${response.status} ${response.statusText}`)}
-        return [await this.#readBody(response, progress, signal), sample]
+        touch()
+        return [await this.#readBody(response, progress, signal, touch), sample]
     }
 
-    async #readBody(response: Response, progress: Procedure<unitValue>, signal: AbortSignal): Promise<ArrayBuffer> {
+    async #readBody(response: Response, progress: Procedure<unitValue>, signal: AbortSignal,
+                    touch: Exec): Promise<ArrayBuffer> {
         const reader = asDefined(response.body, "No body in response").getReader()
         const declared = Number(response.headers.get("Content-Length") ?? "0")
         const total = Number.isFinite(declared) && declared > 0 ? declared : 0
@@ -131,6 +145,7 @@ export class OpenSampleAPI implements SampleAPI {
                     return panic("Stock sample byte limit exceeded")
                 }
                 loaded += value.byteLength
+                touch()
                 chunks.push(new Uint8Array(value))
                 progress(total > 0 ? Math.min(1, loaded / total) : 0)
             }
