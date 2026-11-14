@@ -29,7 +29,12 @@ external review. Tests were run before each fix. A final counterfactual run
 restored original source files temporarily, ran the final regression suites, and
 restored the fixed source in a guaranteed cleanup path: all 13 drag, 6 frame and
 5 shortcut regressions failed against the original implementation. With the fix,
-all 28 DOM tests pass (24 new regressions plus 4 existing tests).
+all 28 DOM tests pass (24 new regressions plus 4 existing tests). After this worker, the clerk's review on
+2026-11-14 added eight drag regressions for the pointer-lock capture handoff
+and its failure paths (21 drag cases, 36 DOM tests); they were not part of the
+counterfactual run above. Six of them fail on source that cancels on every lost
+capture; the other two ("still cancels when capture is lost without a pointer
+lock" and the retired-drag replacement case) are guards that pass there too.
 
 Local gates:
 
@@ -47,6 +52,10 @@ repository warnings. The browser harness bundles the actual DOM code and checks
 native pointer capture and editing, with controlled composing events. Its syntax
 and bundling pass, but Chromium startup is blocked by the worker's macOS sandbox:
 `bootstrap_check_in ... MachPortRendezvousServer ... Permission denied (1100)`.
-No browser assertions executed; this gate must be rerun outside that sandbox.
+No browser assertions executed in that sandbox. The clerk reran the gate outside
+it on 2026-11-14: both native scenarios passed. Pointer lock is not exercised
+natively (headless Chromium cannot grant it without a user gesture); jsdom tests
+cover the lock superseding capture (`lostpointercapture` while a lock is pending
+or owned keeps the drag alive).
 The branch is parked for the external Claude clerk's review and merge; no Claude
 CLI, Actions runs, merge, release or deployment was initiated by this worker.

@@ -87,3 +87,7 @@ frame and shortcut regressions (jsdom for DOM event tests). Run
 pointer capture, settlement failures and owner disposal, plus controlled
 composing keyboard events, inherited editable/shadow input ownership and native
 Delete editing. Install its browser once with `npx playwright install chromium`.
+Pointer lock is not covered natively; jsdom regressions cover it: a drag's own
+pending or granted lock supersedes capture and keeps the drag alive, and the drag
+is cancelled if that lock is rejected, not granted, or ends before pointerup.
+Another drag's delayed lock never shields a replacement drag.

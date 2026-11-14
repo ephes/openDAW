@@ -57,6 +57,10 @@ export namespace Dragging {
             const ownerDocument = targetElement?.ownerDocument ?? owner.document
             let captureOwned = false
             let pointerLockActive = false
+            // This drag's own lock request; another drag's delayed grant never counts.
+            let lockPending = false
+            // Capture was given up to this drag's lock: losing the lock must end the drag.
+            let captureYieldedToLock = false
             let settled = false
             const settle = (approve: boolean): void => {
                 if (settled) {return}
@@ -104,16 +108,37 @@ export namespace Dragging {
                     if (clientX >= threshold && clientX <= owner.innerWidth - threshold
                         && clientY >= threshold && clientY <= owner.innerHeight - threshold) {return}
                     pendingPointerLocks.add(targetElement)
+                    lockPending = true
+                    const lockFailed = (): void => {
+                        lockPending = false
+                        // Without capture and without the lock nothing can settle the drag.
+                        if (!settled && captureYieldedToLock) {
+                            // Report hook failures like the event-listener settle paths do,
+                            // not as an unhandled rejection of this promise chain.
+                            try {cancel()} catch (error) {
+                                if (typeof owner.reportError === "function") {owner.reportError(error)}
+                                else {queueMicrotask(() => {throw error})}
+                            }
+                        }
+                    }
                     try {
                         targetElement.requestPointerLock().then(() => {
                             pendingPointerLocks.delete(targetElement)
+                            lockPending = false
                             if (settled) {
                                 if (ownerDocument.pointerLockElement === targetElement) {ownerDocument.exitPointerLock()}
                             } else {
                                 pointerLockActive = ownerDocument.pointerLockElement === targetElement
+                                if (!pointerLockActive) {lockFailed()}
                             }
-                        }, () => {pendingPointerLocks.delete(targetElement)})
-                    } catch (_) {pendingPointerLocks.delete(targetElement)}
+                        }, () => {
+                            pendingPointerLocks.delete(targetElement)
+                            lockFailed()
+                        })
+                    } catch (_) {
+                        pendingPointerLocks.delete(targetElement)
+                        lockPending = false
+                    }
                 }
                 const moveEvent = {
                     clientX: event.clientX,
@@ -147,7 +172,20 @@ export namespace Dragging {
                         if (event.pointerId === pointerId) {cancel()}
                     }, {capture: true}),
                     Events.subscribe(target, "lostpointercapture", (event: PointerEvent) => {
-                        if (event.pointerId === pointerId) {cancel()}
+                        if (event.pointerId !== pointerId) {return}
+                        // Granting pointer lock supersedes capture (Pointer Events, Chromium):
+                        // this drag's pending or owned lock continues it on movementX/Y.
+                        if (lockPending || pointerLockActive) {
+                            captureYieldedToLock = true
+                            return
+                        }
+                        cancel()
+                    }),
+                    Events.subscribeAny(ownerDocument, "pointerlockchange", () => {
+                        if (settled || !pointerLockActive || ownerDocument.pointerLockElement === targetElement) {return}
+                        // The lock ended before pointerup (Esc, focus loss): capture is gone too.
+                        pointerLockActive = false
+                        if (captureYieldedToLock || !target.hasPointerCapture(pointerId)) {cancel()}
                     }),
                     Events.subscribe(owner, "beforeunload", cancel, {capture: true}),
                     Events.subscribe(owner, "keydown", (event: KeyboardEvent) => {

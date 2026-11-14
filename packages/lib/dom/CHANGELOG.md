@@ -12,6 +12,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 - Compensate failed drag setup and retire delayed pointer locks without affecting replacement drags.
 
 - Settle drags once even when terminal hooks fail; cancel active edits on owner disposal.
+  Lost pointer capture cancels a drag, except when this drag's own pending or granted pointer lock supersedes it;
+  the drag is then cancelled if that lock is rejected, not granted, or ends before pointerup.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 

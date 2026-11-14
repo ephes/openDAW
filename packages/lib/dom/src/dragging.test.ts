@@ -117,6 +117,151 @@ describe("drag acquisition", () => {
         if (mode === "update") {expect(errors).toEqual([failure])}
     })
 
+    it.each(["before", "after"])("keeps a drag alive when the granted lock releases capture %s the promise settles", async order => {
+        Dragging.usePointerLock = true
+        try {
+            let locked: Element | null = null
+            Object.defineProperty(document, "pointerLockElement", {configurable: true, get: () => locked})
+            document.exitPointerLock = vi.fn(() => {locked = null})
+            let grant: () => void = () => {}
+            target.requestPointerLock = vi.fn(() => new Promise<void>(resolve => {grant = () => {locked = target; resolve()}}))
+            const process = {update: vi.fn(), cancel: vi.fn(), approve: vi.fn(), finally: vi.fn()}
+            attachment = Dragging.attach(target, () => Option.wrap(process), {pointerLock: true, pointerLockThreshold: 200})
+            pointer(target, "pointerdown")
+            pointer(target, "pointermove")
+            expect(target.requestPointerLock).toHaveBeenCalledTimes(1)
+            const loseCapture = (): void => {
+                (target.releasePointerCapture as (id: number) => void)(1)
+                pointer(target, "lostpointercapture")
+            }
+            if (order === "before") {loseCapture()}
+            grant()
+            await Promise.resolve()
+            if (order === "after") {loseCapture()}
+            expect(process.cancel).not.toHaveBeenCalled()
+            expect(locked).toBe(target)
+            pointer(target, "pointermove")
+            pointer(target, "pointerup")
+            expect(process.approve).toHaveBeenCalledTimes(1)
+            expect(process.cancel).not.toHaveBeenCalled()
+            expect(locked).toBe(null)
+        } finally {
+            Dragging.usePointerLock = false
+        }
+    })
+
+    it.each(["rejected", "not granted"])("cancels a drag whose capture went to a lock that was %s", async outcome => {
+        Dragging.usePointerLock = true
+        try {
+            Object.defineProperty(document, "pointerLockElement", {configurable: true, get: () => null})
+            let settle: () => void = () => {}
+            target.requestPointerLock = vi.fn(() => new Promise<void>((resolve, reject) => {
+                settle = outcome === "rejected" ? () => reject(new Error("denied")) : () => resolve()
+            }))
+            const process = {update: vi.fn(), cancel: vi.fn(), approve: vi.fn(), finally: vi.fn()}
+            attachment = Dragging.attach(target, () => Option.wrap(process), {pointerLock: true, pointerLockThreshold: 200})
+            pointer(target, "pointerdown")
+            pointer(target, "pointermove")
+            pointer(target, "lostpointercapture")
+            expect(process.cancel).not.toHaveBeenCalled()
+            settle()
+            await Promise.resolve()
+            await Promise.resolve()
+            expect(process.cancel).toHaveBeenCalledTimes(1)
+            expect(process.finally).toHaveBeenCalledTimes(1)
+        } finally {
+            Dragging.usePointerLock = false
+        }
+    })
+
+    it("reports a throwing cancel hook after a rejected lock through reportError", async () => {
+        Dragging.usePointerLock = true
+        // Browsers provide window.reportError (it dispatches a window "error" event); jsdom 25 does not.
+        const reported = vi.fn()
+        Object.defineProperty(window, "reportError", {configurable: true, writable: true, value: reported})
+        try {
+            Object.defineProperty(document, "pointerLockElement", {configurable: true, get: () => null})
+            let reject: () => void = () => {}
+            target.requestPointerLock = vi.fn(() => new Promise<void>((_, fail) => {reject = () => fail(new Error("denied"))}))
+            const failure = new Error("cancel hook failed")
+            const process = {update: vi.fn(), cancel: vi.fn(() => {throw failure}), approve: vi.fn(), finally: vi.fn()}
+            attachment = Dragging.attach(target, () => Option.wrap(process), {pointerLock: true, pointerLockThreshold: 200})
+            pointer(target, "pointerdown")
+            pointer(target, "pointermove")
+            pointer(target, "lostpointercapture")
+            reject()
+            await new Promise(resolve => setTimeout(resolve, 0))
+            expect(process.cancel).toHaveBeenCalledTimes(1)
+            expect(process.finally).toHaveBeenCalledTimes(1)
+            expect(reported).toHaveBeenCalledWith(failure)
+        } finally {
+            Dragging.usePointerLock = false
+            delete (window as {reportError?: unknown}).reportError
+        }
+    })
+
+    it("cancels when a granted lock ends before pointerup", async () => {
+        Dragging.usePointerLock = true
+        try {
+            let locked: Element | null = null
+            Object.defineProperty(document, "pointerLockElement", {configurable: true, get: () => locked})
+            document.exitPointerLock = vi.fn(() => {locked = null})
+            let grant: () => void = () => {}
+            target.requestPointerLock = vi.fn(() => new Promise<void>(resolve => {grant = () => {locked = target; resolve()}}))
+            const process = {update: vi.fn(), cancel: vi.fn(), approve: vi.fn(), finally: vi.fn()}
+            attachment = Dragging.attach(target, () => Option.wrap(process), {pointerLock: true, pointerLockThreshold: 200})
+            pointer(target, "pointerdown")
+            pointer(target, "pointermove")
+            grant()
+            await Promise.resolve()
+            ;(target.releasePointerCapture as (id: number) => void)(1)
+            pointer(target, "lostpointercapture")
+            expect(process.cancel).not.toHaveBeenCalled()
+            locked = null
+            document.dispatchEvent(new Event("pointerlockchange"))
+            expect(process.cancel).toHaveBeenCalledTimes(1)
+            expect(process.approve).not.toHaveBeenCalled()
+        } finally {
+            Dragging.usePointerLock = false
+        }
+    })
+
+    it("does not let a retired drag's delayed lock shield a replacement drag", async () => {
+        Dragging.usePointerLock = true
+        try {
+            let locked: Element | null = null
+            Object.defineProperty(document, "pointerLockElement", {configurable: true, get: () => locked})
+            document.exitPointerLock = vi.fn(() => {locked = null})
+            const grants: Array<() => void> = []
+            target.requestPointerLock = vi.fn(() => new Promise<void>(resolve => {grants.push(() => {locked = target; resolve()})}))
+            const first = {update: vi.fn(), cancel: vi.fn(), approve: vi.fn(), finally: vi.fn()}
+            const second = {update: vi.fn(), cancel: vi.fn(), approve: vi.fn(), finally: vi.fn()}
+            const processes = [first, second]
+            attachment = Dragging.attach(target, () => Option.wrap(processes.shift()!), {pointerLock: true, pointerLockThreshold: 200})
+            pointer(target, "pointerdown")
+            pointer(target, "pointermove")
+            pointer(target, "pointerup")
+            pointer(target, "pointerdown", 2)
+            // The retired drag's grant takes capture from the replacement drag.
+            grants[0]()
+            pointer(target, "lostpointercapture", 2)
+            await Promise.resolve()
+            expect(second.cancel).toHaveBeenCalledTimes(1)
+            expect(locked).toBe(null)
+        } finally {
+            Dragging.usePointerLock = false
+        }
+    })
+
+    it("still cancels when capture is lost without a pointer lock", () => {
+        const process = {update: vi.fn(), cancel: vi.fn(), approve: vi.fn(), finally: vi.fn()}
+        attachment = Dragging.attach(target, () => Option.wrap(process))
+        pointer(target, "pointerdown")
+        pointer(target, "lostpointercapture")
+        expect(process.cancel).toHaveBeenCalledTimes(1)
+        expect(process.approve).not.toHaveBeenCalled()
+    })
+
     it.each(["pointerup", "pointercancel", "dispose", "replacement", "reattach"])("retires a deferred lock after %s", async end => {
         // Exported preference is mutable in the studio too.
         Dragging.usePointerLock = true
