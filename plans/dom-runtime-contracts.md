@@ -31,8 +31,8 @@ No version, deployment, release or workflow change is included.
 
 All fixtures use synthetic data. The tests were written and run before applying
 the corresponding fixes, then rerun after them. The initial test attempt needed
-the documented build to generate package outputs. A browser fixture must still
-run outside the current macOS execution sandbox; see below.
+the documented build to generate package outputs. The browser fixtures ran in
+Chromium; see the validation results below.
 
 ## Ownership and compatibility
 
@@ -77,17 +77,6 @@ remain non-fatal.
 
 The browser fixtures use Playwright, a local Vite server and actual application
 helpers including RoomStatus. No paid Actions run or workflow was added.
-The exact attempted browser command in this worker was:
-
-```sh
-PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r92-opendaw/.cache/playwright npm run test:browser
-```
-
-Chromium is installed but process startup is blocked by the macOS sandbox:
-`bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer: Permission denied (1100)`.
-The clerk must run this browser gate outside that sandbox before merging.
-
-Codex implemented the changes and ran failing-before/passing-after tests plus
-local gates. No subagents or cross-family review ran: the worker brief explicitly
-forbids Claude in this sandbox and delegates review/merge to an external clerk.
-The complete change is parked on `codex-q/r92-openDAW`; `main` is not pushed.
+`npm run test:browser` passed in Chromium (3 contracts: gesture identity,
+clipboard acknowledgement, HTML sanitization and retirement), as did the
+`@opendaw/lib-dom` browser check.
