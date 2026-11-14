@@ -3,19 +3,35 @@ import {MidiFileFormat} from "./MidiFileFormat"
 import {Chunk} from "./Chunk"
 import {MidiTrack} from "./MidiTrack"
 
+export type MidiDecodeLimits = {readonly maxEvents?: number, readonly maxTracks?: number}
+
 export class MidiFileDecoder {
+    static readonly MAX_EVENTS = 1_000_000
+    static readonly MAX_TRACKS = 65_535
+    readonly #maxEvents: number
+    readonly #maxTracks: number
+    #events = 0
+    #chunks = 0
     readonly input: ByteArrayInput
 
     #suppressWarnings: boolean = false
     #trackStart: int = 0
     #trackEnd: int
 
-    constructor(input: ByteArrayInput) {
+    constructor(input: ByteArrayInput, limits: MidiDecodeLimits = {}) {
+        this.#maxEvents = limits.maxEvents ?? MidiFileDecoder.MAX_EVENTS
+        this.#maxTracks = limits.maxTracks ?? MidiFileDecoder.MAX_TRACKS
+        if (!Number.isSafeInteger(this.#maxEvents) || this.#maxEvents < 1 || this.#maxEvents > MidiFileDecoder.MAX_EVENTS
+            || !Number.isSafeInteger(this.#maxTracks) || this.#maxTracks < 1 || this.#maxTracks > MidiFileDecoder.MAX_TRACKS) {
+            throw new Error("Invalid MIDI decode work budget")
+        }
         this.input = input
         this.#trackEnd = input.position + input.remaining()
     }
 
     decode(): MidiFileFormat {
+        this.#events = 0
+        this.#chunks = 0
         this.#require(14)
         this.input.littleEndian = false
         const header = this.input.readInt()
@@ -31,11 +47,13 @@ export class MidiFileDecoder {
         if (formatType < 0 || formatType > 2 || numTracks <= 0 || (formatType === 0 && numTracks !== 1)) {
             throw new Error("Invalid MIDI format or track count")
         }
+        if (numTracks > this.#maxTracks) {throw new Error("MIDI track work budget exceeded")}
         if (timeDivision <= 0) {throw new Error("Unsupported MIDI time division: positive PPQN required")}
         this.skip(headerLength - 6)
         const fileEnd = this.#trackEnd
         const tracks: MidiTrack[] = []
         while (tracks.length < numTracks) {
+            if (++this.#chunks > this.#maxTracks) {throw new Error("MIDI track work budget exceeded")}
             this.#require(8)
             const trackChunk = this.input.readInt()
             const trackLength = this.input.readInt()
@@ -56,6 +74,17 @@ export class MidiFileDecoder {
             console.warn(`${this.input.remaining()} bytes remaining.`)
         }
         return new MidiFileFormat(tracks, formatType, timeDivision)
+    }
+
+    chargeEvent(): void {
+        if (this.#events >= this.#maxEvents) {throw new Error("MIDI event work budget exceeded")}
+        this.#events++
+    }
+
+    readChannelData(): byte {
+        const value = this.readByte() & 0xff
+        if (value > 0x7f) {throw new Error("Invalid MIDI channel data byte")}
+        return value
     }
 
     readVarLen(): int {
@@ -81,7 +110,8 @@ export class MidiFileDecoder {
                 // Unsupported Number of 32nd notes each quarter note.
             }
         }
-        return [b0, 1 << b1]
+        if (b0 === 0 || b1 > 30) {throw new Error("Invalid MIDI time signature")}
+        return [b0, 2 ** b1]
     }
 
     readTempo(): number {
@@ -89,7 +119,9 @@ export class MidiFileDecoder {
         const b1 = this.readByte() & 0xff
         const b2 = this.readByte() & 0xff
         const MICROSECONDS_PER_MINUTE = 60_000_000.0 as const
-        return MICROSECONDS_PER_MINUTE / ((b0 << 16) | (b1 << 8) | b2)
+        const tempo = (b0 << 16) | (b1 << 8) | b2
+        if (tempo === 0) {throw new Error("Invalid MIDI tempo: zero microseconds per quarter")}
+        return MICROSECONDS_PER_MINUTE / tempo
     }
 
     skipSysEx(value: int): void {

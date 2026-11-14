@@ -10,16 +10,18 @@ export class MidiTrack {
         const controlEvents: ArrayMultimap<Channel, ControlEvent> = new ArrayMultimap<Channel, ControlEvent>()
         const metaEvents: Array<MetaEvent> = []
         let ticks: int = 0
-        let eventType: int = 0
+        let eventType: int | null = null
         let channel: Channel = 0
         for (;;) {
+            decoder.chargeEvent()
             const varLen = decoder.readVarLen()
             ticks += varLen
             const b = decoder.readByte() & 0xff
             if (b < 0xf0) {
                 // 0x00....0xEF (MidiControl)
                 if (b < 0x80) {
-                    // running mode, use the last eventType/channel!
+                    if (eventType === null) {throw new Error("Missing MIDI running status")}
+                    // Running status belongs only to consecutive channel events.
                     decoder.skip(-1)
                 } else {
                     eventType = b & 0xf0
@@ -30,8 +32,10 @@ export class MidiTrack {
                     controlEvents.add(channel, event)
                 }
             } else if (b === 0xf0 || b === 0xf7) {
+                eventType = null
                 decoder.skipSysEx(b)
             } else if (b === 0xff) {
+                eventType = null
                 const event: MetaEvent | null = MetaEvent.decode(decoder, ticks)
                 if (event !== null) {
                     metaEvents.push(event)

@@ -1,10 +1,10 @@
 import {ByteArrayInput, ByteArrayOutput} from "@opendaw/lib-std"
 import {MidiTrack} from "./MidiTrack"
 import {Chunk} from "./Chunk"
-import {MidiFileDecoder} from "./MidiFileDecoder"
+import {MidiDecodeLimits, MidiFileDecoder} from "./MidiFileDecoder"
 
 export namespace MidiFile {
-    export const decoder = (buffer: ArrayBuffer): MidiFileDecoder => new MidiFileDecoder(new ByteArrayInput(buffer))
+    export const decoder = (buffer: ArrayBuffer, limits?: MidiDecodeLimits): MidiFileDecoder => new MidiFileDecoder(new ByteArrayInput(buffer), limits)
     export const encoder = (): MidiFileEncoder => new MidiFileEncoder()
 
     class MidiFileEncoder {

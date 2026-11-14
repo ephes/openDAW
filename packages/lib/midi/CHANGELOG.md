@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject invalid musical metadata, missing running status and high-bit channel data; bound total file event/chunk work.
+
 - Preflight export ticks, four-byte deltas and nonzero uint16 track counts before serialization.
 
 - Merge channel and tempo/signature timelines on export, preserve release velocity, and serialize all channel message kinds.

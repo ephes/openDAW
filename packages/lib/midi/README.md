@@ -35,3 +35,16 @@ interleaved channels are merged before delta calculation. Each resulting delta
 must fit 0–0x0fffffff. Tick/delta validation completes before track output
 allocation; arithmetic VLQ encoding never uses signed shifts. Invalid channels,
 message kinds or seven-bit data are refused instead of producing partial bytes.
+
+Import rejects zero tempo and signatures outside numerator 1–255 / denominator
+2^0 through 2^30. Channel data must be seven-bit. Running status is local to
+one track, starts unset, and is cleared by every meta or SysEx event; data bytes
+without an active channel status fail immediately.
+
+`MidiFile.decoder(buffer, {maxEvents, maxTracks})` accepts optional **lower**
+work limits. Defaults/ceilings are 1,000,000 events per file and 65,535 track
+chunks. Every event (including ignored metadata, SysEx and end-of-track) is
+charged before decoding or allocating its model object. Unknown chunks count
+against track work too. Limits are positive safe integers, copied at creation.
+An over-budget file throws without returning a partial model. These are work
+limits, not byte-size or wall-clock guarantees.
