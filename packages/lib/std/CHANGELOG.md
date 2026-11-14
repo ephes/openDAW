@@ -7,6 +7,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Account for child progress with constant-time replacement deltas and reject nonfinite weights; normalize large finite weights without overflow.
 
+- Recheck sorted-set factory insertions after reentrant changes and preserve sorted multimap clone policy and bucket independence.
+
 - Deduplicate bulk set updates by comparator with first-entry ownership and preserve the set on admission failure.
 
 - Expose the optional remaining-byte query on DataInput for bounded framed decoders.

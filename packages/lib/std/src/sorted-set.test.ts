@@ -11,6 +11,29 @@ const extractor = (v: Item) => v.key
 const comparator = (a: number, b: number) => a - b
 
 describe("SortedSet – behavioural contract", () => {
+    it("rechecks factory insertion positions after reentrant mutations", () => {
+        const set = new SortedSet<number, number>(value => value, comparator)
+        set.add(3)
+        expect(set.getOrCreate(2, key => {
+            set.add(1)
+            return key
+        })).toBe(2)
+        expect(set.values()).toStrictEqual([1, 2, 3])
+        expect(set.get(2)).toBe(2)
+    })
+
+    it("returns the entry installed reentrantly instead of the factory result", () => {
+        const set = new SortedSet<number, Item>(extractor, comparator)
+        const installed = {key: 2, value: "installed"}
+        const discarded = {key: 2, value: "factory result"}
+        expect(set.getOrCreate(2, () => {
+            set.add(installed)
+            return discarded
+        })).toBe(installed)
+        expect(set.size()).toBe(1)
+        expect(set.get(2)).toBe(installed)
+    })
+
     it("deduplicates bulk UUID keys by comparator with the first value winning", () => {
         const first = {key: UUID.parse("00000000-0000-0000-0000-000000000001"), value: "first"}
         const duplicate = {key: first.key.slice(), value: "duplicate"}

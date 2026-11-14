@@ -9,6 +9,26 @@ interface LocalTestContext {
 }
 
 describe("ArrayMultiMap", () => {
+    it("clones the comparator policy and independent, stable buckets", () => {
+        const first = {order: 2, name: "first"}
+        const second = {order: 2, name: "second"}
+        const source = new ArrayMultimap<string, typeof first>([["key", [first, second]]],
+            (left, right) => left.order - right.order)
+        const clone = source.clone()
+        const third = {order: 2, name: "third"}
+        clone.add("key", {order: 4, name: "after"})
+        clone.add("key", {order: 1, name: "before"})
+        clone.add("key", {order: 3, name: "between"})
+        clone.add("key", third)
+        expect(clone.get("key").map(value => value.name))
+            .toStrictEqual(["before", "first", "second", "third", "between", "after"])
+        expect(source.get("key")).toStrictEqual([first, second])
+        source.add("key", {order: 0, name: "source only"})
+        clone.remove("key", first)
+        expect(source.get("key")).toContain(first)
+        expect(clone.get("key").map(value => value.name)).not.toContain("source only")
+    })
+
     beforeEach<LocalTestContext>(context => {
         context.map = new ArrayMultimap<string, int>([["C", [6, 7, 8, 8]]])
         context.map.add("A", 0)
