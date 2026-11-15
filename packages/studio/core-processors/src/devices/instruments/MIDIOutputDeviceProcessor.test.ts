@@ -9,7 +9,7 @@ import {MIDIOutputDeviceProcessor} from "./MIDIOutputDeviceProcessor"
 import {NoteLifecycleEvent} from "../../NoteEventSource"
 import {block, deviceFixture, eventSource} from "../script-test-fixture"
 
-beforeAll(() => Object.assign(globalThis, {sampleRate: 48000}))
+beforeAll(() => {Object.assign(globalThis, {sampleRate: 48000})})
 function fixture() {
     const f = deviceFixture()
     const a = f.edit(() => MIDIOutputBox.create(f.graph, UUID.generate(), b => {b.id.setValue("A"); b.delayInMs.setValue(7)}))
@@ -20,7 +20,7 @@ function fixture() {
     processor.setNoteEventSource(eventSource([start, NoteLifecycleEvent.stop(start, 20)]))
     processor.process({blocks: [block()]})
     expect(f.midi.map(m => m.data)).toEqual([MidiData.noteOn(0, 60, 127)])
-    return {...f, a, b, box, processor}
+    return {...f, a, b, box, processor, start}
 }
 it.each(["reset", "disable", "terminate"])("retires held notes exactly once on %s", action => {
     const f = fixture()
@@ -63,4 +63,17 @@ it.each([0, 17, -17])("uses additive note/control timing with delay %s", delay =
     f.processor.parameterChanged(parameter, b.s0 / sampleRate + PPQN.pulsesToSeconds(2, b.bpm))
     expect(f.midi).toHaveLength(2)
     expect(f.midi[1].time).toBeCloseTo(f.midi[0].time)
+})
+it("keeps new-route notes independent of old same-pitch releases", () => {
+    const f = fixture()
+    f.edit(() => f.box.device.refer(f.b.device))
+    const fresh = NoteLifecycleEvent.start(20, 10, 60, 1, 0)
+    f.processor.setNoteEventSource(eventSource([NoteLifecycleEvent.stop(f.start, 20), fresh, NoteLifecycleEvent.stop(fresh, 30)]))
+    f.processor.process({blocks: [block(20, 30)]})
+    f.processor.process({blocks: [block(30, 40)]})
+    f.processor.reset()
+    expect(f.midi.map(m => [m.id, m.data])).toEqual([
+        ["A", MidiData.noteOn(0, 60, 127)], ["A", MidiData.noteOff(0, 60)],
+        ["B", MidiData.noteOn(0, 60, 127)], ["B", MidiData.noteOff(0, 60)]
+    ])
 })

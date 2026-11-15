@@ -295,6 +295,15 @@ Hardware notes retain the endpoint and channel that received their starts. Reset
 disable, disconnect and teardown release them once; routing edits retire the old
 route before new notes play. See the [MIDI Output manual](packages/app/studio/public/manuals/devices/instruments/midioutput.md).
 
+Script MIDI timing uses the actual engine tempo and sample span, including partial
+blocks. Hardware CC automation and notes both add the configured endpoint delay
+to their block-relative millisecond timestamp.
+
+Script-device constructors, parameter callbacks and reset hooks quarantine failed
+generations and recover on explicit recompilation. Spielwerk retires active and
+scheduled notes on faults; Werkstatt publishes only validated owned output. See
+the [script lifecycle plan](plans/scout-round97-script-midi-lifecycle.md).
+
 ### Audio effect lifecycle
 
 See the [core processor contracts](packages/studio/core-processors/README.md) for
@@ -448,7 +457,3 @@ The [MIDI contributor notes](packages/lib/midi/README.md) describe supported
 messages, musical metadata, deterministic export ordering and import admission.
 File picker lifecycle and WAV source geometry are documented in the
 [DOM](packages/lib/dom/README.md) and [DSP](packages/lib/dsp/README.md) notes.
-
-Script MIDI timing uses the actual engine tempo and sample span, including partial
-blocks. Hardware CC automation and notes both add the configured endpoint delay
-to their block-relative millisecond timestamp.

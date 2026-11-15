@@ -13,12 +13,12 @@ export function deviceFixture() {
     const adapters = new BoxAdapters(adapterContext)
     Object.assign(adapterContext, {boxAdapters: adapters})
     const messages: string[] = []
-    const midi: Array<{id: string, data: number, time: number}> = []
+    const midi: Array<{id: string, data: Uint8Array, time: number}> = []
     const context = {boxAdapters: adapters, registerProcessor: () => Terminable.Empty,
         broadcaster: {broadcastFloats: () => Terminable.Empty},
         audioOutputBufferRegistry: {register: () => Terminable.Empty},
         engineToClient: {deviceMessage: (_uuid: string, message: string) => messages.push(message)},
-        sendMIDIData: (id: string, data: number, time: number) => midi.push({id, data, time})} as unknown as EngineContext
+        sendMIDIData: (id: string, data: Uint8Array, time: number) => midi.push({id, data, time})} as unknown as EngineContext
     const edit = <T>(action: () => T): T => {
         graph.beginTransaction()
         const result = action()

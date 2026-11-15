@@ -8,7 +8,7 @@ it.each(["empty", "short", "foreign", "array", "detach"])("quarantines %s output
     const f = await werkFixture(class {
         process(io: IO) {
             if (++pass === 1) {io.out.forEach(ch => ch.fill(0.75)); return}
-            if (kind === "detach") structuredClone(io.out[0].buffer, {transfer: [io.out[0].buffer]})
+            if (kind === "detach") structuredClone(io.out[0].buffer, {transfer: [io.out[0].buffer as ArrayBuffer]})
             else if (kind === "array") io.out = [new Float32Array(128), new Float32Array(128)]
             else io.out[0] = new Float32Array(kind === "empty" ? 0 : kind === "short" ? 4 : 128)
         }

@@ -303,3 +303,11 @@ A descendant due before a source stop in the same window still plays up to that
 stop. Notes generated after the event iterator finishes are independent.
 Seek/discontinuity and playing-to-stopped transitions clear scheduled notes even
 when no output is sounding, and invoke `reset()` under the script fault policy.
+
+### Fault retirement and retained state
+
+Natural expiry removes the output's source index immediately, so a held source
+retains only live descendants. A generator exception, invalid output or flood
+retires every already emitted note exactly once. Parameter callback faults drain
+notes at the next downstream pull. Replacement code is constructed only after
+that drain, and cannot inherit notes or scheduled output from the old generation.

@@ -33,7 +33,6 @@ export class MIDIOutputDeviceProcessor extends AudioProcessor implements Instrum
 
         const {midiDevice, box, parameters} = adapter
 
-
         this.ownAll(
             box.enabled.catchupAndSubscribe(owner => {
                 this.#enabled = owner.getValue()

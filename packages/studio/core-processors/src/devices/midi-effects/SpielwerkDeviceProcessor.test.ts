@@ -1,14 +1,14 @@
-import {beforeAll, expect, it} from "vitest"
+import {beforeAll, expect, it, vi} from "vitest"
 import {MIDIOutputBox, MIDIOutputDeviceBox} from "@opendaw/studio-boxes"
 import {MIDIOutputDeviceBoxAdapter} from "@opendaw/studio-adapters"
-import {UUID} from "@opendaw/lib-std"
+import {SetMultimap, UUID} from "@opendaw/lib-std"
 import {MIDIOutputDeviceProcessor} from "../instruments/MIDIOutputDeviceProcessor"
 import {NoteLifecycleEvent} from "../../NoteEventSource"
 import {BlockFlag} from "../../processing"
 import {block, outputNote, ScriptBlock, ScriptEvent, eventSource} from "../script-test-fixture"
 import {spielFixture} from "./spielwerk-test-fixture"
 
-beforeAll(() => Object.assign(globalThis, {sampleRate: 48000}))
+beforeAll(() => {Object.assign(globalThis, {sampleRate: 48000})})
 it("offers actual tempo and partial sample bounds through the EventProcessor to MIDI chain", () => {
     const seen: ScriptBlock[] = []
     const f = spielFixture(class {
@@ -118,4 +118,80 @@ it("keeps scheduled starts before a same-window source stop and clips newly gene
     const same = [...g.processor.processNotes(0, 10, 0)]
     expect(same.filter(NoteLifecycleEvent.isStop).map(e => e.position)).toEqual([5])
     expect([...g.processor.processNotes(30, 40, 0)]).toEqual([])
+})
+
+it("retires expired reverse mappings during a long held source", () => {
+    const source = NoteLifecycleEvent.start(0, 100000, 60, 1, 0)
+    const f = spielFixture(class {
+        *process(b: ScriptBlock, events: Iterable<ScriptEvent>) {
+            for (const event of events) if (event.gate) yield outputNote(b.from, 1)
+        }
+    })
+    f.sourceLease.terminate()
+    f.processor.setNoteEventSource({
+        *processNotes() {yield source}, *iterateActiveNotesAt() {}
+    })
+    const additions = vi.spyOn(SetMultimap.prototype, "add")
+    let index: SetMultimap<number, number> | undefined
+    try {
+        for (let i = 0; i < 2000; i++) {
+            const events = [...f.processor.processNotes(i * 10, i * 10 + 10, 0)]
+            expect(events.filter(NoteLifecycleEvent.isStart)).toHaveLength(1)
+            index ??= additions.mock.instances[0] as unknown as SetMultimap<number, number>
+            expect(index.get(source.id).size).toBe(0)
+            expect([...f.processor.iterateActiveNotesAt(i * 10 + 2, false)]).toEqual([])
+        }
+    } finally {additions.mockRestore()}
+})
+it.each(["throw", "flood", "invalid"])("balances active output exactly once on %s", kind => {
+    const f = spielFixture(class {
+        *process() {
+            yield outputNote(2, 10000)
+            if (kind === "throw") throw new Error("after start")
+            if (kind === "invalid") yield {...outputNote(), cent: Infinity}
+            else for (let i = 0; i < 129; i++) yield outputNote(3, 10000, 64)
+        }
+    })
+    const events = [...f.processor.processNotes(0, 10, 0)]
+    const starts = events.filter(NoteLifecycleEvent.isStart), stops = events.filter(NoteLifecycleEvent.isStop)
+    expect(starts.length).toBeGreaterThan(0)
+    expect(stops.map(e => e.id).sort()).toEqual(starts.map(e => e.id).sort())
+    for (const stop of stops) expect(stop.position).toBeGreaterThanOrEqual(starts.find(s => s.id === stop.id)!.position)
+    expect([...f.processor.iterateActiveNotesAt(5, false)]).toEqual([])
+    expect([...f.processor.processNotes(10, 20, 0)]).toEqual([])
+    expect(f.messages).toHaveLength(1)
+})
+it("drains parameter-fault output before constructing a replacement generation", () => {
+    let armed = false, constructed = 0
+    const f = spielFixture(class {
+        *process() {yield outputNote(0, 10000)}
+        paramChanged() {if (armed) throw new Error("parameter")}
+    })
+    const start = [...f.processor.processNotes(0, 10, 0)].find(NoteLifecycleEvent.isStart)!
+    armed = true
+    f.edit(() => f.param.value.setValue(0.5))
+    f.compile(class {
+        constructor() {constructed++}
+        *process(b: ScriptBlock) {yield outputNote(b.from, 100, 64)}
+    })
+    expect(constructed).toBe(0)
+    const next = [...f.processor.processNotes(10, 20, 0)]
+    expect(NoteLifecycleEvent.isStop(next[0])).toBe(true)
+    expect(next[0].id).toBe(start.id)
+    expect(next.filter(NoteLifecycleEvent.isStop)).toHaveLength(1)
+    expect(next.filter(NoteLifecycleEvent.isStart)).toHaveLength(1)
+    expect(constructed).toBe(1)
+})
+it("honors a source stop before natural expiry in the same window", () => {
+    const a = NoteLifecycleEvent.start(0, 100, 60, 1, 0)
+    const f = spielFixture(class {
+        *process(_b: ScriptBlock, events: Iterable<ScriptEvent>) {
+            for (const event of events) if (event.gate) yield outputNote(0, 18)
+        }
+    })
+    f.sourceLease.terminate()
+    f.processor.setNoteEventSource(eventSource([a, NoteLifecycleEvent.stop(a, 15)]))
+    Array.from(f.processor.processNotes(0, 10, 0))
+    const events = [...f.processor.processNotes(10, 20, 0)]
+    expect(events.filter(NoteLifecycleEvent.isStop).map(e => e.position)).toEqual([15])
 })
