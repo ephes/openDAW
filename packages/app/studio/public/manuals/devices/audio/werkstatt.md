@@ -227,3 +227,11 @@ A constructor or parameter-callback failure quarantines that compiled generation
 and reports once. Processing other devices continues. Compile new code to recover.
 A matching registry entry is constructed at most once; a registry entry that has
 not arrived yet is still polled on later blocks.
+
+### Output buffer ownership
+
+Write into the two supplied `io.out` buffers in place. Replacing the array or a
+channel, or detaching its storage, quarantines the generation and publishes
+silence. The buffers retain their full render-quantum length. Samples are checked
+in owned staging buffers before the requested span is copied to published audio;
+new compilations receive fresh staging buffers. No buffers are allocated per sample.

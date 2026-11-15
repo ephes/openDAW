@@ -287,3 +287,10 @@ A constructor or parameter-callback failure quarantines that compiled generation
 and reports once. Processing other devices continues. Compile new code to recover.
 A matching registry entry is constructed at most once; a registry entry that has
 not arrived yet is still polled on later blocks.
+
+### Admitted notes
+
+Output positions and positive durations must be finite, and their sum must be a
+finite, representably later end. Pitches are integers from 0 to 127; velocity is
+finite in [0, 1]. Cents must be finite (omission defaults to zero). Invalid output
+quarantines that generation before it can be queued or emitted.

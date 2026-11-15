@@ -5,7 +5,7 @@ import {EngineContext} from "../../EngineContext"
 import {Block, Processor} from "../../processing"
 import {PeakBroadcaster} from "../../PeakBroadcaster"
 import {AudioEffectDeviceProcessor} from "../../AudioEffectDeviceProcessor"
-import {AudioBuffer} from "@opendaw/lib-dsp"
+import {AudioBuffer, RenderQuantum} from "@opendaw/lib-dsp"
 import {AudioProcessor} from "../../AudioProcessor"
 import {AutomatableParameter} from "../../AutomatableParameter"
 
@@ -58,7 +58,8 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
     #currentUpdate: int = -1
     #pendingUpdate: int = -1
     #silenced: boolean = false
-    readonly #io: {src: [Float32Array, Float32Array], out: [Float32Array, Float32Array]}
+    #scriptOutput: AudioBuffer = new AudioBuffer()
+    #io: {src: [Float32Array, Float32Array], out: [Float32Array, Float32Array]}
 
     constructor(context: EngineContext, adapter: WerkstattDeviceBoxAdapter) {
         super(context)
@@ -70,7 +71,7 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
         this.#boundParameters = []
         this.#io = {
             src: [this.#output.getChannel(0), this.#output.getChannel(1)],
-            out: [this.#output.getChannel(0), this.#output.getChannel(1)]
+            out: [this.#scriptOutput.getChannel(0), this.#scriptOutput.getChannel(1)]
         }
         const {parameters, box} = adapter
         this.ownAll(
@@ -116,6 +117,12 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
         this.#currentUpdate = update
         try {
             this.#userProcessor = Option.wrap(new ProcessorClass() as UserProcessor)
+            // Script-owned staging keeps detached buffers away from published audio.
+            this.#scriptOutput = new AudioBuffer()
+            this.#io = {
+                src: [this.#output.getChannel(0), this.#output.getChannel(1)],
+                out: [this.#scriptOutput.getChannel(0), this.#scriptOutput.getChannel(1)]
+            }
             this.#silenced = false
             this.#pushAllParameters()
         } catch (error) {
@@ -192,22 +199,35 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
         if (this.#userProcessor.isEmpty()) {return}
         const source = this.#source.unwrap()
         const proc = this.#userProcessor.unwrap()
-        this.#io.src[0] = source.getChannel(0)
-        this.#io.src[1] = source.getChannel(1)
-        this.#io.out[0] = this.#output.getChannel(0)
-        this.#io.out[1] = this.#output.getChannel(1)
+        const left = this.#scriptOutput.getChannel(0)
+        const right = this.#scriptOutput.getChannel(1)
+        const owned = this.#io.out
         try {
+            this.#io.src[0] = source.getChannel(0)
+            this.#io.src[1] = source.getChannel(1)
+            this.#scriptOutput.clear(block.s0, block.s1)
             proc.process(this.#io, block)
+            if (this.#io.out !== owned || this.#io.out.length !== 2
+                || this.#io.out[0] !== left || this.#io.out[1] !== right
+                || left.length !== RenderQuantum || right.length !== RenderQuantum) {
+                this.#silence("Output buffer contract changed: use the two supplied buffers in place")
+                return
+            }
+            const validationError = validateOutput(this.#scriptOutput.channels(), block.s0, block.s1)
+            if (validationError !== null) {
+                this.#silence(validationError)
+                return
+            }
+            const publishedLeft = this.#output.getChannel(0)
+            const publishedRight = this.#output.getChannel(1)
+            for (let i = block.s0; i < block.s1; i++) {
+                publishedLeft[i] = left[i]
+                publishedRight[i] = right[i]
+            }
+            this.#peaks.process(left, right, block.s0, block.s1)
         } catch (error) {
             this.#silence(`Runtime error: ${error}`)
-            return
         }
-        const validationError = validateOutput(this.#io.out, block.s0, block.s1)
-        if (validationError !== null) {
-            this.#silence(validationError)
-            return
-        }
-        this.#peaks.process(this.#io.out[0], this.#io.out[1], block.s0, block.s1)
     }
 
     toString(): string {return `{${this.constructor.name} (${this.#id})`}

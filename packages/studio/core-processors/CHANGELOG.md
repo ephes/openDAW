@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Admit only finite, representable Spielwerk notes with integral MIDI pitches; validate Werkstatt output identities/lengths and publish checked staging audio, including safe detach recovery.
+
 - Quarantine script parameter callback failures and attempt each registered compiled generation once, preserving late-registry polling and explicit recompile recovery.
 
 - Add endpoint delay to hardware CC timestamps and expose actual engine tempo/sample bounds to Spielwerk.

@@ -71,14 +71,17 @@ interface UserProcessor {
 
 const validateNote = (note: UserOutput, from: ppqn): Nullable<string> => {
     if (!isDefined(note)) {return "process yielded undefined"}
-    if (typeof note.pitch !== "number" || note.pitch !== note.pitch) {return `Invalid pitch: ${note.pitch}`}
+    if (!Number.isInteger(note.pitch)) {return `Invalid pitch: ${note.pitch}`}
     if (note.pitch < 0 || note.pitch > 127) {return `Pitch out of range: ${note.pitch} (must be 0–127)`}
-    if (typeof note.velocity !== "number" || note.velocity !== note.velocity) {return `Invalid velocity: ${note.velocity}`}
+    if (!Number.isFinite(note.velocity)) {return `Invalid velocity: ${note.velocity}`}
     if (note.velocity < 0 || note.velocity > 1) {return `Velocity out of range: ${note.velocity} (must be 0–1)`}
-    if (typeof note.duration !== "number" || note.duration !== note.duration) {return `Invalid duration: ${note.duration}`}
+    if (!Number.isFinite(note.duration)) {return `Invalid duration: ${note.duration}`}
     if (note.duration <= 0) {return `Duration must be positive: ${note.duration}`}
-    if (typeof note.position !== "number" || note.position !== note.position) {return `Invalid position: ${note.position}`}
+    if (!Number.isFinite(note.position)) {return `Invalid position: ${note.position}`}
     if (note.position < from) {return `Position ${note.position} is in the past (block starts at ${from})`}
+    const end = note.position + note.duration
+    if (!Number.isFinite(end) || end <= note.position) {return "Note end must be finite and after its start"}
+    if (note.cent !== undefined && !Number.isFinite(note.cent)) {return `Invalid cent: ${note.cent}`}
     return null
 }
 
