@@ -47,9 +47,11 @@ export class NanoDeviceProcessor extends AudioProcessor implements InstrumentDev
             }),
             context.registerProcessor(this),
             context.audioOutputBufferRegistry.register(adapter.address, this.#audioOutput, this.outgoing),
-            adapter.box.file.catchupAndSubscribe((pointer) =>
+            adapter.box.file.catchupAndSubscribe((pointer) => {
+                this.reset()
                 this.loader = pointer.targetVertex.map(({box}) =>
-                    context.sampleManager.getOrCreate(box.address.uuid)))
+                    context.sampleManager.getOrCreate(box.address.uuid))
+            })
         )
         this.readAllParameters()
     }
@@ -76,6 +78,7 @@ export class NanoDeviceProcessor extends AudioProcessor implements InstrumentDev
 
     handleEvent(event: Event): void {
         if (NoteLifecycleEvent.isStart(event)) {
+            if (!this.#enabled) {return}
             this.#voices.push(new Voice(this, event))
         } else if (NoteLifecycleEvent.isStop(event)) {
             this.#voices.find(voice => voice.event().id === event.id)?.stop()

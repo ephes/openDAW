@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse disabled Nano note starts and retire held voices on sample retargeting.
+
 - Retire expired Spielwerk source indexes and balance every active note once on script faults before loading replacement code.
 
 - Keep source ownership through scheduled Spielwerk notes; cancel queued descendants on source stop and clear pending-only transport generations with guarded reset hooks.

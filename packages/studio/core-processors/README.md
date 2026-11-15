@@ -45,3 +45,8 @@ Scheduled descendants retain their source and transport generation. See the
 [Spielwerk manual](../../app/studio/public/manuals/devices/midi/spielwerk.md) and
 [Werkstatt manual](../../app/studio/public/manuals/devices/audio/werkstatt.md) for
 finite note admission and owned output-buffer contracts.
+
+### Nano and Playfield ownership
+
+Nano refuses note starts while disabled. Changing its file pointer retires held
+voices and the note display immediately; only new notes use the new sample.
