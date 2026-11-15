@@ -140,9 +140,10 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
             }),
             context.subscribeProcessPhase(phase => {
                 if (phase === ProcessPhase.Before && this.#needsSideChainResolution) {
-                    this.#needsSideChainResolution = false
+                    this.#needsSideChainResolution = adapter.sideChain.targetVertex.nonEmpty()
                     adapter.sideChain.targetVertex.map(({box}) => box.address).ifSome(address => {
                         context.audioOutputBufferRegistry.resolve(address).ifSome(output => {
+                            this.#needsSideChainResolution = false
                             this.#sideChain = Option.wrap(output.buffer)
                             this.#sideChainConnection.own(context.registerEdge(output.processor, this.incoming))
                         })

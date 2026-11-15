@@ -60,6 +60,7 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     #needsSpectrum: boolean = false
     #pendingModelJson: string = ""
     #modelApplyPending: boolean = false
+    #modelApplyFailed: boolean = false
     #source: Option<AudioBuffer> = Option.None
     #instances: [int, int] = [-1, -1]
     #modelLoaded: boolean = false
@@ -151,6 +152,11 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
         const [outL, outR] = this.#output.channels() as StereoMatrix.Channels
         const numFrames = s1 - s0
         const module = NeuralAmpDeviceProcessor.#wasmModule
+        if (this.#modelApplyFailed && module.nonEmpty()) {
+            this.#modelApplyFailed = false
+            this.#initInstance()
+            this.#applyModel()
+        }
         if (module.isEmpty() || !this.#modelLoaded || this.#instances[0] < 0) {
             for (let i = s0; i < s1; i++) {
                 outL[i] = inL[i]
@@ -302,6 +308,7 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
         if (this.#terminated) {return}
         this.#pendingModelJson = modelJson
         if (this.#modelApplyPending) {return}
+        this.#modelApplyFailed = false
         const module = NeuralAmpDeviceProcessor.#wasmModule
         if (module.nonEmpty()) {
             this.#initInstance()
@@ -317,7 +324,9 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
                 })
                 .catch(error => {
                     this.#modelApplyPending = false
-                    if (!this.#terminated) {console.error("Failed to load NAM WASM:", error)}
+                    if (this.#terminated) {return}
+                    this.#modelApplyFailed = true
+                    console.error("Failed to load NAM WASM:", error)
                 })
         }
     }

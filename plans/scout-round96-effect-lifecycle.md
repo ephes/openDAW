@@ -95,6 +95,15 @@ stereo mixing modes. Afterward graph/detector ownership checks and exact partial
 restart comparisons pass. These are processor/DSP changes with no changed browser
 integration, so the browser-only integration gate is not applicable.
 
+## Merge review follow-up
+
+Review found two siblings of the B01/B06 contracts. Compressor and Vocoder used
+the same eager sidechain resolution as Gate and now retry an unresolved nonempty
+pointer the same way (`SideChainResolution.test.ts`, both cases failed before the
+fix). A NAM device whose own module load failed now remembers the failed apply and
+applies its latest model at the next processed block once another load made the
+shared module ready (one NAM case failed before the fix).
+
 ## Final local validation
 
 Fresh origin/main was 39dab9f4d01eb6998ef128f905ecdd3140c26664; none of the

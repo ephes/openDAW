@@ -9,6 +9,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Retry unresolved Gate sidechains until registration and snap Stereo Tool matrix controls on restart.
 
+- Retry unresolved Compressor and Vocoder sidechains like Gate, and apply a NAM model whose own module load failed once the shared module becomes ready.
+
 - Keep vocoder coefficient interpolation on its sample clock across partial blocks; reset coefficients and band fades to current controls.
 
 - Correct the delay limiter to 50 ms attack/250 ms release and clear modulation smoothing history on restart.
