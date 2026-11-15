@@ -280,3 +280,10 @@ Click **Start AI-Prompt** in the editor toolbar to copy a detailed starter promp
 `block.bpm`, `block.s0` and `block.s1` reflect the current engine block, including
 partial sample spans and tempo changes. `from` and `to` are the requested musical
 window; sample bounds are taken from the engine rather than reconstructed from PPQN.
+
+### Script generation faults
+
+A constructor or parameter-callback failure quarantines that compiled generation
+and reports once. Processing other devices continues. Compile new code to recover.
+A matching registry entry is constructed at most once; a registry entry that has
+not arrived yet is still polled on later blocks.

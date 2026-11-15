@@ -111,26 +111,23 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
     }
 
     #swapProcessor(ProcessorClass: new () => UserProcessor, update: int): void {
+        // A matching registry entry is attempted once, including failed construction.
+        // Missing entries keep polling without consuming the pending generation.
+        this.#currentUpdate = update
         try {
             this.#userProcessor = Option.wrap(new ProcessorClass() as UserProcessor)
-            this.#currentUpdate = update
             this.#silenced = false
             this.#pushAllParameters()
         } catch (error) {
-            this.#reportError(`Failed to instantiate Processor: ${error}`)
-            this.#silenced = true
+            this.#silence(`Failed to instantiate Processor: ${error}`)
         }
     }
 
     #pushAllParameters(): void {
-        this.#userProcessor.ifSome(proc => {
-            if (isDefined(proc.paramChanged)) {
-                for (const bound of this.#boundParameters) {
-                    const paramBox = asInstanceOf(bound.adapter.field.box, WerkstattParameterBox)
-                    proc.paramChanged(paramBox.label.getValue(), bound.getValue())
-                }
-            }
-        })
+        for (const bound of this.#boundParameters) {
+            if (this.#silenced) {return}
+            this.parameterChanged(bound)
+        }
     }
 
     #reportError(message: string): void {
@@ -139,17 +136,23 @@ export class WerkstattDeviceProcessor extends AudioProcessor implements AudioEff
 
     #silence(message: string): void {
         this.#silenced = true
+        this.#userProcessor = Option.None
         this.#output.clear()
         this.#reportError(message)
     }
 
     parameterChanged(parameter: AutomatableParameter): void {
-        this.#userProcessor.ifSome(proc => {
-            if (isDefined(proc.paramChanged)) {
-                const paramBox = asInstanceOf(parameter.adapter.field.box, WerkstattParameterBox)
-                proc.paramChanged(paramBox.label.getValue(), parameter.getValue())
-            }
-        })
+        if (this.#silenced) {return}
+        try {
+            this.#userProcessor.ifSome(proc => {
+                if (isDefined(proc.paramChanged)) {
+                    const paramBox = asInstanceOf(parameter.adapter.field.box, WerkstattParameterBox)
+                    proc.paramChanged(paramBox.label.getValue(), parameter.getValue())
+                }
+            })
+        } catch (error) {
+            this.#silence(`Parameter callback error: ${error}`)
+        }
     }
 
     get incoming(): Processor {return this}

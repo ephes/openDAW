@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Quarantine script parameter callback failures and attempt each registered compiled generation once, preserving late-registry polling and explicit recompile recovery.
+
 - Add endpoint delay to hardware CC timestamps and expose actual engine tempo/sample bounds to Spielwerk.
 
 - Balance hardware MIDI notes on reset, disable, source disconnect and termination; retire their original endpoint/channel on route edits. 

@@ -30,3 +30,10 @@ From the repository root, run `npm ci`, `npm run build`, `npm run lint`, and
 registry and deterministic sample buffers; they need no browser or real model.
 See the [round 96 plan](../../../plans/scout-round96-effect-lifecycle.md) for
 regression evidence and restart/partition comparison tolerances.
+
+### Script generation faults
+
+A constructor or parameter-callback failure quarantines that compiled generation
+and reports once. Processing other devices continues. Compile new code to recover.
+A matching registry entry is constructed at most once; a registry entry that has
+not arrived yet is still polled on later blocks.
