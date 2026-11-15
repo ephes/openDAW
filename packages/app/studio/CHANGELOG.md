@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Let only the latest room connection intent install its project; retire superseded results and invalidate attempts when their project leaves.
+- Close connection progress on every exit and keep awareness, traffic and chat cleanup tied to their owning room.
+- Acknowledge recovery commits only after file closure succeeds; propagate write failures to the terminal recovery-log error path.
+
 - Bound local room-sample metadata and neural-amp cache reads before OPFS allocation; retain explicit large-media reads.
 
 - Observe rejected copy actions without false success acknowledgements or unhandled promises.

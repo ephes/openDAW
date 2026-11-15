@@ -4,7 +4,6 @@ import {
     assert,
     EmptyExec,
     isInstanceOf,
-    isUndefined,
     JSONValue,
     Option,
     panic,
@@ -44,34 +43,45 @@ export class YSync<T> implements Terminable {
         return doc.getMap("boxes").size === 0
     }
 
-    static async populateRoom<T>({boxGraph, boxes}: Construct<T>): Promise<YSync<T>> {
+    static async populateRoom<T>(construct: Construct<T>): Promise<YSync<T>> {
+        const {boxGraph, boxes} = construct
         console.debug("populate")
         assert(boxes.size === 0, "boxes must be empty")
-        const sync = new YSync<T>({boxGraph, boxes})
-        asDefined(boxes.doc, "Y.Map is not connect to Y.Doc")
-            .transact(() => boxGraph.boxes()
-                .forEach(box => {
-                    const key = UUID.toString(box.address.uuid)
-                    const map = YMapper.createBoxMap(box)
-                    boxes.set(key, map)
-                }), "[openDAW] populate")
-        return sync
+        const sync = new YSync<T>(construct)
+        try {
+            const doc = asDefined(boxes.doc, "Y.Map is not connected to Y.Doc")
+            const prepared = boxGraph.boxes().map(box =>
+                [UUID.toString(box.address.uuid), YMapper.createBoxMap(box)] as const)
+            doc.transact(() => prepared.forEach(([key, map]) => boxes.set(key, map)), "[openDAW] populate")
+            return sync
+        } catch (error) {
+            sync.terminate()
+            throw error
+        }
     }
 
-    static async joinRoom<T>({boxGraph, boxes}: Construct<T>): Promise<YSync<T>> {
+    static async joinRoom<T>(construct: Construct<T>): Promise<YSync<T>> {
+        const {boxGraph, boxes} = construct
         console.debug("join")
         assert(boxGraph.boxes().length === 0, "BoxGraph must be empty")
-        const sync = new YSync<T>({boxGraph, boxes})
-        boxGraph.beginTransaction()
-        boxes.forEach((value, key) => {
-            const boxMap = value as Y.Map<unknown>
-            const uuid = UUID.parse(key)
-            const name = boxMap.get("name") as keyof T
-            const fields = boxMap.get("fields") as Y.Map<unknown>
-            boxGraph.createBox(name, uuid, box => YMapper.applyFromBoxMap(box, fields))
-        })
-        boxGraph.endTransaction()
-        return sync
+        assert(!boxGraph.inTransaction(), "BoxGraph must not be in a transaction")
+        const sync = new YSync<T>(construct)
+        sync.#ignoreUpdates = true
+        try {
+            boxGraph.beginTransaction()
+            boxes.forEach((value, key) => sync.#createBox(key))
+            boxGraph.endTransaction()
+            return sync
+        } catch (error) {
+            try {
+                if (boxGraph.inTransaction()) {boxGraph.abortTransaction()}
+            } finally {
+                sync.terminate()
+            }
+            throw error
+        } finally {
+            sync.#ignoreUpdates = false
+        }
     }
 
     static #computePathPrefix(boxes: Y.Map<unknown>): ReadonlyArray<string | number> {
@@ -107,12 +117,32 @@ export class YSync<T> implements Terminable {
     terminate(): void {this.#terminator.terminate()}
 
     #setupYjs(): Subscription {
-        const eventHandler: EventHandler = (events, {origin, local}) => {
+        // Capture only refused remote transactions. UndoManager preserves deleted
+        // shared types, unlike reinserting a previously integrated Y.Map.
+        let rejected: Y.Transaction | undefined
+        const undo = new Y.UndoManager(this.#boxes, {
+            captureTimeout: 0,
+            trackedOrigins: new Set(),
+            captureTransaction: transaction => transaction === rejected
+        })
+        const doc = this.#getDoc()
+        const revert = (transaction: Y.Transaction) => {
+            if (transaction !== rejected) {return}
+            rejected = undefined
+            undo.undo()
+            undo.clear()
+            undo.removeTrackedOrigin(transaction.origin)
+        }
+        doc.on("afterTransaction", revert)
+        const eventHandler: EventHandler = (events, transaction) => {
+            const {origin, local} = transaction
             const originLabel = typeof origin === "string" ? origin : "Unkown Origin"
             const isOwnOrigin = typeof origin === "string" && origin.startsWith("[openDAW]")
             const isHistoryReplay = typeof origin === "string" && origin.startsWith("[history]")
             console.debug(`got ${events.length} ${local ? "local" : "external"} updates from '${originLabel}', isHistoryReplay: ${isHistoryReplay}, isOwnOrigin: ${isOwnOrigin}`)
-            if (isOwnOrigin || (local && !isHistoryReplay)) {return}
+            if (origin === undo || isOwnOrigin || (local && !isHistoryReplay)) {return}
+            const applied: Update[] = []
+            const capture = this.#boxGraph.subscribeToAllUpdatesImmediate({onUpdate: update => applied.push(update)})
             this.#boxGraph.beginTransaction()
             const result = tryCatch(() => {
                 for (const event of events) {
@@ -126,7 +156,7 @@ export class YSync<T> implements Terminable {
                             assert(path.length === 0, "'Add' cannot have a path")
                             this.#createBox(key)
                         } else if (change.action === "update") {
-                            if (path.length === 0) {continue}
+                            if (path.length === 0) {this.#createBox(key); continue}
                             assert(path.length >= 2, "Invalid path: must have at least 2 elements (uuid, 'fields').")
                             this.#updateValue(path, key)
                         } else if (change.action === "delete") {
@@ -137,40 +167,49 @@ export class YSync<T> implements Terminable {
                 }
                 this.#ignoreUpdates = true
                 this.#boxGraph.endTransaction()
+                // Pointer hubs are finalized by endTransaction. Evaluate the
+                // project policy on that complete state, then restore both models.
+                const conflict = tryCatch(() => this.#conflict.mapOr(check => check(), false))
+                if (conflict.status === "failure" || conflict.value) {
+                    capture.terminate()
+                    this.#boxGraph.beginTransaction()
+                    applied.toReversed().forEach(update => update.inverse(this.#boxGraph))
+                    this.#boxGraph.endTransaction()
+                    rejected = transaction
+                    undo.addTrackedOrigin(origin)
+                }
                 this.#ignoreUpdates = false
             })
+            capture.terminate()
             if (result.status === "failure") {
                 this.#ignoreUpdates = false
                 if (this.#boxGraph.inTransaction()) {
                     this.#boxGraph.abortTransaction()
                 }
-                // Local revert only; do not publish inverse ops back into Yjs.
-                // Writing inverse ops would race with the same remote update
-                // still in flight and pump Yjs into a retry/corruption loop.
-                // Local state stays as it was before this batch; the doc on
-                // Yjs's side keeps the remote update and converges via the
-                // next legitimate operation (e.g. our delete propagating).
-                console.warn(`[YSync] Transaction rejected, reverted locally:`, result.error)
+                rejected = transaction
+                undo.addTrackedOrigin(origin)
+                console.warn("[YSync] Transaction rejected:", result.error)
                 return
-            }
-            const highLevelConflict = this.#conflict.mapOr(check => check(), false)
-            if (highLevelConflict) {
-                this.#rollbackTransaction(events)
             }
         }
         this.#boxes.observeDeep(eventHandler)
-        return {terminate: () => {this.#boxes.unobserveDeep(eventHandler)}}
+        return {terminate: () => {
+            this.#boxes.unobserveDeep(eventHandler)
+            doc.off("afterTransaction", revert)
+            undo.destroy()
+        }}
     }
 
     #createBox(key: string): void {
-        const map = this.#boxes.get(key) as Y.Map<unknown>
+        const map = asInstanceOf(this.#boxes.get(key), Y.Map)
         const name = map.get("name") as keyof T
-        const fields = map.get("fields") as Y.Map<unknown>
+        const fields = asInstanceOf(map.get("fields"), Y.Map)
         const uuid = UUID.parse(key)
         const optBox = this.#boxGraph.findBox(UUID.parse(key))
         if (optBox.isEmpty()) {
             this.#boxGraph.createBox(name, uuid, box => YMapper.applyFromBoxMap(box, fields))
         } else {
+            assert(optBox.unwrap().name === name, "Incompatible box type replacement")
             console.debug(`Box '${key}' has already been created. Performing 'Upsert'.`)
             YMapper.applyFromBoxMap(optBox.unwrap(), fields)
         }
@@ -209,33 +248,6 @@ export class YSync<T> implements Terminable {
         box.outgoingEdges().forEach(([pointer]) => pointer.defer())
         box.incomingEdges().forEach(pointer => pointer.defer())
         this.#boxGraph.unstageBox(box)
-    }
-
-    #rollbackTransaction(events: ReadonlyArray<Y.YEvent<Y.AbstractType<unknown>>>): void {
-        console.debug(`rollback ${events.length} events...`)
-        this.#getDoc()
-            .transact(() => {
-                for (let i = events.length - 1; i >= 0; i--) {
-                    const event = events[i]
-                    const target = asInstanceOf(event.target, Y.Map)
-                    Array.from(event.changes.keys.entries())
-                        .toReversed()
-                        .forEach(([key, change]) => {
-                            if (change.action === "add") {
-                                target.delete(key)
-                            } else if (change.action === "update") {
-                                if (isUndefined(change.oldValue)) {
-                                    console.warn(`oldValue of ${change} is undefined`)
-                                    target.delete(key)
-                                } else {
-                                    target.set(key, change.oldValue)
-                                }
-                            } else if (change.action === "delete") {
-                                target.set(key, change.oldValue)
-                            }
-                        })
-                }
-            }, "[openDAW] rollback")
     }
 
     #setupOpenDAW(): Terminable {

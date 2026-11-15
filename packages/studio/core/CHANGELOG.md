@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retain YSync factory conflict policies and restore both graph and Y.Doc on refused edits, including shared-map deletion.
+- Unwind failed join transactions and preserve existing shared-map identities/extensions without bootstrap publication.
+- Apply compatible same-UUID map replacements and refuse incompatible box types or noncanonical/out-of-range field paths.
+- Prepare complete room population before publication; unwind failed connections and bind provider/document/sync retirement to the returned project.
+- Stop active recovery capture on retirement and expose terminal hash/observer failures instead of silently abandoning the commit chain.
+
 - Honor declined large-soundfont imports before hashing/parsing/storage and handle AbortError as normal asset cancellation.
 
 - Pass explicit metadata, project, preset and media budgets through the OPFS worker protocol before allocation.

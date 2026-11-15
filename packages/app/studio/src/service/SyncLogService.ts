@@ -56,30 +56,18 @@ export namespace SyncLogService {
     }
 
     const wrapBlockWriter = (handle: FileSystemFileHandle, callback: Exec) => {
-        let blocks: Array<Commit> = []
-        let lastPromise: Promise<void> = Promise.resolve()
-        return (commit: Commit): void => {
-            blocks.push(commit)
-            callback()
-            lastPromise = lastPromise.then(async () => {
-                const writable: FileSystemWritableFileStream = await handle.createWritable({keepExistingData: true})
+        return async (commit: Commit): Promise<void> => {
+            const writable = await handle.createWritable({keepExistingData: true})
+            try {
                 const file = await handle.getFile()
                 await writable.seek(file.size)
-                const buffers = blocks.map(block => block.serialize())
-                blocks = []
-                await writable.write(appendArrayBuffers(buffers))
+                await writable.write(commit.serialize())
                 await writable.close()
-            })
+            } catch (error) {
+                try {await writable.abort()} catch { /* Preserve the write failure. */ }
+                throw error
+            }
+            callback()
         }
-    }
-
-    const appendArrayBuffers = (buffers: ReadonlyArray<ArrayBuffer>): ArrayBuffer => {
-        const totalLength = buffers.reduce((sum, buffer) => sum + buffer.byteLength, 0)
-        const result = new Uint8Array(totalLength)
-        buffers.reduce((offset, buffer) => {
-            result.set(new Uint8Array(buffer), offset)
-            return offset + buffer.byteLength
-        }, 0)
-        return result.buffer
     }
 }

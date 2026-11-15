@@ -21,3 +21,12 @@ test("HTML sanitizes in Chromium and fences retirement", async ({page}) => {
     await page.evaluate(() => (window as Window & {fixtures: BrowserFixtures}).fixtures.html())
     expect(errors).toEqual([])
 })
+
+
+test("a cancelled newer room dialog retires an older pending connection", async ({page}) => {
+    await page.evaluate(() => (window as Window & {fixtures: BrowserFixtures}).fixtures.roomIntent("start"))
+    await page.getByText("Connect", {exact: true}).click()
+    await page.evaluate(() => (window as Window & {fixtures: BrowserFixtures}).fixtures.roomIntent("newest"))
+    await page.keyboard.press("Escape")
+    await page.evaluate(() => (window as Window & {fixtures: BrowserFixtures}).fixtures.roomIntent("finish"))
+})

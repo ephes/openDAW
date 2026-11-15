@@ -1,4 +1,4 @@
-import {Errors, Option, panic, RuntimeNotifier, TimeSpan, UUID} from "@opendaw/lib-std"
+import {Errors, Option, panic, RuntimeNotifier, Terminator, TimeSpan, UUID} from "@opendaw/lib-std"
 import {BoxGraph} from "@opendaw/lib-box"
 import {Promises} from "@opendaw/lib-runtime"
 import {BoxIO, UserInterfaceBox} from "@opendaw/studio-boxes"
@@ -22,61 +22,60 @@ export namespace YService {
                                           env: ProjectEnv,
                                           roomName: string): Promise<RoomResult> => {
         if (roomName === "signaling") {return panic("Invalid room name: signaling")}
+        const resources = new Terminator()
         const doc = new Y.Doc()
-        const provider: WebsocketProvider = new WebsocketProvider(serverUrl, roomName, doc)
-        console.debug("clientID:", doc.clientID)
-        console.debug("Provider url:", provider.url)
-        if (!provider.synced) {
-            const {resolve, promise} = Promise.withResolvers<void>()
-            const onSync = (isSynced: boolean) => {
-                if (isSynced) {
+        resources.own({terminate: () => doc.destroy()})
+        let project: Project | undefined
+        try {
+            const provider = new WebsocketProvider(serverUrl, roomName, doc)
+            resources.own({terminate: () => provider.destroy()})
+            if (!provider.synced) {
+                const {resolve, promise} = Promise.withResolvers<void>()
+                const onSync = (isSynced: boolean) => {if (isSynced) {resolve()}}
+                provider.on("sync", onSync)
+                try {
+                    await Promises.timeout(promise, TimeSpan.seconds(10), "Timeout 'synced'")
+                } finally {
                     provider.off("sync", onSync)
-                    resolve()
                 }
             }
-            provider.on("sync", onSync)
-            await Promises.timeout(promise, TimeSpan.seconds(10), "Timeout 'synced'")
-        }
-        const boxes = doc.getMap("boxes")
-        const isRoomEmpty = boxes.size === 0
-        if (isRoomEmpty) {
-            const project = optProject.match({
-                none: () => Project.new(env),
-                some: project => project.copy()
-            })
-            const sync = await YSync.populateRoom({
-                boxGraph: project.boxGraph,
-                boxes,
-                conflict: () => project.invalid()
-            })
-            project.own(sync)
-            return {project, provider}
-        } else {
-            if (optProject.nonEmpty()) {
-                const approved = await RuntimeNotifier.approve({
-                    headline: "Room Already Exists",
-                    message: "Do you want to join it?",
-                    approveText: "Join",
-                    cancelText: "Cancel"
-                })
-                if (!approved) {
-                    return Promise.reject(Errors.AbortError)
+            const boxes = doc.getMap("boxes")
+            if (boxes.size === 0) {
+                project = optProject.match({none: () => Project.new(env), some: project => project.copy()})
+                resources.own(await YSync.populateRoom({
+                    boxGraph: project.boxGraph, boxes, conflict: () => project?.invalid() ?? false
+                }))
+            } else {
+                if (optProject.nonEmpty() && !await RuntimeNotifier.approve({
+                    headline: "Room Already Exists", message: "Do you want to join it?",
+                    approveText: "Join", cancelText: "Cancel"
+                })) {throw Errors.AbortError}
+                const boxGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
+                resources.own(await YSync.joinRoom({boxGraph, boxes, conflict: () => project?.invalid() ?? false}))
+                const mandatoryBoxes = ProjectSkeleton.findMandatoryBoxes(boxGraph)
+                const skeleton: ProjectSkeleton = {boxGraph, mandatoryBoxes}
+                await ProjectMigration.migrate(env, skeleton)
+                project = Project.fromSkeleton(env, skeleton, false)
+                boxGraph.beginTransaction()
+                try {
+                    const userInterfaceBox = UserInterfaceBox.create(boxGraph, UUID.generate(),
+                        box => box.root.refer(mandatoryBoxes.rootBox.users))
+                    boxGraph.endTransaction()
+                    project.follow(userInterfaceBox)
+                } catch (error) {
+                    if (boxGraph.inTransaction()) {boxGraph.abortTransaction()}
+                    throw error
                 }
             }
-            const boxGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
-            const sync = await YSync.joinRoom({boxGraph, boxes, conflict: () => project.invalid()})
-            const mandatoryBoxes = ProjectSkeleton.findMandatoryBoxes(boxGraph)
-            const skeleton: ProjectSkeleton = {boxGraph, mandatoryBoxes}
-            await ProjectMigration.migrate(env, skeleton)
-            const project = Project.fromSkeleton(env, skeleton, false)
-            boxGraph.beginTransaction()
-            // TODO How takes care to remove the user interface boxes?
-            const userInterfaceBox = UserInterfaceBox.create(boxGraph, UUID.generate(),
-                box => box.root.refer(mandatoryBoxes.rootBox.users))
-            boxGraph.endTransaction()
-            project.follow(userInterfaceBox)
-            project.own(sync)
+            // Transfer the complete room lifetime only after successful admission.
+            project.own(resources)
             return {project, provider}
+        } catch (error) {
+            // Drain all resources even when a cleanup itself fails, preserving
+            // the construction error as the caller's failure.
+            try {project?.terminate()} catch (cleanupError) {console.warn("Room project cleanup failed", cleanupError)}
+            try {resources.terminate()} catch (cleanupError) {console.warn("Room resource cleanup failed", cleanupError)}
+            throw error
         }
     }
 }

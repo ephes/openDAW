@@ -289,6 +289,15 @@ Shared collection and subscription ownership contracts are documented in
 [`lib-runtime`](packages/lib/runtime/README.md). See the
 [round 94 repair plan](plans/scout-round94-collections-lifecycle.md) for regression evidence.
 
+### Live room and recovery log lifetime
+
+Room joins preserve shared map identities and unwind failed setup. Only the latest
+connection intent can install a room; unused results and retired room projects
+close their transport/document. Recovery-log failures stop capture visibly, and
+commit counts advance only after file closure succeeds. See the
+[core contracts](packages/studio/core/README.md#live-room-admission-and-ownership)
+and [round 98 validation plan](plans/scout-round98-room-lifecycle.md).
+
 ### Hardware MIDI output
 
 Hardware notes retain the endpoint and channel that received their starts. Reset,

@@ -313,3 +313,39 @@ Engine worklet and offline renderer RPC senders belong to their existing
 terminators. Shutdown rejects outstanding requests and retires their callbacks;
 late worker replies cannot revive them. See the
 [runtime sender contract](../../lib/runtime/README.md#rpc-sender-lifetime).
+
+### Live room admission and ownership
+
+Both `YSync` factories retain the supplied conflict policy. Remote edits are
+checked after pointer hubs have been resolved. Refused edits restore the graph
+under the outbound echo guard and publish a single inverse Yjs transaction using
+Yjs's UndoManager, including deleted shared maps. Validation failures also refuse
+the batch. This is optimistic conflict recovery, not an authoritative server-side
+admission service; concurrent participants still use Yjs convergence.
+
+Joining hydrates one owned graph transaction without publishing bootstrap writes
+or replacing shared maps/extensions. Failed joins abort and remove subscriptions;
+a fresh join may retry. Population prepares the complete detached map set before
+publishing it. Same-UUID root replacements require the same box type and apply
+primitive/pointer fields transactionally. Remote field paths require the `fields`
+marker and canonical decimal signed i16 keys; aliases, fractions and overflow are
+refused before address narrowing.
+
+`YService.getOrCreateRoom` owns the document, provider and sync until admission
+finishes, then transfers their shared lifetime to the returned project. Callers
+must terminate unused results. Failed approval, timeout, hydration, migration or
+project setup closes acquired resources and removes pending sync listeners.
+Terminating a room project closes its transport and document as well as its sync.
+
+### Recovery log writer lifetime
+
+`SyncLogWriter.terminate()` retires both transaction and active update listeners
+and discards the unfinished transaction. Already queued complete commits may finish.
+Hashing and synchronous/asynchronous observer failures set the writer's `error`
+option, stop further capture and show one “Recovery Log Stopped” notification.
+Queued appends do not continue after an unacknowledged commit. Save the project
+and start a new recovery log to recover; the failed hash chain is never resumed.
+Observers may return a promise; successful settlement acknowledges that commit.
+The studio file observer acknowledges only after `close()` succeeds, so its commit
+counter never claims a failed write was saved. These guarantees do not change the
+existing recovery-log wire format.
