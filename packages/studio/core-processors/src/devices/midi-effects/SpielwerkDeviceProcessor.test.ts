@@ -27,6 +27,25 @@ it("offers actual tempo and partial sample bounds through the EventProcessor to 
 })
 
 it.each([
+    {name: "loop wrap", blocks: [{index: 0, p0: 10, p1: 20, s0: 0, s1: 50, bpm: 120}, {index: 1, p0: 0, p1: 10, s0: 50, s1: 128, bpm: 120}]},
+    {name: "tempo split", blocks: [{index: 0, p0: 0, p1: 10, s0: 0, s1: 60, bpm: 90}, {index: 1, p0: 10, p1: 20, s0: 60, s1: 128, bpm: 147}]}
+])("matches each downstream pull to its own block when one quantum holds several ($name)", ({blocks}) => {
+    const seen: ScriptBlock[] = []
+    const f = spielFixture(class {
+        *process(b: ScriptBlock) {seen.push({...b}); yield outputNote(b.from, 1)}
+    })
+    const out = f.edit(() => MIDIOutputBox.create(f.graph, UUID.generate()))
+    const box = f.edit(() => MIDIOutputDeviceBox.create(f.graph, UUID.generate(), b => b.device.refer(out.device)))
+    const sink = new MIDIOutputDeviceProcessor(f.context, f.adapters.adapterFor(box, MIDIOutputDeviceBoxAdapter))
+    sink.setNoteEventSource(f.processor)
+    const quantum = blocks.map(entry => ({...entry, flags: BlockFlag.transporting | BlockFlag.playing}))
+    f.processor.process({blocks: quantum})
+    sink.process({blocks: quantum})
+    expect(seen.map(b => [b.from, b.to, b.bpm, b.s0, b.s1]))
+        .toEqual(blocks.map(({p0, p1, bpm, s0, s1}) => [p0, p1, bpm, s0, s1]))
+})
+
+it.each([
     {position: Infinity}, {position: NaN}, {duration: Infinity}, {duration: NaN},
     {position: Number.MAX_VALUE, duration: Number.MAX_VALUE},
     {position: 1e30, duration: 1}, {pitch: 60.5}, {pitch: NaN},

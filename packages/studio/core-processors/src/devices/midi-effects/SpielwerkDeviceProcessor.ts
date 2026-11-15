@@ -19,7 +19,7 @@ import {WerkstattParameterBox} from "@opendaw/studio-boxes"
 import {Event, EventSpanRetainer, NoteEvent, ppqn} from "@opendaw/lib-dsp"
 import {EngineContext} from "../../EngineContext"
 import {EventProcessor} from "../../EventProcessor"
-import {Block, BlockFlag, Processor} from "../../processing"
+import {Block, BlockFlag, MutableBlock, Processor} from "../../processing"
 import {AutomatableParameter} from "../../AutomatableParameter"
 import {NoteEventSource, NoteEventTarget, NoteLifecycleEvent} from "../../NoteEventSource"
 import {MidiEffectProcessor} from "../../MidiEffectProcessor"
@@ -96,6 +96,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     readonly #sourceToOutput: SetMultimap<int, int>
     readonly #uuid: string
     readonly #boundParameters: Array<AutomatableParameter<number>>
+    readonly #blocks: Array<MutableBlock>
 
     readonly #events: Array<UserEvent> = []
     readonly #sourceStops = new Map<int, ppqn>()
@@ -109,6 +110,8 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     #silenced: boolean = false
     #wasPlaying: boolean = false
     #retirePending: boolean = false
+    #blockCount: int = 0
+    #blockCursor: int = 0
 
     constructor(context: EngineContext, adapter: SpielwerkDeviceBoxAdapter) {
         super(context)
@@ -119,6 +122,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
         this.#sourceToOutput = new SetMultimap()
         this.#uuid = UUID.toString(adapter.uuid)
         this.#boundParameters = []
+        this.#blocks = []
         const {parameters, box} = adapter
         this.ownAll(
             box.code.catchupAndSubscribe(owner => {
@@ -250,6 +254,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                     }
                 }
             }
+            this.#selectBlock(from, to)
             this.#userBlock.from = from
             this.#userBlock.to = to
             this.#userBlock.flags = flags
@@ -312,10 +317,12 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
         this.eventInput.clear()
     }
 
-    introduceBlock({bpm, s0, s1}: Block): void {
-        this.#userBlock.bpm = bpm
-        this.#userBlock.s0 = s0
-        this.#userBlock.s1 = s1
+    introduceBlock(block: Block): void {
+        if (block.index === 0) {this.#blockCount = this.#blockCursor = 0}
+        if (this.#blockCount === this.#blocks.length) {
+            this.#blocks.push({index: 0, p0: 0, p1: 0, s0: 0, s1: 0, bpm: 0, flags: 0})
+        }
+        Object.assign(this.#blocks[this.#blockCount++], block)
     }
 
     processEvents(_block: Block, _from: ppqn, _to: ppqn): void {}
@@ -338,6 +345,28 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
 
     index(): number {return this.#adapter.indexField.getValue()}
     adapter(): SpielwerkDeviceBoxAdapter {return this.#adapter}
+
+    // Downstream instruments pull once per block after all blocks were introduced, so match the pull to its block.
+    #selectBlock(from: ppqn, to: ppqn): void {
+        const count = this.#blockCount
+        for (let offset = 0; offset < count; offset++) {
+            const index = (this.#blockCursor + offset) % count
+            const {p0, p1} = this.#blocks[index]
+            if (p0 === from && p1 === to) {return this.#applyBlock(index)}
+        }
+        for (let index = 0; index < count; index++) {
+            const {p0, p1} = this.#blocks[index]
+            if (p0 <= from && to <= p1) {return this.#applyBlock(index)}
+        }
+    }
+
+    #applyBlock(index: int): void {
+        const {bpm, s0, s1} = this.#blocks[index]
+        this.#userBlock.bpm = bpm
+        this.#userBlock.s0 = s0
+        this.#userBlock.s1 = s1
+        this.#blockCursor = index + 1
+    }
 
     #tryLoad(expectedUpdate: int): void {
         if (this.#retirePending) {return}
