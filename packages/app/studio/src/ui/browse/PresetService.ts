@@ -10,11 +10,12 @@ import {
     Option,
     panic,
     RuntimeNotifier,
+    tryCatch,
     UUID
 } from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {Box, IndexedBox} from "@opendaw/lib-box"
-import {DeviceBoxAdapter, DeviceBoxUtils, Devices, EffectDeviceBoxAdapter, InstrumentFactories, PresetDecoder, PresetEncoder, PresetHeader} from "@opendaw/studio-adapters"
+import {DeviceBoxAdapter, DeviceBoxUtils, Devices, InstrumentFactories, PresetDecoder, PresetEncoder, PresetHeader, TransferUtils} from "@opendaw/studio-adapters"
 import {
     AudioEffectChainPresetMeta,
     AudioEffectPresetMeta,
@@ -79,6 +80,7 @@ export class PresetService {
     readonly #cloudIndex = new DefaultObservableValue<ReadonlyArray<PresetMeta>>([])
     readonly #cloudReady: Promise<void>
     readonly #cursors = new Map<string, PresetIdentity>()
+    readonly #applyIntents = new WeakMap<Project, Map<string, symbol>>()
 
     constructor(readonly service: StudioService) {
         PresetStorage.readIndex().catch(reason => console.warn("PresetStorage.readIndex failed", reason))
@@ -171,67 +173,63 @@ export class PresetService {
     // entries, deletes the target effect and inserts the preset at the same
     // index. Other categories are no-ops here (they never reach the pager).
     async applyPresetTo(adapter: DeviceBoxAdapter, entry: PresetEntry): Promise<void> {
-        const loaded = await Promises.tryCatch(PresetApplication.loadBytes(entry.uuid, entry.source))
-        if (loaded.status === "rejected") {
-            // User cancelled the download — silent, no error popup.
-            if (Errors.isAbort(loaded.error)) {return}
-            await RuntimeNotifier.info({
-                headline: "Could Not Load Preset",
-                message: String(loaded.error)
-            })
-            return
-        }
-        const bytes = loaded.value
+        const project = this.project
         const audioUnitBox = adapter.deviceHost().audioUnitBoxAdapter().box
+        const targetBox = adapter.box
         const cursorKey = cursorKeyFor(adapter)
-        if (entry.category === "instrument") {
-            this.project.editing.modify(() => {
-                const attempt = PresetDecoder.replaceAudioUnit(bytes, audioUnitBox, {
-                    keepMIDIEffects: true,
-                    keepAudioEffects: true,
-                    keepTimeline: true
-                })
-                if (attempt.isFailure()) {
-                    RuntimeNotifier.info({
-                        headline: "Can't Apply Preset",
-                        message: attempt.failureReason()
-                    }).then()
-                }
-            })
-            this.project.loadScriptDevices()
-        } else if (entry.category === "audio-unit") {
-            this.project.editing.modify(() => {
-                const attempt = PresetDecoder.replaceAudioUnit(bytes, audioUnitBox)
-                if (attempt.isFailure()) {
-                    RuntimeNotifier.info({
-                        headline: "Can't Apply Preset",
-                        message: attempt.failureReason()
-                    }).then()
-                }
-            })
-            this.project.loadScriptDevices()
-        } else if (entry.category === "audio-effect" || entry.category === "midi-effect") {
-            if (!Devices.isEffect(adapter)) {return}
-            const effect = adapter as EffectDeviceBoxAdapter
-            const insertIndex = effect.indexField.getValue()
-            const chainKind = entry.category === "midi-effect"
-                ? PresetHeader.ChainKind.Midi
-                : PresetHeader.ChainKind.Audio
-            this.project.editing.modify(() => {
-                Devices.deleteEffectDevices([effect])
-                const attempt = PresetDecoder.insertEffectChain(bytes, audioUnitBox, insertIndex, chainKind)
-                if (attempt.isFailure()) {
-                    RuntimeNotifier.info({
-                        headline: "Can't Apply Preset",
-                        message: attempt.failureReason()
-                    }).then()
-                }
-            })
-            this.project.loadScriptDevices()
-        } else {
-            return
+        let intents = this.#applyIntents.get(project)
+        if (!isDefined(intents)) {
+            intents = new Map()
+            this.#applyIntents.set(project, intents)
         }
-        this.#cursors.set(cursorKey, identityOf(entry))
+        const intent = Symbol()
+        intents.set(cursorKey, intent)
+        const current = () => this.service.optProject.unwrapOrNull() === project
+            && intents.get(cursorKey) === intent
+            && project.boxGraph.findBox(targetBox.address.uuid).unwrapOrNull() === targetBox
+            && project.boxGraph.findBox(audioUnitBox.address.uuid).unwrapOrNull() === audioUnitBox
+            && cursorKeyFor(adapter) === cursorKey
+        try {
+            const loaded = await Promises.tryCatch(PresetApplication.loadBytes(entry.uuid, entry.source))
+            if (!current()) {return}
+            if (loaded.status === "rejected") {
+                if (Errors.isAbort(loaded.error)) {return}
+                await RuntimeNotifier.info({headline: "Could Not Load Preset", message: String(loaded.error)})
+                return
+            }
+            const bytes = loaded.value
+            const applied = tryCatch(() => project.editing.modify(() => {
+                const attempt = (() => {
+                    if (entry.category === "instrument") {
+                        return PresetDecoder.replaceAudioUnit(bytes, audioUnitBox, {
+                            keepMIDIEffects: true, keepAudioEffects: true, keepTimeline: true
+                        })
+                    }
+                    if (entry.category === "audio-unit") {return PresetDecoder.replaceAudioUnit(bytes, audioUnitBox)}
+                    if ((entry.category === "audio-effect" || entry.category === "midi-effect") && Devices.isEffect(adapter)) {
+                        const insertIndex = adapter.indexField.getValue()
+                        const attempt = PresetDecoder.insertEffectChain(bytes, audioUnitBox, insertIndex,
+                            entry.category === "midi-effect" ? PresetHeader.ChainKind.Midi : PresetHeader.ChainKind.Audio)
+                        if (attempt.isSuccess()) {Devices.deleteEffectDevices([adapter])}
+                        return attempt
+                    }
+                    return undefined
+                })()
+                if (!isDefined(attempt)) {return false}
+                // A handled decoding refusal must enter BoxEditing's rollback path.
+                if (attempt.isFailure()) {throw new Error(attempt.failureReason())}
+                return true
+            }))
+            if (applied.status === "failure") {
+                await RuntimeNotifier.info({headline: "Can't Apply Preset", message: String(applied.error)})
+                return
+            }
+            if (applied.value.unwrapOrNull() !== true) {return}
+            this.#cursors.set(cursorKey, identityOf(entry))
+            project.loadScriptDevices()
+        } finally {
+            if (intents.get(cursorKey) === intent) {intents.delete(cursorKey)}
+        }
     }
 
     #stepPreset(category: PresetCategory,
@@ -321,9 +319,39 @@ export class PresetService {
         return value.length > 0 ? value : this.#effectKeyFromBox(box)
     }
 
+    // Compare the source closure, including newly attached children, rather than
+    // retaining live references as authority across a dialog. Unrelated units
+    // may still be edited while the dialog is open.
+    #captureSaveSource(roots: ReadonlyArray<Box>): () => boolean {
+        const project = this.project
+        const collect = () => [...new Set([...roots, ...project.boxGraph.dependenciesOf(roots, {
+            alwaysFollowMandatory: true, stopAtResources: true, excludeBox: TransferUtils.shouldExclude
+        }).boxes])]
+        const snapshot = new Map(collect().map(box => [box, new Uint8Array(box.toArrayBuffer())]))
+        return () => {
+            const matches = tryCatch(() => this.service.optProject.unwrapOrNull() === project
+                && roots.every(box => project.boxGraph.findBox(box.address.uuid).unwrapOrNull() === box)
+                && (() => {
+                    const current = collect()
+                    return current.length === snapshot.size && current.every(box => {
+                        const previous = snapshot.get(box)
+                        if (!isDefined(previous)) {return false}
+                        const bytes = new Uint8Array(box.toArrayBuffer())
+                        return previous.length === bytes.length && previous.every((value, index) => bytes[index] === value)
+                    })
+                })())
+            if (matches.status === "success" && matches.value) {return true}
+            RuntimeNotifier.info({headline: "Preset Source Changed",
+                message: "The source changed or its project closed. Start a fresh save to use the current source."})
+                .catch(reason => console.warn("Could not show preset source notice", reason))
+            return false
+        }
+    }
+
     async saveAsSingleEffectPreset(category: PresetEffectKind,
                                    deviceKey: string,
                                    effect: IndexedBox): Promise<void> {
+        const sourceCurrent = this.#captureSaveSource([effect])
         const dialog = await Promises.tryCatch(PresetDialogs.showSavePresetDialog({
             headline: `Save ${deviceKey} Preset`,
             suggestedName: this.#effectLabelFromBox(effect),
@@ -334,6 +362,7 @@ export class PresetService {
             if (Errors.isAbort(dialog.error)) {return}
             throw dialog.error
         }
+        if (!sourceCurrent()) {return}
         const kind = category === "audio-effect" ? PresetHeader.ChainKind.Audio : PresetHeader.ChainKind.Midi
         const bytes = PresetEncoder.encodeEffects([effect], kind)
         const now = Date.now()
@@ -360,6 +389,7 @@ export class PresetService {
     }
 
     async saveAsChainPreset(kind: PresetHeader.ChainKind, effects: ReadonlyArray<IndexedBox>): Promise<void> {
+        const sourceCurrent = this.#captureSaveSource(effects)
         const isAudio = kind === PresetHeader.ChainKind.Audio
         const defaultName = effects.length === 1
             ? this.#effectLabelFromBox(effects[0])
@@ -374,6 +404,7 @@ export class PresetService {
             if (Errors.isAbort(dialog.error)) {return}
             throw dialog.error
         }
+        if (!sourceCurrent()) {return}
         const bytes = PresetEncoder.encodeEffects(effects, kind)
         const now = Date.now()
         const meta = isAudio
@@ -406,6 +437,7 @@ export class PresetService {
         const adapter = this.project.boxAdapters.adapterFor(inputBox, Devices.isAny)
         const labeled = adapter.labelField.getValue()
         const suggestedName = labeled.length > 0 ? labeled : deviceKey
+        const sourceCurrent = this.#captureSaveSource([audioUnitBox])
         const dialog = await Promises.tryCatch(PresetDialogs.showSavePresetDialog({
             headline: `Save ${deviceKey} Preset`,
             suggestedName,
@@ -415,6 +447,7 @@ export class PresetService {
             if (Errors.isAbort(dialog.error)) {return}
             throw dialog.error
         }
+        if (!sourceCurrent()) {return}
         const now = Date.now()
         const meta: InstrumentPresetMeta = {
             category: "instrument",
@@ -439,6 +472,9 @@ export class PresetService {
             await this.saveAsRackPreset(instrumentUuid, effectUuids)
             return
         }
+        const audioUnitBox = this.#audioUnitBoxForInstrumentUuid(instrumentUuid)
+        if (isAbsent(audioUnitBox)) {return}
+        const sourceCurrent = this.#captureSaveSource([audioUnitBox])
         const choice = await Promises.tryCatch(PresetDialogs.showRackCompositionDialog(
             "Save as Rack",
             "Include the entire audio chain, or save just the instrument?"))
@@ -446,6 +482,7 @@ export class PresetService {
             if (Errors.isAbort(choice.error)) {return}
             throw choice.error
         }
+        if (!sourceCurrent()) {return}
         if (choice.value.choice === "entire-chain") {
             await this.saveAsRackPreset(instrumentUuid, [])
             return
@@ -475,6 +512,7 @@ export class PresetService {
         const adapter = this.project.boxAdapters.adapterFor(inputBox, Devices.isAny)
         const labeled = adapter.labelField.getValue()
         const suggestedName = labeled.length > 0 ? labeled : instrument
+        const sourceCurrent = this.#captureSaveSource([audioUnitBox])
         const dialog = await Promises.tryCatch(PresetDialogs.showSavePresetDialog({
             headline: "Save as Rack",
             suggestedName,
@@ -484,6 +522,7 @@ export class PresetService {
             if (Errors.isAbort(dialog.error)) {return}
             throw dialog.error
         }
+        if (!sourceCurrent()) {return}
         const now = Date.now()
         const includeTimeline = dialog.value.includeTimeline
         const meta: RackPresetMeta = {
@@ -563,13 +602,14 @@ export class PresetService {
             || entry.category === "audio-effect-chain" || entry.category === "midi-effect-chain") {
             const isAudio = entry.category === "audio-effect" || entry.category === "audio-effect-chain"
             const effects = this.resolveEffectBoxesFromDrag(isAudio ? "audio-effect" : "midi-effect", dragData)
+            const sourceCurrent = this.#captureSaveSource(effects)
             const approved = await RuntimeNotifier.approve({
                 headline: "Replace Preset?",
                 message: `Replace '${entry.name}' with ${effects.length === 1 ? "the dragged effect" : `${effects.length} effects`}?`,
                 approveText: "Replace",
                 cancelText: "Cancel"
             })
-            if (!approved) {return}
+            if (!approved || !sourceCurrent()) {return}
             const kind = isAudio ? PresetHeader.ChainKind.Audio : PresetHeader.ChainKind.Midi
             const bytes = PresetEncoder.encodeEffects(effects, kind)
             await PresetStorage.save(meta, bytes)
@@ -579,6 +619,7 @@ export class PresetService {
             if (dragData.type !== "instrument" || dragData.device !== null) {return}
             const audioUnitBox = this.#audioUnitBoxForInstrumentUuid(dragData.uuid)
             if (isAbsent(audioUnitBox)) {return}
+            const sourceCurrent = this.#captureSaveSource([audioUnitBox])
             const confirm = await Promises.tryCatch(PresetDialogs.showReplacePresetDialog({
                 headline: "Replace Preset?",
                 message: `Replace '${entry.name}' with the dragged instrument?`,
@@ -588,6 +629,7 @@ export class PresetService {
                 if (Errors.isAbort(confirm.error)) {return}
                 throw confirm.error
             }
+            if (!sourceCurrent()) {return}
             await PresetStorage.save({...meta, hasTimeline: confirm.value.includeTimeline},
                 PresetEncoder.encode(audioUnitBox, {includeTimeline: confirm.value.includeTimeline}))
             return
@@ -597,6 +639,7 @@ export class PresetService {
             if (isAbsent(candidate)) {return}
             const audioUnitBox = this.#audioUnitBoxForInstrumentUuid(candidate.instrumentUuid)
             if (isAbsent(audioUnitBox)) {return}
+            const sourceCurrent = this.#captureSaveSource([audioUnitBox])
             let keepEntireChain = true
             let includeTimeline = false
             if (candidate.effectUuids.length === 0) {
@@ -623,6 +666,7 @@ export class PresetService {
                 }
                 includeTimeline = confirm.value.includeTimeline
             }
+            if (!sourceCurrent()) {return}
             const keep = new Set(candidate.effectUuids)
             const bytes = keepEntireChain && candidate.effectUuids.length === 0
                 ? PresetEncoder.encode(audioUnitBox, {includeTimeline})

@@ -378,3 +378,18 @@ receives a fresh token. Cleanup failures are logged without replacing the primar
 import error; such storage failures can require manual library recovery. No promise
 of process-crash recovery is added. Run the core DAWproject/SamplePublication tests
 and the synthetic Chromium selection/import fixtures after building.
+
+
+### Track compaction
+
+`ProjectApi.compactTracks` preserves top-to-bottom greedy placement: each region
+tries earlier main lanes in order. Region adapters resolve occupied PPQN endpoints
+against the current tempo map, including seconds-based audio. The operation reads
+live pointer membership and keeps newly moved regions in its occupancy index.
+It never uses transaction-delayed adapter collections to decide whether a lane fits.
+
+For N regions and L lanes, coordinate sorting costs O(N log N); each placement
+probe and accepted insert costs O(log N), with at most O(N L) probes. Sparse prefix
+maxima avoid repeatedly sorting or scanning target-lane prefixes. Clips and
+automation tracks are preserved; the caller wraps compaction in an editing
+transaction so moves and empty-lane deletion form one undo step.

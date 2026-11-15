@@ -169,3 +169,17 @@ activate the preset.
   same way projects and samples are.
 - The first time you open the Preset browser in a session a small spinner is shown while the stock
   catalogue is fetched. Once cached, switching back to the tab is instant.
+
+## Pending selections and save confirmations
+
+When you select several presets quickly for the same device slot, only the latest
+selection can apply. Different device slots load independently. A refused preset
+keeps the current device, its sound settings, undo history and pager position.
+Closing the project, switching projects or removing the destination discards its
+pending preset load.
+
+Save and Replace dialogs check the source again after confirmation. If you edit,
+remove or replace the source, change its rack contents, or leave its project while
+the dialog is open, **Preset Source Changed** asks you to start a fresh save.
+The existing preset is kept. Edits to unrelated audio units do not invalidate the
+source.

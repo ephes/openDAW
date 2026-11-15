@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Compact audio lanes using tempo-aware region endpoints, including seconds-based recordings across tempo changes.
+- Index occupied intervals once per compaction operation, avoiding repeated scans and sorting of growing target lanes while preserving greedy placement and undo behavior.
+
 - Export DAWproject audio by UUID with independent display labels; serialize effect chains by current index and stable UUID ties.
 - Bound compressed DAWproject picker input and sample-import concurrency; unwind owned sample generations on failure while preserving reused/preexisting assets and the primary error.
 

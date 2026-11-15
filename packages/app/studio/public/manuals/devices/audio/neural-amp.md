@@ -118,3 +118,14 @@ Start with Input at 0 dB and adjust based on your source signal. Guitar DI signa
 ### 5.2 CPU Usage
 
 Enable Mono mode when stereo processing isn't needed—it halves CPU usage. This is especially helpful when using multiple Neural Amp instances.
+
+
+## Switching packs and closing the editor
+
+The model menu and cache indicators follow the current pack. Late metadata or
+cache scans from a previous pack are discarded. A failed current scan clears the
+pack information so it can be retried by selecting the pack again.
+
+Closing the editor or removing the device cancels an active model switch. Selecting
+a different model also retires the previous request. A late download or error cannot
+install a retired model or mark the newer selection as failed.

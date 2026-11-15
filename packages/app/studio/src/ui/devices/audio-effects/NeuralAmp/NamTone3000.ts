@@ -174,9 +174,18 @@ export namespace NamTone3000 {
         boxGraph: BoxGraph, editing: Editing, adapter: NeuralAmpDeviceBoxAdapter,
         packTitle: string, signal?: AbortSignal
     ): Promise<void> => {
+        const target = adapter.box.model.targetVertex.unwrapOrNull()
+        const checkOwner = () => {
+            signal?.throwIfAborted()
+            if (boxGraph.findBox(adapter.box.address.uuid).unwrapOrNull() !== adapter.box
+                || adapter.box.model.targetVertex.unwrapOrNull() !== target) {throw Errors.AbortError}
+        }
+        checkOwner()
         const text = await readModelFromPack(packId, modelId, signal)
+        checkOwner()
         const jsonBuffer = new TextEncoder().encode(text)
         const uuid = await UUID.sha256(jsonBuffer.buffer as ArrayBuffer)
+        checkOwner()
         editing.modify(() => {
             const oldTarget = adapter.box.model.targetVertex
             const modelBox = boxGraph.findBox<NeuralAmpModelBox>(uuid).unwrapOrElse(() =>
