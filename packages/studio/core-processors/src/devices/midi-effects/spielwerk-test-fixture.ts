@@ -15,10 +15,10 @@ export function spielFixture(create: new () => object, register = true) {
     }))
     const adapter = f.adapters.adapterFor(box, SpielwerkDeviceBoxAdapter)
     const processor = new SpielwerkDeviceProcessor(f.context, adapter)
-    processor.setNoteEventSource(eventSource([]))
+    const sourceLease = processor.setNoteEventSource(eventSource([]))
     const compile = (create: new () => object, update = 2) => {
         registry[key] = {create, update}
         f.edit(() => box.code.setValue(`// @spielwerk test 1 ${update}\n// @param Gain\n`))
     }
-    return {...f, box, param, adapter, processor, registry, key, compile}
+    return {...f, box, param, adapter, processor, sourceLease, registry, key, compile}
 }

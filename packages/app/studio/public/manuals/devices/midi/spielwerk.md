@@ -294,3 +294,12 @@ Output positions and positive durations must be finite, and their sum must be a
 finite, representably later end. Pitches are integers from 0 to 127; velocity is
 finite in [0, 1]. Cents must be finite (omission defaults to zero). Invalid output
 quarantines that generation before it can be queued or emitted.
+
+### Scheduled note lifetime
+
+Notes yielded while consuming a source note retain that source identity, including
+future notes. Its stop cancels future descendants and releases sounding descendants.
+A descendant due before a source stop in the same window still plays up to that
+stop. Notes generated after the event iterator finishes are independent.
+Seek/discontinuity and playing-to-stopped transitions clear scheduled notes even
+when no output is sounding, and invoke `reset()` under the script fault policy.

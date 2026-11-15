@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep source ownership through scheduled Spielwerk notes; cancel queued descendants on source stop and clear pending-only transport generations with guarded reset hooks.
+
 - Admit only finite, representable Spielwerk notes with integral MIDI pitches; validate Werkstatt output identities/lengths and publish checked staging audio, including safe detach recovery.
 
 - Quarantine script parameter callback failures and attempt each registered compiled generation once, preserving late-registry polling and explicit recompile recovery.

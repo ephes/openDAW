@@ -35,6 +35,7 @@ const parseUpdate = (code: string): int => {
 }
 
 interface ScheduledNote {
+    readonly sourceId?: int
     readonly position: ppqn
     readonly duration: ppqn
     readonly pitch: byte
@@ -95,6 +96,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     readonly #boundParameters: Array<AutomatableParameter<number>>
 
     readonly #events: Array<UserEvent> = []
+    readonly #sourceStops = new Map<int, ppqn>()
     readonly #userBlock: {from: ppqn, to: ppqn, bpm: number, s0: int, s1: int, flags: int}
         = {from: 0, to: 0, bpm: 0, s0: 0, s1: 0, flags: 0}
 
@@ -156,20 +158,22 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
 
     * processNotes(from: ppqn, to: ppqn, flags: int): IterableIterator<NoteLifecycleEvent> {
         const playing = Bits.every(flags, BlockFlag.transporting | BlockFlag.playing)
-        if (this.#retainer.nonEmpty()) {
-            if (Bits.every(flags, BlockFlag.discontinuous) || (this.#wasPlaying && !playing)) {
-                for (const event of this.#retainer.releaseAll()) {
-                    yield NoteLifecycleEvent.stop(event, from)
-                }
-                Arrays.clear(this.#scheduled)
-                this.#sourceToOutput.clear()
+        if (Bits.every(flags, BlockFlag.discontinuous) || (this.#wasPlaying && !playing)) {
+            for (const event of this.#retainer.releaseAll()) {
+                yield NoteLifecycleEvent.stop(event, from)
+            }
+            Arrays.clear(this.#scheduled)
+            this.#sourceToOutput.clear()
+            try {
                 this.#userProcessor.ifSome(proc => {
                     if (isDefined(proc.reset)) {proc.reset()}
                 })
-            } else {
-                for (const event of this.#retainer.releaseLinearCompleted(to)) {
-                    yield NoteLifecycleEvent.stop(event, event.position + event.duration)
-                }
+            } catch (error) {
+                this.#silence(`Reset callback error: ${error}`)
+            }
+        } else {
+            for (const event of this.#retainer.releaseLinearCompleted(to)) {
+                yield NoteLifecycleEvent.stop(event, event.position + event.duration)
             }
         }
         this.#wasPlaying = playing
@@ -182,6 +186,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
             const source = this.#source.unwrap()
             const proc = this.#userProcessor.unwrap()
             this.#events.length = 0
+            this.#sourceStops.clear()
             for (const event of source.processNotes(from, to, flags)) {
                 if (NoteLifecycleEvent.isStart(event)) {
                     this.#events.push({
@@ -194,9 +199,18 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                         cent: event.cent
                     })
                 } else {
+                    this.#sourceStops.set(event.id, event.position)
+                    for (let i = this.#scheduled.length - 1; i >= 0; i--) {
+                        const note = this.#scheduled[i]
+                        if (note.sourceId !== event.id) {continue}
+                        this.#scheduled.splice(i, 1)
+                        if (note.position >= from && note.position < event.position) {
+                            yield* this.#emitNote(note, note.sourceId)
+                        }
+                    }
                     for (const outputId of this.#sourceToOutput.get(event.id)) {
                         for (const released of this.#retainer.release(note => note.id === outputId)) {
-                            yield NoteLifecycleEvent.stop(released, event.position)
+                            yield NoteLifecycleEvent.stop(released, Math.min(event.position, released.position + released.duration))
                         }
                     }
                     this.#sourceToOutput.removeKey(event.id)
@@ -212,7 +226,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                 const note = this.#scheduled[i]
                 if (note.position >= from && note.position < to) {
                     this.#scheduled.splice(i, 1)
-                    yield* this.#emitNote(note)
+                    yield* this.#emitNote(note, note.sourceId)
                 }
             }
             let currentSourceId: int = -1
@@ -227,7 +241,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                                 return {done: true, value: undefined}
                             }
                             const value = events[index++]
-                            if (value.gate) {currentSourceId = value.id}
+                            currentSourceId = value.gate ? value.id : -1
                             return {done: false, value}
                         }
                     }
@@ -248,12 +262,15 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                         this.#silence(error)
                         return
                     }
+                    const sourceStop = this.#sourceStops.get(currentSourceId)
+                    if (sourceStop !== undefined && yielded.position >= sourceStop) {continue}
                     if (yielded.position >= to) {
                         if (this.#scheduled.length >= MAX_SCHEDULED_NOTES) {
                             this.#silence(`Scheduler full: exceeded ${MAX_SCHEDULED_NOTES} scheduled notes`)
                             return
                         }
                         this.#scheduled.push({
+                            sourceId: currentSourceId >= 0 ? currentSourceId : undefined,
                             position: yielded.position,
                             duration: yielded.duration,
                             pitch: yielded.pitch,
@@ -280,6 +297,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
 
     reset(): void {
         this.#retainer.clear()
+        this.#sourceStops.clear()
         Arrays.clear(this.#scheduled)
         this.#sourceToOutput.clear()
         this.eventInput.clear()
@@ -352,7 +370,10 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     }
 
     * #emitNote(note: ScheduledNote, sourceId?: int): IterableIterator<NoteLifecycleEvent> {
-        const lifecycle = NoteLifecycleEvent.start(note.position, note.duration, note.pitch, note.velocity, note.cent)
+        const sourceStop = sourceId === undefined ? undefined : this.#sourceStops.get(sourceId)
+        const duration = sourceStop === undefined ? note.duration : Math.min(note.duration, sourceStop - note.position)
+        if (duration <= 0) {return}
+        const lifecycle = NoteLifecycleEvent.start(note.position, duration, note.pitch, note.velocity, note.cent)
         this.#retainer.addAndRetain({...lifecycle})
         if (isDefined(sourceId)) {this.#sourceToOutput.add(sourceId, lifecycle.id)}
         yield lifecycle

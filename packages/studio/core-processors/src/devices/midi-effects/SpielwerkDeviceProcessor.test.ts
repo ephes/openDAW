@@ -4,7 +4,8 @@ import {MIDIOutputDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {UUID} from "@opendaw/lib-std"
 import {MIDIOutputDeviceProcessor} from "../instruments/MIDIOutputDeviceProcessor"
 import {NoteLifecycleEvent} from "../../NoteEventSource"
-import {block, outputNote, ScriptBlock} from "../script-test-fixture"
+import {BlockFlag} from "../../processing"
+import {block, outputNote, ScriptBlock, ScriptEvent, eventSource} from "../script-test-fixture"
 import {spielFixture} from "./spielwerk-test-fixture"
 
 beforeAll(() => Object.assign(globalThis, {sampleRate: 48000}))
@@ -45,4 +46,76 @@ it("admits integral edge pitches, finite cents and optional default cents", () =
     const starts = [...f.processor.processNotes(0, 10, 0)].filter(NoteLifecycleEvent.isStart)
     expect(f.messages).toEqual([])
     expect(starts).toHaveLength(2)
+})
+
+it("cancels queued source descendants, preserves unrelated/anonymous notes, and owns due descendants", () => {
+    const a = NoteLifecycleEvent.start(0, 100, 60, 1, 0)
+    const b = NoteLifecycleEvent.start(0, 100, 64, 1, 0)
+    const f = spielFixture(class {
+        *process(context: ScriptBlock, events: Iterable<ScriptEvent>) {
+            for (const event of events) {
+                if (event.gate) yield outputNote(30, 100, event.pitch)
+            }
+            if (context.from === 0) yield outputNote(30, 100, 72)
+        }
+    })
+    f.sourceLease.terminate()
+    f.processor.setNoteEventSource(eventSource([a, b, NoteLifecycleEvent.stop(a, 10), NoteLifecycleEvent.stop(b, 40)]))
+    expect([...f.processor.processNotes(0, 10, 0)]).toEqual([])
+    expect([...f.processor.processNotes(10, 20, 0)]).toEqual([])
+    const due = [...f.processor.processNotes(30, 40, 0)]
+    expect(due.filter(NoteLifecycleEvent.isStart).map(e => e.pitch).sort()).toEqual([64, 72])
+    const stops = [...f.processor.processNotes(40, 50, 0)]
+    expect(stops.filter(NoteLifecycleEvent.isStop).map(e => e.pitch)).toEqual([64])
+    expect([...f.processor.iterateActiveNotesAt(50, false)].map(e => e.pitch)).toEqual([72])
+})
+it.each(["seek", "stop"])("clears pending-only output on %s and calls reset once", action => {
+    let resets = 0
+    const f = spielFixture(class {
+        *process(b: ScriptBlock) {if (b.from === 10) yield outputNote(50, 10)}
+        reset() {resets++}
+    })
+    const playing = BlockFlag.transporting | BlockFlag.playing
+    expect([...f.processor.processNotes(10, 20, playing)]).toEqual([])
+    const flags = action === "seek" ? playing | BlockFlag.discontinuous : 0
+    expect([...f.processor.processNotes(0, 10, flags)]).toEqual([])
+    expect([...f.processor.processNotes(50, 60, playing)]).toEqual([])
+    expect(resets).toBe(1)
+})
+it("quarantines a throwing reset hook without escaping the chain", () => {
+    const f = spielFixture(class {
+        *process() {yield outputNote(50, 10)}
+        reset() {throw new Error("reset")}
+    })
+    Array.from(f.processor.processNotes(0, 10, 0))
+    expect(() => [...f.processor.processNotes(10, 20, BlockFlag.discontinuous)]).not.toThrow()
+    expect(f.messages).toHaveLength(1)
+    expect([...f.processor.processNotes(50, 60, 0)]).toEqual([])
+})
+it("keeps scheduled starts before a same-window source stop and clips newly generated descendants", () => {
+    const a = NoteLifecycleEvent.start(0, 100, 60, 1, 0)
+    const f = spielFixture(class {
+        *process(_b: ScriptBlock, events: Iterable<ScriptEvent>) {
+            for (const event of events) if (event.gate) yield outputNote(15, 100)
+        }
+    })
+    f.sourceLease.terminate()
+    f.processor.setNoteEventSource(eventSource([a, NoteLifecycleEvent.stop(a, 18)]))
+    expect([...f.processor.processNotes(0, 10, 0)]).toEqual([])
+    const next = [...f.processor.processNotes(10, 20, 0)]
+    expect(next.filter(NoteLifecycleEvent.isStart).map(e => e.position)).toEqual([15])
+    expect(next.filter(NoteLifecycleEvent.isStop).map(e => e.position)).toEqual([18])
+    const g = spielFixture(class {
+        *process(_b: ScriptBlock, events: Iterable<ScriptEvent>) {
+            for (const event of events) if (event.gate) {
+                yield outputNote(1, 100)
+                yield outputNote(30, 100)
+            }
+        }
+    })
+    g.sourceLease.terminate()
+    g.processor.setNoteEventSource(eventSource([a, NoteLifecycleEvent.stop(a, 5)]))
+    const same = [...g.processor.processNotes(0, 10, 0)]
+    expect(same.filter(NoteLifecycleEvent.isStop).map(e => e.position)).toEqual([5])
+    expect([...g.processor.processNotes(30, 40, 0)]).toEqual([])
 })
