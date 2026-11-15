@@ -40,3 +40,44 @@ Dattorro needs no runtime repair: fresh/restarted output and irregular partition
 agree exactly, with 1e-7 tolerance only for independently specified dB gain mapping.
 Unity dry preserves channels and the wet network decorrelates stereo. The test
 rejects an intentional omitted-DSP-reset mutation; restored production code passes.
+
+## B22 — Maximizer modes and numerical contracts
+
+Both mode regressions fail before the shared history reset. Delay buffers, hold,
+envelope and published reduction retire on mode edits; parameter ramps continue.
+The static numerical oracle specifies gain algebraically, exact 5 ms latency,
+linked stereo ratios, steady headroom and sentinel preservation at 44.1/48/96 kHz.
+Whole and irregular rendering agree exactly through threshold automation. No
+additional numerical DSP repair was needed. A deliberate latency mutation is
+rejected, establishing oracle sensitivity without changing the production delay.
+
+## Local validation and handoff
+
+Fresh SSH clone of ephes/openDAW main at
+`9d2ed4229c10f676e181447ac1166313b5eea3c2` (newer than the scout pin); no
+repository AGENTS.md was present. The fresh branch already includes the round-100
+preset, compaction, demux and NAM pack fixes, which remain intact.
+All twelve slice scopes remained applicable. No version bump, workflow edit,
+external data, deployment, PR or merge. The two oracle-only slices needed no
+runtime repair; mutation probes demonstrate their failure sensitivity.
+
+Gates: locked `npm ci --ignore-scripts`, processor workspace Vitest/lint/typecheck,
+root `npm run build`, `npm test`, `npm run lint`. Local browser installation used
+the workspace cache. The exact browser gate attempted was:
+
+```sh
+PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r101-opendaw/.cache/playwright npm run test:browser
+```
+
+All nine browser cases stop before test code at Chromium launch: macOS
+`bootstrap_check_in … Permission denied (1100)` (MachPortRendezvousServer).
+The external clerk must run that gate outside the sandbox before adoption.
+No Actions are used to replace it. Logs are retained outside the clone at
+`/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r101-opendaw/`.
+
+Result: root build succeeded (24 tasks), lint succeeded (existing warnings only),
+and the complete root test run passed 276 files / 2,875 tests. The processor
+workspace typecheck passed. Added processor regressions/oracles cover 42 tests.
+Browser validation remains blocked as described above. All changes are parked
+for external review; no owner decisions or skipped slices remain. The final
+parking commit requests `[skip ci]` to avoid paid Actions on the branch push.

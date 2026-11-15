@@ -67,9 +67,10 @@ export class MaximizerDeviceProcessor extends AudioProcessor implements AudioEff
                     this.#reductionMin = 0.0
                 }),
             adapter.box.lookahead.catchupAndSubscribe(() => {
-                this.#lookahead = adapter.box.lookahead.getValue()
-                this.#position = 0 | 0
-                this.#envelope = 0.0
+                const lookahead = adapter.box.lookahead.getValue()
+                if (this.#lookahead === lookahead) {return}
+                this.#lookahead = lookahead
+                this.#resetHistory()
             })
         )
         this.readAllParameters()
@@ -84,6 +85,10 @@ export class MaximizerDeviceProcessor extends AudioProcessor implements AudioEff
         this.#outputPeaks.clear()
         this.#output.clear()
         this.eventInput.clear()
+        this.#resetHistory()
+    }
+
+    #resetHistory(): void {
         this.#position = 0 | 0
         this.#envelope = 0.0
         this.#peakHold = 0.0
@@ -91,6 +96,7 @@ export class MaximizerDeviceProcessor extends AudioProcessor implements AudioEff
         this.#buffer[0].fill(0.0)
         this.#buffer[1].fill(0.0)
         this.#reductionMin = 0.0
+        this.#reductionValue.fill(0.0)
     }
 
     get uuid(): UUID.Bytes {return this.#adapter.uuid}

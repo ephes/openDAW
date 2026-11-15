@@ -78,3 +78,13 @@ edits do not retry that generation. Explicitly changing/reloading a valid model
 creates new instances and permits recovery. Cleanup attempts both channels even
 if unloading one fails. Dattorro restart/partition tests exercise the real network
 at 44.1, 48 and 96 kHz, including nonzero pre-delay and unity dry stereo routing.
+
+### Maximizer latency modes
+
+Changing lookahead mode clears queued stereo audio, detector envelope/peak hold
+and reduction publication. Controls and any threshold ramp keep their values;
+the transition deliberately drops the old tail and can create a discontinuity.
+Lookahead restarts with ceil(sampleRate × 0.005) silent latency frames. Its linked
+stereo gain targets -0.001 dBFS headroom and clamps output to full scale. The
+zero-latency mode keeps the detector attack and can overshoot during transients.
+Both modes preserve channel ratios and processing across partial spans.
