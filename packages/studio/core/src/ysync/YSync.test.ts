@@ -389,6 +389,33 @@ describe("YSync conflict admission", () => {
     })
 })
 
+describe("YSync conflict revert failure", () => {
+    it("keeps both models on the committed remote edit when the inverse fails", async () => {
+        const source = await makeScene()
+        let leaf!: LeafBox
+        beginCommit(source.graph, () => {leaf = LeafBox.create(source.graph, UUID.generate()); leaf.count.setValue(1)})
+        const doc = copyDoc(source.doc)
+        const graph = graphForJoin()
+        beginCommit(graph, () => LeafBox.create(graph, leaf.address.uuid, box => box.count.setValue(1)))
+        const sync = new YSync({boxGraph: graph, boxes: doc.getMap("boxes"), conflict: () => true})
+        const end = graph.endTransaction.bind(graph)
+        let ends = 0
+        vi.spyOn(graph, "endTransaction").mockImplementation(() => {
+            if (++ends === 2) {throw new Error("synthetic inverse failure")}
+            end()
+        })
+        const error = vi.spyOn(console, "error").mockImplementation(() => {})
+        beginCommit(source.graph, () => leaf.count.setValue(2))
+        exchange(source.doc, doc)
+        expect(graph.inTransaction()).toBe(false)
+        expect(graph.findBox<LeafBox>(leaf.address.uuid).unwrap().count.getValue()).toBe(2)
+        const fields = (doc.getMap("boxes").get(UUID.toString(leaf.address.uuid)) as Y.Map<Y.Map<unknown>>).get("fields")!
+        expect(fields.get("1")).toBe(2)
+        expect(error).toHaveBeenCalledOnce()
+        sync.terminate()
+    })
+})
+
 describe("YSync join ownership", () => {
     it.each(["uuid", "type"])("unwinds a malformed later %s and allows retry", async invalid => {
         const source = await makeScene()

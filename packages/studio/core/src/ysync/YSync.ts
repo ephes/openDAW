@@ -144,6 +144,9 @@ export class YSync<T> implements Terminable {
             const applied: Update[] = []
             const capture = this.#boxGraph.subscribeToAllUpdatesImmediate({onUpdate: update => applied.push(update)})
             this.#boxGraph.beginTransaction()
+            // Once the remote batch is committed, a failed conflict inverse must
+            // not revert only the Y.Doc: both models then keep the remote edit.
+            let committed = false
             const result = tryCatch(() => {
                 for (const event of events) {
                     const path = this.#normalizePath(event.path)
@@ -167,6 +170,7 @@ export class YSync<T> implements Terminable {
                 }
                 this.#ignoreUpdates = true
                 this.#boxGraph.endTransaction()
+                committed = true
                 // Pointer hubs are finalized by endTransaction. Evaluate the
                 // project policy on that complete state, then restore both models.
                 const conflict = tryCatch(() => this.#conflict.mapOr(check => check(), false))
@@ -185,6 +189,10 @@ export class YSync<T> implements Terminable {
                 this.#ignoreUpdates = false
                 if (this.#boxGraph.inTransaction()) {
                     this.#boxGraph.abortTransaction()
+                }
+                if (committed) {
+                    console.error("[YSync] Conflict revert failed; keeping the committed remote edit:", result.error)
+                    return
                 }
                 rejected = transaction
                 undo.addTrackedOrigin(origin)

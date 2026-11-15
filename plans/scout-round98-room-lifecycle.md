@@ -62,8 +62,15 @@ SIGTRAP. All five browser cases are unexecuted, including the new room dialog
 case; this is not a passing browser gate. Repeat outside the sandbox:
 
 ```sh
-PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r98-opendaw/.cache/playwright npm run test:browser
+PLAYWRIGHT_BROWSERS_PATH=<workspace>/.cache/playwright npm run test:browser
 ```
 
 No owner decision was needed. External cross-family review and the browser run
 remain for the clerk; no merge, default-branch push or Actions invocation occurred.
+
+Clerk follow-up (2026-11-15): the browser suite was run outside the sandbox
+before merge (see the clerk report on the work item). Review added two repairs:
+transactions completing while a recovery commit is still being written are
+batched into one update commit, and a failed conflict inverse keeps the
+committed remote edit in both the graph and the Y.Doc instead of reverting only
+the Y.Doc.

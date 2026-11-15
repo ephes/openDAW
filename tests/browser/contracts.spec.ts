@@ -25,7 +25,9 @@ test("HTML sanitizes in Chromium and fences retirement", async ({page}) => {
 
 test("a cancelled newer room dialog retires an older pending connection", async ({page}) => {
     await page.evaluate(() => (window as Window & {fixtures: BrowserFixtures}).fixtures.roomIntent("start"))
-    await page.getByText("Connect", {exact: true}).click()
+    // The fixture page has no studio stylesheet, so an unstyled form label overlaps
+    // the footer; dispatch the dialog's click directly instead of a pointer hit test.
+    await page.getByText("Connect", {exact: true}).dispatchEvent("click")
     await page.evaluate(() => (window as Window & {fixtures: BrowserFixtures}).fixtures.roomIntent("newest"))
     await page.keyboard.press("Escape")
     await page.evaluate(() => (window as Window & {fixtures: BrowserFixtures}).fixtures.roomIntent("finish"))

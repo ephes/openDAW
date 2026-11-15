@@ -320,8 +320,11 @@ Both `YSync` factories retain the supplied conflict policy. Remote edits are
 checked after pointer hubs have been resolved. Refused edits restore the graph
 under the outbound echo guard and publish a single inverse Yjs transaction using
 Yjs's UndoManager, including deleted shared maps. Validation failures also refuse
-the batch. This is optimistic conflict recovery, not an authoritative server-side
-admission service; concurrent participants still use Yjs convergence.
+the batch. If restoring the graph itself fails after the remote batch was
+committed, both the graph and the Y.Doc keep the remote edit and the failure is
+logged, so the two models never diverge. This is optimistic conflict recovery,
+not an authoritative server-side admission service; concurrent participants
+still use Yjs convergence.
 
 Joining hydrates one owned graph transaction without publishing bootstrap writes
 or replacing shared maps/extensions. Failed joins abort and remove subscriptions;
@@ -346,6 +349,9 @@ option, stop further capture and show one “Recovery Log Stopped” notificatio
 Queued appends do not continue after an unacknowledged commit. Save the project
 and start a new recovery log to recover; the failed hash chain is never resumed.
 Observers may return a promise; successful settlement acknowledges that commit.
+Transactions that complete while a commit is still being acknowledged are
+collected into one update commit, so a slow file write costs one append for the
+whole batch instead of one per transaction.
 The studio file observer acknowledges only after `close()` succeeds, so its commit
 counter never claims a failed write was saved. These guarantees do not change the
 existing recovery-log wire format.

@@ -117,3 +117,59 @@ it("waits for observer acknowledgement before hashing the next queued commit", a
     expect(writer.error.isEmpty()).toBe(true)
     writer.terminate()
 })
+
+
+it("batches transactions that complete while a commit is still being written", async () => {
+    const scene = fixture()
+    const writes: Array<PromiseWithResolvers<void>> = []
+    const observer = vi.fn(() => {
+        const write = Promise.withResolvers<void>()
+        writes.push(write)
+        return write.promise
+    })
+    const writer = SyncLogWriter.attach(scene.project, observer, commit)
+    await flush()
+    expect(observer).toHaveBeenCalledOnce() // the open commit is being written
+    for (let i = 0; i < 3; i++) {scene.begin(); scene.update(); scene.end()}
+    await flush()
+    expect(Commit.createUpdate).not.toHaveBeenCalled()
+    writes[0].resolve()
+    await flush()
+    expect(Commit.createUpdate).toHaveBeenCalledOnce()
+    expect(vi.mocked(Commit.createUpdate).mock.calls[0][1]).toHaveLength(3)
+    expect(observer).toHaveBeenCalledTimes(2)
+    scene.begin(); scene.update(); scene.end()
+    writes[1].resolve()
+    await flush()
+    expect(Commit.createUpdate).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(Commit.createUpdate).mock.calls[1][1]).toHaveLength(1)
+    writes[2].resolve()
+    await flush()
+    expect(writer.error.isEmpty()).toBe(true)
+    writer.terminate()
+})
+
+
+it("still flushes completed transactions batched before termination", async () => {
+    const scene = fixture()
+    const writes: Array<PromiseWithResolvers<void>> = []
+    const observer = vi.fn(() => {
+        const write = Promise.withResolvers<void>()
+        writes.push(write)
+        return write.promise
+    })
+    const writer = SyncLogWriter.attach(scene.project, observer, commit)
+    await flush()
+    for (let i = 0; i < 2; i++) {scene.begin(); scene.update(); scene.end()}
+    scene.begin()
+    scene.update() // unfinished transaction: discarded by termination
+    writer.terminate()
+    writes[0].resolve()
+    await flush()
+    expect(Commit.createUpdate).toHaveBeenCalledOnce()
+    expect(vi.mocked(Commit.createUpdate).mock.calls[0][1]).toHaveLength(2)
+    writes[1].resolve()
+    await flush()
+    expect(observer).toHaveBeenCalledTimes(2)
+    expect(writer.error.isEmpty()).toBe(true)
+})

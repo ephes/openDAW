@@ -13,6 +13,10 @@ export class SyncLogWriter implements Terminable {
     readonly #subscription: Subscription
     #transactionSubscription: Subscription = Terminable.Empty
     #updates: Array<Update> = []
+    // Completed transactions waiting for the next update commit. While a commit is
+    // being written, later transactions join one batch instead of one file write each.
+    #completed: Array<Update> = []
+    #commitScheduled = false
     #lastPromise: Promise<Commit | undefined>
     #error: Option<unknown> = Option.None
     #terminated = false
@@ -36,6 +40,7 @@ export class SyncLogWriter implements Terminable {
     terminate(): void {
         if (this.#terminated) {return}
         this.#terminated = true
+        // Discard only the unfinished transaction; completed ones still flush.
         this.#updates = []
         Terminable.many(this.#subscription, this.#transactionSubscription).terminate()
         this.#transactionSubscription = Terminable.Empty
@@ -75,7 +80,15 @@ export class SyncLogWriter implements Terminable {
                 const updates = this.#updates
                 this.#updates = []
                 if (this.#terminated || rolledBack || updates.length === 0) {return}
-                this.#appendCommit(previous => Commit.createUpdate(previous.thisHash, updates))
+                this.#completed.push(...updates)
+                if (this.#commitScheduled) {return}
+                this.#commitScheduled = true
+                this.#appendCommit(previous => {
+                    this.#commitScheduled = false
+                    const batch = this.#completed
+                    this.#completed = []
+                    return Commit.createUpdate(previous.thisHash, batch)
+                })
             }
         })
     }
