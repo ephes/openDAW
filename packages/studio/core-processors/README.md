@@ -62,3 +62,9 @@ Reset clears the analyser window, retained bins and published spectrum immediate
 Subscriptions remain active. Each band enable transition clears that band's
 filter history, including stacked HP/LP filters; coefficients and order stay set.
 Re-enabling starts from silence rather than resuming pre-bypass ringing.
+
+### Render partitions and restart
+
+Tidal derives phase from each chunk's pulse origin and relative sample offset;
+metering consumes only that span. Fold reset retires all anti-alias resampler
+history and snaps drive/output ramps to current controls, preserving oversampling.

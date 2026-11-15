@@ -103,12 +103,12 @@ export class TidalDeviceProcessor extends AudioProcessor implements AudioEffectD
         const offset0 = this.#pOffset.getValue() / 360.0
         const offset1 = offset0 + this.#pChannelOffset.getValue() / 360.0
         for (let i = s0; i < s1; i++) {
-            const phaseL = (p0 + i * delta) * rateInvPulses + offset0
-            const phaseR = (p0 + i * delta) * rateInvPulses + offset1
+            const phaseL = (p0 + (i - s0) * delta) * rateInvPulses + offset0
+            const phaseR = (p0 + (i - s0) * delta) * rateInvPulses + offset1
             outL[i] = inpL[i] * this.#smoothGainL.process(this.#computer.compute(phaseL - Math.floor(phaseL)))
             outR[i] = inpR[i] * this.#smoothGainR.process(this.#computer.compute(phaseR - Math.floor(phaseR)))
         }
-        this.#peaks.process(outL, outR)
+        this.#peaks.process(outL, outR, s0, s1)
         if (Bits.every(flags, BlockFlag.transporting | BlockFlag.playing)) {
             this.#phase = (p0 + (s1 - s0) * delta) * rateInvPulses
         }

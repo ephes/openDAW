@@ -21,3 +21,10 @@ identity fix. The final interpolation neighbour is clamped to the last frame.
 All four regressions fail before repair: immediate/partial-window spectrum
 publication and high-Q bell/stacked HP/LP bypass. Use AudioAnalyser.clear(), since
 its reset() only restarts the cursor and retains bins. New tones repopulate normally.
+
+## B04 — Partitions and restart
+
+Real AudioProcessor update-event splits (17+31+80 and loop wrap) reproduce
+Tidal phase drift. Output, end phase and RMS agree after repair. Fold impulse
+restart comparisons fail before repair at all 2x/4x/8x factors; uneven subspans,
+silence, a second impulse and interrupted gain ramps match fresh controls afterward.
