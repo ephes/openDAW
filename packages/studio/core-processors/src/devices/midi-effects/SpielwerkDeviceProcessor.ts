@@ -19,7 +19,7 @@ import {WerkstattParameterBox} from "@opendaw/studio-boxes"
 import {Event, EventSpanRetainer, NoteEvent, ppqn} from "@opendaw/lib-dsp"
 import {EngineContext} from "../../EngineContext"
 import {EventProcessor} from "../../EventProcessor"
-import {Block, BlockFlag, Processor} from "../../processing"
+import {Block, BlockFlag, MutableBlock, Processor} from "../../processing"
 import {AutomatableParameter} from "../../AutomatableParameter"
 import {NoteEventSource, NoteEventTarget, NoteLifecycleEvent} from "../../NoteEventSource"
 import {MidiEffectProcessor} from "../../MidiEffectProcessor"
@@ -35,12 +35,15 @@ const parseUpdate = (code: string): int => {
 }
 
 interface ScheduledNote {
+    readonly sourceId?: int
     readonly position: ppqn
     readonly duration: ppqn
     readonly pitch: byte
     readonly velocity: float
     readonly cent: number
 }
+
+type RetainedNote = Id<NoteEvent> & {readonly sourceId?: int}
 
 type UserEvent =
     | {readonly gate: true, readonly id: int, readonly position: ppqn, readonly duration: ppqn, readonly pitch: byte, readonly velocity: float, readonly cent: number}
@@ -71,27 +74,32 @@ interface UserProcessor {
 
 const validateNote = (note: UserOutput, from: ppqn): Nullable<string> => {
     if (!isDefined(note)) {return "process yielded undefined"}
-    if (typeof note.pitch !== "number" || note.pitch !== note.pitch) {return `Invalid pitch: ${note.pitch}`}
+    if (!Number.isInteger(note.pitch)) {return `Invalid pitch: ${note.pitch}`}
     if (note.pitch < 0 || note.pitch > 127) {return `Pitch out of range: ${note.pitch} (must be 0–127)`}
-    if (typeof note.velocity !== "number" || note.velocity !== note.velocity) {return `Invalid velocity: ${note.velocity}`}
+    if (!Number.isFinite(note.velocity)) {return `Invalid velocity: ${note.velocity}`}
     if (note.velocity < 0 || note.velocity > 1) {return `Velocity out of range: ${note.velocity} (must be 0–1)`}
-    if (typeof note.duration !== "number" || note.duration !== note.duration) {return `Invalid duration: ${note.duration}`}
+    if (!Number.isFinite(note.duration)) {return `Invalid duration: ${note.duration}`}
     if (note.duration <= 0) {return `Duration must be positive: ${note.duration}`}
-    if (typeof note.position !== "number" || note.position !== note.position) {return `Invalid position: ${note.position}`}
+    if (!Number.isFinite(note.position)) {return `Invalid position: ${note.position}`}
     if (note.position < from) {return `Position ${note.position} is in the past (block starts at ${from})`}
+    const end = note.position + note.duration
+    if (!Number.isFinite(end) || end <= note.position) {return "Note end must be finite and after its start"}
+    if (note.cent !== undefined && !Number.isFinite(note.cent)) {return `Invalid cent: ${note.cent}`}
     return null
 }
 
 export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffectProcessor {
     readonly #adapter: SpielwerkDeviceBoxAdapter
     readonly #engineToClient: EngineToClient
-    readonly #retainer: EventSpanRetainer<Id<NoteEvent>>
+    readonly #retainer: EventSpanRetainer<RetainedNote>
     readonly #scheduled: Array<ScheduledNote>
     readonly #sourceToOutput: SetMultimap<int, int>
     readonly #uuid: string
     readonly #boundParameters: Array<AutomatableParameter<number>>
+    readonly #blocks: Array<MutableBlock>
 
     readonly #events: Array<UserEvent> = []
+    readonly #sourceStops = new Map<int, ppqn>()
     readonly #userBlock: {from: ppqn, to: ppqn, bpm: number, s0: int, s1: int, flags: int}
         = {from: 0, to: 0, bpm: 0, s0: 0, s1: 0, flags: 0}
 
@@ -101,16 +109,20 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     #pendingUpdate: int = -1
     #silenced: boolean = false
     #wasPlaying: boolean = false
+    #retirePending: boolean = false
+    #blockCount: int = 0
+    #blockCursor: int = 0
 
     constructor(context: EngineContext, adapter: SpielwerkDeviceBoxAdapter) {
         super(context)
         this.#adapter = adapter
         this.#engineToClient = context.engineToClient
-        this.#retainer = new EventSpanRetainer<Id<NoteEvent>>()
+        this.#retainer = new EventSpanRetainer<RetainedNote>()
         this.#scheduled = []
         this.#sourceToOutput = new SetMultimap()
         this.#uuid = UUID.toString(adapter.uuid)
         this.#boundParameters = []
+        this.#blocks = []
         const {parameters, box} = adapter
         this.ownAll(
             box.code.catchupAndSubscribe(owner => {
@@ -119,6 +131,8 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                     this.#silenced = true
                     this.#pendingUpdate = newUpdate
                     this.#userProcessor = Option.None
+                    this.#retirePending = this.#retainer.nonEmpty()
+                    Arrays.clear(this.#scheduled)
                     this.#tryLoad(newUpdate)
                 }
             }),
@@ -152,21 +166,20 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     }
 
     * processNotes(from: ppqn, to: ppqn, flags: int): IterableIterator<NoteLifecycleEvent> {
+        if (this.#retirePending) {yield* this.#retireNotes(from)}
         const playing = Bits.every(flags, BlockFlag.transporting | BlockFlag.playing)
-        if (this.#retainer.nonEmpty()) {
-            if (Bits.every(flags, BlockFlag.discontinuous) || (this.#wasPlaying && !playing)) {
-                for (const event of this.#retainer.releaseAll()) {
-                    yield NoteLifecycleEvent.stop(event, from)
-                }
-                Arrays.clear(this.#scheduled)
-                this.#sourceToOutput.clear()
+        if (Bits.every(flags, BlockFlag.discontinuous) || (this.#wasPlaying && !playing)) {
+            for (const event of this.#retainer.releaseAll()) {
+                yield NoteLifecycleEvent.stop(event, from)
+            }
+            Arrays.clear(this.#scheduled)
+            this.#sourceToOutput.clear()
+            try {
                 this.#userProcessor.ifSome(proc => {
                     if (isDefined(proc.reset)) {proc.reset()}
                 })
-            } else {
-                for (const event of this.#retainer.releaseLinearCompleted(to)) {
-                    yield NoteLifecycleEvent.stop(event, event.position + event.duration)
-                }
+            } catch (error) {
+                this.#silence(`Reset callback error: ${error}`)
             }
         }
         this.#wasPlaying = playing
@@ -179,6 +192,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
             const source = this.#source.unwrap()
             const proc = this.#userProcessor.unwrap()
             this.#events.length = 0
+            this.#sourceStops.clear()
             for (const event of source.processNotes(from, to, flags)) {
                 if (NoteLifecycleEvent.isStart(event)) {
                     this.#events.push({
@@ -191,9 +205,19 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                         cent: event.cent
                     })
                 } else {
+                    this.#sourceStops.set(event.id, event.position)
+                    for (let i = this.#scheduled.length - 1; i >= 0; i--) {
+                        const note = this.#scheduled[i]
+                        if (note.sourceId !== event.id) {continue}
+                        this.#scheduled.splice(i, 1)
+                        if (note.position >= from && note.position < event.position) {
+                            yield* this.#emitNote(note, note.sourceId)
+                        }
+                    }
                     for (const outputId of this.#sourceToOutput.get(event.id)) {
                         for (const released of this.#retainer.release(note => note.id === outputId)) {
-                            yield NoteLifecycleEvent.stop(released, event.position)
+                            this.#retireMapping(released)
+                            yield NoteLifecycleEvent.stop(released, Math.min(event.position, released.position + released.duration))
                         }
                     }
                     this.#sourceToOutput.removeKey(event.id)
@@ -209,7 +233,7 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                 const note = this.#scheduled[i]
                 if (note.position >= from && note.position < to) {
                     this.#scheduled.splice(i, 1)
-                    yield* this.#emitNote(note)
+                    yield* this.#emitNote(note, note.sourceId)
                 }
             }
             let currentSourceId: int = -1
@@ -224,12 +248,13 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                                 return {done: true, value: undefined}
                             }
                             const value = events[index++]
-                            if (value.gate) {currentSourceId = value.id}
+                            currentSourceId = value.gate ? value.id : -1
                             return {done: false, value}
                         }
                     }
                 }
             }
+            this.#selectBlock(from, to)
             this.#userBlock.from = from
             this.#userBlock.to = to
             this.#userBlock.flags = flags
@@ -238,19 +263,25 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                 for (const yielded of proc.process(this.#userBlock, trackedEvents)) {
                     if (++noteCount > MAX_NOTES_PER_BLOCK) {
                         this.#silence(`Note flood: exceeded ${MAX_NOTES_PER_BLOCK} notes per block`)
+                        yield* this.#retireNotes(from)
                         return
                     }
                     const error = validateNote(yielded, from)
                     if (isNotNull(error)) {
                         this.#silence(error)
+                        yield* this.#retireNotes(from)
                         return
                     }
+                    const sourceStop = this.#sourceStops.get(currentSourceId)
+                    if (sourceStop !== undefined && yielded.position >= sourceStop) {continue}
                     if (yielded.position >= to) {
                         if (this.#scheduled.length >= MAX_SCHEDULED_NOTES) {
                             this.#silence(`Scheduler full: exceeded ${MAX_SCHEDULED_NOTES} scheduled notes`)
+                            yield* this.#retireNotes(from)
                             return
                         }
                         this.#scheduled.push({
+                            sourceId: currentSourceId >= 0 ? currentSourceId : undefined,
                             position: yielded.position,
                             duration: yielded.duration,
                             pitch: yielded.pitch,
@@ -263,11 +294,14 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
                 }
             } catch (err) {
                 this.#silence(`Runtime error: ${err}`)
+                yield* this.#retireNotes(from)
                 return
             }
-            for (const event of this.#retainer.releaseLinearCompleted(to)) {
-                yield NoteLifecycleEvent.stop(event, event.position + event.duration)
-            }
+        }
+        // Source stops in this window take precedence over later natural ends.
+        for (const event of this.#retainer.releaseLinearCompleted(to)) {
+            this.#retireMapping(event)
+            yield NoteLifecycleEvent.stop(event, event.position + event.duration)
         }
     }
 
@@ -277,20 +311,34 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
 
     reset(): void {
         this.#retainer.clear()
+        this.#sourceStops.clear()
         Arrays.clear(this.#scheduled)
         this.#sourceToOutput.clear()
         this.eventInput.clear()
     }
 
+    introduceBlock(block: Block): void {
+        if (block.index === 0) {this.#blockCount = this.#blockCursor = 0}
+        if (this.#blockCount === this.#blocks.length) {
+            this.#blocks.push({index: 0, p0: 0, p1: 0, s0: 0, s1: 0, bpm: 0, flags: 0})
+        }
+        Object.assign(this.#blocks[this.#blockCount++], block)
+    }
+
     processEvents(_block: Block, _from: ppqn, _to: ppqn): void {}
 
     parameterChanged(parameter: AutomatableParameter): void {
-        this.#userProcessor.ifSome(proc => {
-            if (isDefined(proc.paramChanged)) {
-                const paramBox = asInstanceOf(parameter.adapter.field.box, WerkstattParameterBox)
-                proc.paramChanged(paramBox.label.getValue(), parameter.getValue())
-            }
-        })
+        if (this.#silenced) {return}
+        try {
+            this.#userProcessor.ifSome(proc => {
+                if (isDefined(proc.paramChanged)) {
+                    const paramBox = asInstanceOf(parameter.adapter.field.box, WerkstattParameterBox)
+                    proc.paramChanged(paramBox.label.getValue(), parameter.getValue())
+                }
+            })
+        } catch (error) {
+            this.#silence(`Parameter callback error: ${error}`)
+        }
     }
 
     handleEvent(_block: Block, _event: Event): void {}
@@ -298,7 +346,30 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     index(): number {return this.#adapter.indexField.getValue()}
     adapter(): SpielwerkDeviceBoxAdapter {return this.#adapter}
 
+    // Downstream instruments pull once per block after all blocks were introduced, so match the pull to its block.
+    #selectBlock(from: ppqn, to: ppqn): void {
+        const count = this.#blockCount
+        for (let offset = 0; offset < count; offset++) {
+            const index = (this.#blockCursor + offset) % count
+            const {p0, p1} = this.#blocks[index]
+            if (p0 === from && p1 === to) {return this.#applyBlock(index)}
+        }
+        for (let index = 0; index < count; index++) {
+            const {p0, p1} = this.#blocks[index]
+            if (p0 <= from && to <= p1) {return this.#applyBlock(index)}
+        }
+    }
+
+    #applyBlock(index: int): void {
+        const {bpm, s0, s1} = this.#blocks[index]
+        this.#userBlock.bpm = bpm
+        this.#userBlock.s0 = s0
+        this.#userBlock.s1 = s1
+        this.#blockCursor = index + 1
+    }
+
     #tryLoad(expectedUpdate: int): void {
+        if (this.#retirePending) {return}
         const registry = (globalThis as typeof globalThis & {openDAW?: {spielwerkProcessors?: Record<string, {update: number, create: new () => UserProcessor}>}}).openDAW?.spielwerkProcessors?.[this.#uuid]
         if (isDefined(registry) && registry.update === expectedUpdate) {
             this.#swapProcessor(registry.create, expectedUpdate)
@@ -306,9 +377,11 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     }
 
     #swapProcessor(ProcessorClass: new () => UserProcessor, update: int): void {
+        // A matching registry entry is attempted once, including failed construction.
+        // Missing entries keep polling without consuming the pending generation.
+        this.#currentUpdate = update
         try {
             this.#userProcessor = Option.wrap(new ProcessorClass() as UserProcessor)
-            this.#currentUpdate = update
             this.#silenced = false
             this.#pushAllParameters()
         } catch (error) {
@@ -317,14 +390,10 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
     }
 
     #pushAllParameters(): void {
-        this.#userProcessor.ifSome(proc => {
-            if (isDefined(proc.paramChanged)) {
-                for (const bound of this.#boundParameters) {
-                    const paramBox = asInstanceOf(bound.adapter.field.box, WerkstattParameterBox)
-                    proc.paramChanged(paramBox.label.getValue(), bound.getValue())
-                }
-            }
-        })
+        for (const bound of this.#boundParameters) {
+            if (this.#silenced) {return}
+            this.parameterChanged(bound)
+        }
     }
 
     #reportError(message: string): void {
@@ -333,14 +402,34 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
 
     #silence(message: string): void {
         this.#silenced = true
+        this.#userProcessor = Option.None
+        this.#retirePending = this.#retainer.nonEmpty()
         Arrays.clear(this.#scheduled)
         this.#sourceToOutput.clear()
         this.#reportError(message)
     }
 
+    #retireMapping(note: RetainedNote): void {
+        if (note.sourceId !== undefined) {this.#sourceToOutput.remove(note.sourceId, note.id)}
+    }
+
+    * #retireNotes(position: ppqn): IterableIterator<NoteLifecycleEvent> {
+        Arrays.clear(this.#scheduled)
+        for (const note of this.#retainer.releaseAll()) {
+            this.#retireMapping(note)
+            yield NoteLifecycleEvent.stop(note, Math.max(position, note.position))
+        }
+        this.#sourceToOutput.clear()
+        this.#sourceStops.clear()
+        this.#retirePending = false
+    }
+
     * #emitNote(note: ScheduledNote, sourceId?: int): IterableIterator<NoteLifecycleEvent> {
-        const lifecycle = NoteLifecycleEvent.start(note.position, note.duration, note.pitch, note.velocity, note.cent)
-        this.#retainer.addAndRetain({...lifecycle})
+        const sourceStop = sourceId === undefined ? undefined : this.#sourceStops.get(sourceId)
+        const duration = sourceStop === undefined ? note.duration : Math.min(note.duration, sourceStop - note.position)
+        if (duration <= 0) {return}
+        const lifecycle = NoteLifecycleEvent.start(note.position, duration, note.pitch, note.velocity, note.cent)
+        this.#retainer.addAndRetain({...lifecycle, sourceId})
         if (isDefined(sourceId)) {this.#sourceToOutput.add(sourceId, lifecycle.id)}
         yield lifecycle
     }

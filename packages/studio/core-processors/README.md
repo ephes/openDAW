@@ -30,3 +30,18 @@ From the repository root, run `npm ci`, `npm run build`, `npm run lint`, and
 registry and deterministic sample buffers; they need no browser or real model.
 See the [round 96 plan](../../../plans/scout-round96-effect-lifecycle.md) for
 regression evidence and restart/partition comparison tolerances.
+
+### Script generation faults
+
+A constructor or parameter-callback failure quarantines that compiled generation
+and reports once. Processing other devices continues. Compile new code to recover.
+A matching registry entry is constructed at most once; a registry entry that has
+not arrived yet is still polled on later blocks.
+
+Spielwerk keeps source reverse indexes only for live output notes. Faults drain
+active output through matching stop events before any replacement generation is
+constructed. The drain also applies to notes emitted earlier in the failing pull.
+Scheduled descendants retain their source and transport generation. See the
+[Spielwerk manual](../../app/studio/public/manuals/devices/midi/spielwerk.md) and
+[Werkstatt manual](../../app/studio/public/manuals/devices/audio/werkstatt.md) for
+finite note admission and owned output-buffer contracts.

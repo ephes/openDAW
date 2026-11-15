@@ -274,3 +274,40 @@ Select **Examples** in the code editor toolbar to load ready-made processors (Ch
 ## 8. AI Assistance
 
 Click **Start AI-Prompt** in the editor toolbar to copy a detailed starter prompt to your clipboard. Paste it into any AI assistant to get help writing Spielwerk processors. Once the AI generates code, copy it and click **From Clipboard** to load and compile it directly.
+
+### Engine block context
+
+`block.bpm`, `block.s0` and `block.s1` reflect the current engine block, including
+partial sample spans and tempo changes. `from` and `to` are the requested musical
+window; sample bounds are taken from the engine rather than reconstructed from PPQN.
+
+### Script generation faults
+
+A constructor or parameter-callback failure quarantines that compiled generation
+and reports once. Processing other devices continues. Compile new code to recover.
+A matching registry entry is constructed at most once; a registry entry that has
+not arrived yet is still polled on later blocks.
+
+### Admitted notes
+
+Output positions and positive durations must be finite, and their sum must be a
+finite, representably later end. Pitches are integers from 0 to 127; velocity is
+finite in [0, 1]. Cents must be finite (omission defaults to zero). Invalid output
+quarantines that generation before it can be queued or emitted.
+
+### Scheduled note lifetime
+
+Notes yielded while consuming a source note retain that source identity, including
+future notes. Its stop cancels future descendants and releases sounding descendants.
+A descendant due before a source stop in the same window still plays up to that
+stop. Notes generated after the event iterator finishes are independent.
+Seek/discontinuity and playing-to-stopped transitions clear scheduled notes even
+when no output is sounding, and invoke `reset()` under the script fault policy.
+
+### Fault retirement and retained state
+
+Natural expiry removes the output's source index immediately, so a held source
+retains only live descendants. A generator exception, invalid output or flood
+retires every already emitted note exactly once. Parameter callback faults drain
+notes at the next downstream pull. Replacement code is constructed only after
+that drain, and cannot inherit notes or scheduled output from the old generation.
