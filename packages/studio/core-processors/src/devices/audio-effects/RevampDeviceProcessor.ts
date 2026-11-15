@@ -123,6 +123,9 @@ export class RevampDeviceProcessor extends AudioProcessor implements AudioEffect
 
     reset(): void {
         this.#peaks.clear()
+        this.#audioAnalyser.clear()
+        this.#audioAnalyser.decay = false
+        this.#spectrum.fill(0.0)
         this.#output.clear()
         this.#biquadProcessors.forEach(pair => pair.forEach(processor => processor.reset()))
         this.eventInput.clear()
@@ -216,20 +219,26 @@ export class RevampDeviceProcessor extends AudioProcessor implements AudioEffect
             const q = this.#parameterLowPassQ.getValue()
             this.#biquadCoeff[6].setLowpassParams(frequency / sampleRate, q)
         } else if (parameter === this.#parameterHighPassEnabled) {
-            this.#enabled[0] = this.#parameterHighPassEnabled.getValue()
+            this.#setEnabled(0, this.#parameterHighPassEnabled.getValue())
         } else if (parameter === this.#parameterLowShelfEnabled) {
-            this.#enabled[1] = this.#parameterLowShelfEnabled.getValue()
+            this.#setEnabled(1, this.#parameterLowShelfEnabled.getValue())
         } else if (parameter === this.#parameterLowBellEnabled) {
-            this.#enabled[2] = this.#parameterLowBellEnabled.getValue()
+            this.#setEnabled(2, this.#parameterLowBellEnabled.getValue())
         } else if (parameter === this.#parameterMidBellEnabled) {
-            this.#enabled[3] = this.#parameterMidBellEnabled.getValue()
+            this.#setEnabled(3, this.#parameterMidBellEnabled.getValue())
         } else if (parameter === this.#parameterHighBellEnabled) {
-            this.#enabled[4] = this.#parameterHighBellEnabled.getValue()
+            this.#setEnabled(4, this.#parameterHighBellEnabled.getValue())
         } else if (parameter === this.#parameterHighShelfEnabled) {
-            this.#enabled[5] = this.#parameterHighShelfEnabled.getValue()
+            this.#setEnabled(5, this.#parameterHighShelfEnabled.getValue())
         } else if (parameter === this.#parameterLowPassEnabled) {
-            this.#enabled[6] = this.#parameterLowPassEnabled.getValue()
+            this.#setEnabled(6, this.#parameterLowPassEnabled.getValue())
         }
+    }
+
+    #setEnabled(index: int, enabled: boolean): void {
+        if (this.#enabled[index] === enabled) {return}
+        this.#biquadProcessors[index].forEach(processor => processor.reset())
+        this.#enabled[index] = enabled
     }
 
     toString(): string {return `{${this.constructor.name} (${this.#id})`}

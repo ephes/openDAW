@@ -15,3 +15,9 @@ retarget resets audio, voices and display using the existing reset path.
 The 1/2/3-frame interpolation oracle (mono/stereo, four rates, split spans)
 fails before the endpoint fix. Duplicate-lease release also fails before the
 identity fix. The final interpolation neighbour is clamped to the last frame.
+
+## B03 — Revamp generations
+
+All four regressions fail before repair: immediate/partial-window spectrum
+publication and high-Q bell/stacked HP/LP bypass. Use AudioAnalyser.clear(), since
+its reset() only restarts the cursor and retains bins. New tones repopulate normally.

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Clear Revamp spectrum generations on reset and retire filter history across band bypass transitions.
+
 - Render Nano sample endpoints safely and give duplicate Playfield mix attachments independent idempotent leases.
 
 - Refuse disabled Nano note starts and retire held voices on sample retargeting.

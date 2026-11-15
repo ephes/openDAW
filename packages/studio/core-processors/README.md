@@ -55,3 +55,10 @@ Nano interpolates up to the final frame, holding that endpoint until the source
 position reaches its frame count. Mono duplicates into stereo. Playfield mix
 attachments are independent, idempotent leases, including duplicate buffers;
 teardown retires all remaining attachments.
+
+### Revamp transient state
+
+Reset clears the analyser window, retained bins and published spectrum immediately.
+Subscriptions remain active. Each band enable transition clears that band's
+filter history, including stacked HP/LP filters; coefficients and order stay set.
+Re-enabling starts from silence rather than resuming pre-bypass ringing.
