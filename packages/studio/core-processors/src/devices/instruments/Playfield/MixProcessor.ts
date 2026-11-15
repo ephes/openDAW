@@ -1,4 +1,4 @@
-import {Arrays, Terminable, UUID} from "@opendaw/lib-std"
+import {Terminable, UUID} from "@opendaw/lib-std"
 import {AudioProcessor} from "../../../AudioProcessor"
 import {AudioGenerator, Block, Processor} from "../../../processing"
 import {PeakBroadcaster} from "../../../PeakBroadcaster"
@@ -13,7 +13,7 @@ export class MixProcessor extends AudioProcessor implements AudioDeviceProcessor
 
     readonly #audioOutput: AudioBuffer
     readonly #peaksBroadcaster: PeakBroadcaster
-    readonly #sources: Array<AudioBuffer>
+    readonly #sources: Array<{buffer: AudioBuffer}>
     readonly #eventBuffer: EventBuffer
 
     constructor(context: EngineContext, device: PlayfieldDeviceProcessor) {
@@ -38,10 +38,13 @@ export class MixProcessor extends AudioProcessor implements AudioDeviceProcessor
     get outgoing(): Processor {return this}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#sources.push(source)
+        const attachment = {buffer: source}
+        this.#sources.push(attachment)
         return {
             terminate: () => {
-                Arrays.remove(this.#sources, source)
+                const index = this.#sources.indexOf(attachment)
+                if (index < 0) {return}
+                this.#sources.splice(index, 1)
                 this.#audioOutput.clear()
             }
         }
@@ -57,7 +60,7 @@ export class MixProcessor extends AudioProcessor implements AudioDeviceProcessor
     finishProcess(): void {
         this.#audioOutput.clear()
         const [outL, outR] = this.#audioOutput.channels()
-        for (const source of this.#sources) {
+        for (const {buffer: source} of this.#sources) {
             const [srcL, srcR] = source.channels()
             for (let i = 0; i < RenderQuantum; i++) {
                 outL[i] += srcL[i]
@@ -66,6 +69,12 @@ export class MixProcessor extends AudioProcessor implements AudioDeviceProcessor
         }
         this.#audioOutput.assertSanity()
         this.#peaksBroadcaster.process(this.#audioOutput.getChannel(0), this.#audioOutput.getChannel(1))
+    }
+
+    terminate(): void {
+        this.#sources.length = 0
+        this.#audioOutput.clear()
+        super.terminate()
     }
 
     toString(): string {return "{PlayfieldMixProcessor}"}

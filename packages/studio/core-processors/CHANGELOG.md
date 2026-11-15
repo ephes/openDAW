@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Render Nano sample endpoints safely and give duplicate Playfield mix attachments independent idempotent leases.
+
 - Refuse disabled Nano note starts and retire held voices on sample retargeting.
 
 - Retire expired Spielwerk source indexes and balance every active note once on script faults before loading replacement code.

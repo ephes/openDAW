@@ -47,3 +47,26 @@ it("retires held voices when retargeting; only new notes read the new sample", (
     expect(p.audioOutput.getChannel(0)[127]).toBeLessThan(0)
     p.terminate()
 })
+it.each([1, 2, 3])("renders all supported frames of a %i-frame sample at fractional and unit rates", length => {
+    for (const rate of [0.25, 0.5, 1, 1.5]) for (const stereo of [false, true]) {
+        const {p, a, events} = fixture()
+        const left = Float32Array.from({length}, (_, i) => (i + 1) / 4)
+        const right = Float32Array.from(left, x => -x / 2)
+        Object.assign(a, {data: Option.wrap({frames: stereo ? [left, right] : [left], numberOfFrames: length, sampleRate: sampleRate * rate})})
+        events.push(NoteLifecycleEvent.start(0, 1000, 60, 1))
+        p.introduceBlock(block())
+        p.handleEvent(p.eventInput.get(0)[0])
+        // Uneven spans include the final source interval and retirement in another call.
+        for (const [s0, s1] of [[0, 1], [1, 3], [3, 7], [7, 16]]) p.processAudio(block(s0, s1))
+        for (let c = 0; c < 2; c++) for (let i = 0; i < 16; i++) {
+            const source = c === 1 && stereo ? right : left
+            const position = i * rate
+            const lo = Math.floor(position), hi = Math.min(lo + 1, length - 1)
+            const fraction = position - lo
+            const envelope = Math.min(i / Math.floor(0.003 * sampleRate), 1) ** 2
+            const expected = position < length ? (source[lo] * (1 - fraction) + source[hi] * fraction) * envelope : 0
+            expect(p.audioOutput.getChannel(c)[i]).toBeCloseTo(expected, 9)
+        }
+        p.terminate()
+    }
+})

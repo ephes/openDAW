@@ -50,3 +50,8 @@ finite note admission and owned output-buffer contracts.
 
 Nano refuses note starts while disabled. Changing its file pointer retires held
 voices and the note display immediately; only new notes use the new sample.
+
+Nano interpolates up to the final frame, holding that endpoint until the source
+position reaches its frame count. Mono duplicates into stereo. Playfield mix
+attachments are independent, idempotent leases, including duplicate buffers;
+teardown retires all remaining attachments.

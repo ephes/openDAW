@@ -9,3 +9,9 @@ the parked branch is for a separate Claude clerk review and merge.
 Both source-delivery regressions fail against main: disabled starts survive until
 enable, and a held A voice reads B after a file edit. Disable refuses starts;
 retarget resets audio, voices and display using the existing reset path.
+
+## B02 — Endpoints and mix leases
+
+The 1/2/3-frame interpolation oracle (mono/stereo, four rates, split spans)
+fails before the endpoint fix. Duplicate-lease release also fails before the
+identity fix. The final interpolation neighbour is clamped to the last frame.
