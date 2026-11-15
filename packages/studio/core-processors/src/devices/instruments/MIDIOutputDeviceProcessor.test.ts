@@ -1,7 +1,9 @@
 import {beforeAll, expect, it} from "vitest"
 import {MIDIOutputDeviceBoxAdapter} from "@opendaw/studio-adapters"
-import {MIDIOutputBox, MIDIOutputDeviceBox} from "@opendaw/studio-boxes"
+import {MIDIOutputBox, MIDIOutputDeviceBox, MIDIOutputParameterBox} from "@opendaw/studio-boxes"
 import {UUID} from "@opendaw/lib-std"
+import {AutomatableParameter} from "../../AutomatableParameter"
+import {PPQN} from "@opendaw/lib-dsp"
 import {MidiData} from "@opendaw/lib-midi"
 import {MIDIOutputDeviceProcessor} from "./MIDIOutputDeviceProcessor"
 import {NoteLifecycleEvent} from "../../NoteEventSource"
@@ -44,4 +46,21 @@ it.each(["device", "id", "channel", "disconnect"])("retires the old route on %s 
     f.processor.reset()
     expect(f.midi).toHaveLength(2)
     f.processor.terminate()
+})
+
+it.each([0, 17, -17])("uses additive note/control timing with delay %s", delay => {
+    const f = fixture()
+    // The schema currently clamps negative delays; override only that field's read
+    // to exercise the sender's existing negative timestamp policy.
+    f.a.delayInMs.getValue = () => delay
+    const paramBox = f.edit(() => MIDIOutputParameterBox.create(f.graph, UUID.generate(), b => b.owner.refer(f.box.parameters)))
+    const parameter = new AutomatableParameter(f.context, f.processor.adapter.parameters.parameterAt(paramBox.value.address))
+    f.midi.length = 0
+    const start = NoteLifecycleEvent.start(12, 100, 64, 1, 0)
+    f.processor.setNoteEventSource(eventSource([start]))
+    const b = {...block(10, 20), s0: 12}
+    f.processor.process({blocks: [b]})
+    f.processor.parameterChanged(parameter, b.s0 / sampleRate + PPQN.pulsesToSeconds(2, b.bpm))
+    expect(f.midi).toHaveLength(2)
+    expect(f.midi[1].time).toBeCloseTo(f.midi[0].time)
 })

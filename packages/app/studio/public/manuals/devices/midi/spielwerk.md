@@ -274,3 +274,9 @@ Select **Examples** in the code editor toolbar to load ready-made processors (Ch
 ## 8. AI Assistance
 
 Click **Start AI-Prompt** in the editor toolbar to copy a detailed starter prompt to your clipboard. Paste it into any AI assistant to get help writing Spielwerk processors. Once the AI generates code, copy it and click **From Clipboard** to load and compile it directly.
+
+### Engine block context
+
+`block.bpm`, `block.s0` and `block.s1` reflect the current engine block, including
+partial sample spans and tempo changes. `from` and `to` are the requested musical
+window; sample bounds are taken from the engine rather than reconstructed from PPQN.

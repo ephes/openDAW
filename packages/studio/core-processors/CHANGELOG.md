@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add endpoint delay to hardware CC timestamps and expose actual engine tempo/sample bounds to Spielwerk.
+
 - Balance hardware MIDI notes on reset, disable, source disconnect and termination; retire their original endpoint/channel on route edits. 
 
 - Reset old soundfont voices and display state on file-pointer transitions; process releases without a loaded font and own note-display disposal.

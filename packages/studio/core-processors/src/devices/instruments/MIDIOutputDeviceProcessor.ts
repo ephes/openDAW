@@ -129,7 +129,7 @@ export class MIDIOutputDeviceProcessor extends AudioProcessor implements Instrum
         const {box: {channel, device}} = this.#adapter
         if (device.isEmpty() || !this.#enabled) {return}
         const {id, delayInMs} = asInstanceOf(device.targetVertex.unwrap().box, MIDIOutputBox)
-        const relativeTimeInMs = relativeBlockTime * 1000.0 * delayInMs.getValue()
+        const relativeTimeInMs = relativeBlockTime * 1000.0 + delayInMs.getValue()
         const controllerId = asInstanceOf(parameter.adapter.field.box, MIDIOutputParameterBox).controller.getValue()
         const velocityAsByte = Math.round(parameter.getValue() * 127)
         const data = MidiData.control(channel.getValue(), controllerId, velocityAsByte)

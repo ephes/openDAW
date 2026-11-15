@@ -35,3 +35,11 @@ export function eventSource(events: NoteLifecycleEvent[]): NoteEventSource {
         *iterateActiveNotesAt() {}
     }
 }
+
+export interface ScriptBlock {
+    from: number, to: number, bpm: number, s0: number, s1: number, flags: number
+}
+export interface ScriptEvent {
+    gate: boolean, id: number, position: number, pitch: number
+}
+export const outputNote = (position = 0, duration = 1, pitch = 60) => ({position, duration, pitch, velocity: 1, cent: 0})

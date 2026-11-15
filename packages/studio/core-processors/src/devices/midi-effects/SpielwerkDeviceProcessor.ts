@@ -282,6 +282,12 @@ export class SpielwerkDeviceProcessor extends EventProcessor implements MidiEffe
         this.eventInput.clear()
     }
 
+    introduceBlock({bpm, s0, s1}: Block): void {
+        this.#userBlock.bpm = bpm
+        this.#userBlock.s0 = s0
+        this.#userBlock.s1 = s1
+    }
+
     processEvents(_block: Block, _from: ppqn, _to: ppqn): void {}
 
     parameterChanged(parameter: AutomatableParameter): void {

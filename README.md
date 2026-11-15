@@ -448,3 +448,7 @@ The [MIDI contributor notes](packages/lib/midi/README.md) describe supported
 messages, musical metadata, deterministic export ordering and import admission.
 File picker lifecycle and WAV source geometry are documented in the
 [DOM](packages/lib/dom/README.md) and [DSP](packages/lib/dsp/README.md) notes.
+
+Script MIDI timing uses the actual engine tempo and sample span, including partial
+blocks. Hardware CC automation and notes both add the configured endpoint delay
+to their block-relative millisecond timestamp.
