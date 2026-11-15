@@ -65,14 +65,18 @@ export namespace DawProjectExporter {
 
     export const write = (skeleton: ProjectSkeleton, sampleManager: SampleLoaderManager, resourcePacker: ResourcePacker) => {
         const ids = new AddressIdEncoder()
+        const samplePaths = UUID.newSet<{uuid: UUID.Bytes, path: string}>(entry => entry.uuid)
         const {boxGraph, mandatoryBoxes: {timelineBox, rootBox}} = skeleton
         const audioUnits: ReadonlyArray<AudioUnitBox> = rootBox.audioUnits.pointerHub.incoming()
             .map(({box}) => asInstanceOf(box, AudioUnitBox))
             .sort((a, b) => a.index.getValue() - b.index.getValue())
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
-            visitAudioFileBox: (box: AudioFileBox): void => sampleManager.getOrCreate(box.address.uuid).data
-                .ifSome((data) =>
-                    resourcePacker.write(`samples/${box.fileName.getValue()}.wav`, WavFile.encodeFloats(data)))
+            visitAudioFileBox: (box: AudioFileBox): void => {
+                const path = `samples/${UUID.toString(box.address.uuid)}.wav`
+                samplePaths.add({uuid: box.address.uuid, path})
+                sampleManager.getOrCreate(box.address.uuid).data
+                    .ifSome(data => resourcePacker.write(path, WavFile.encodeFloats(data)))
+            }
         }))
 
         const writeTransport = (): TransportSchema => Xml.element({
@@ -88,7 +92,11 @@ export namespace DawProjectExporter {
         }, TransportSchema)
 
         const writeDevices = (field: Field, deviceRole: string): ReadonlyArray<DeviceSchema> => field.pointerHub
-            .incoming().map(({box}) => {
+            .incoming().slice().sort((left, right) => {
+                const leftIndex = DeviceBoxUtils.isEffectDeviceBox(left.box) ? left.box.index.getValue() : 0
+                const rightIndex = DeviceBoxUtils.isEffectDeviceBox(right.box) ? right.box.index.getValue() : 0
+                return leftIndex - rightIndex || UUID.Comparator(left.box.address.uuid, right.box.address.uuid)
+            }).map(({box}) => {
                 const enabled: Maybe<BooleanParameterSchema> = ("enabled" in box && isInstanceOf(box.enabled, BooleanField)
                     ? Option.wrap(box.enabled)
                     : Option.None)
@@ -189,11 +197,12 @@ export namespace DawProjectExporter {
             const {numberOfFrames, sampleRate, numberOfChannels} = sampleManager.getOrCreate(audioFileBox.address.uuid).data
                 .unwrap("Cannot export unloaded audio")
             const audioElement = Xml.element({
+                name: audioFileBox.fileName.getValue(),
                 duration: numberOfFrames / sampleRate,
                 channels: numberOfChannels,
                 sampleRate,
                 algorithm: AudioAlgorithm.REPITCH,
-                file: Xml.element({path: `samples/${audioFileBox.fileName.getValue()}.wav`, external: false}, FileReferenceSchema)
+                file: Xml.element({path: samplePaths.get(audioFileBox.address.uuid).path, external: false}, FileReferenceSchema)
             }, AudioSchema)
             const playMode = region.playMode.targetVertex.mapOr(vertex => vertex.box, undefined)
             const absolute = region.timeBase.getValue() === TimeBase.Seconds

@@ -3,6 +3,7 @@ import {HTML} from "@opendaw/lib-jsx"
 import {MutableObservableOption, RuntimeNotifier, Terminable, Terminator} from "@opendaw/lib-std"
 import {RoomStatus} from "@/ui/RoomStatus"
 import type {StudioService} from "@/service/StudioService"
+import {portableImport, selection} from "./scout99-fixture"
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 const check = (condition: boolean, message: string) => {if (!condition) {throw new Error(message)}}
@@ -134,6 +135,7 @@ export const roomIntent = async (step: "start" | "newest" | "finish") => {
     }
 }
 
-export type BrowserFixtures = {gestures: typeof gestures, clipboard: typeof clipboard, html: typeof html, roomIntent: typeof roomIntent}
+export type BrowserFixtures = {gestures: typeof gestures, clipboard: typeof clipboard, html: typeof html,
+    roomIntent: typeof roomIntent, selection: typeof selection, portableImport: typeof portableImport}
 
-Object.assign(window, {fixtures: {gestures, clipboard, html, roomIntent}})
+Object.assign(window, {fixtures: {gestures, clipboard, html, roomIntent, selection, portableImport}})

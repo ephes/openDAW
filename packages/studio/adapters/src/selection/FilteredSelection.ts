@@ -12,6 +12,7 @@ import {
 import {Address, Addressable} from "@opendaw/lib-box"
 import {VertexSelection} from "./VertexSelection"
 import {SelectableVertex} from "./SelectableVertex"
+import {catchupSelection} from "./catchupSelection"
 
 export class FilteredSelection<T extends Addressable> implements Selection<T>, Terminable {
     readonly #selection: VertexSelection
@@ -31,9 +32,6 @@ export class FilteredSelection<T extends Addressable> implements Selection<T>, T
         this.#set = Address.newSet(({address}) => address)
         this.#listeners = new Listeners<SelectionListener<T>>()
 
-        this.#selection.selected()
-            .filter(element => this.#filter(element))
-            .forEach(element => this.#set.add(this.#mapping.fy(element)))
         this.#subscription = this.#selection.catchupAndSubscribe({
             onSelected: (element: SelectableVertex) => {
                 if (this.#filter(element)) {
@@ -83,7 +81,6 @@ export class FilteredSelection<T extends Addressable> implements Selection<T>, T
     }
 
     catchupAndSubscribe(listener: SelectionListener<T>): Subscription {
-        this.#set.forEach(selectable => listener.onSelected(selectable))
-        return this.subscribe(listener)
+        return catchupSelection(this, listener)
     }
 }

@@ -3,6 +3,7 @@ import {
     assert,
     Bijective,
     Editing,
+    Exec,
     int,
     Listeners,
     Option,
@@ -12,14 +13,16 @@ import {
     SortedSet,
     Subscription,
     Terminator,
+    tryCatch,
     UUID
 } from "@opendaw/lib-std"
-import {Address, Addressable, BoxGraph, Field, PointerField} from "@opendaw/lib-box"
+import {Address, Addressable, BoxGraph, Field, PointerField, PointerListener} from "@opendaw/lib-box"
 import {Pointers} from "@opendaw/studio-enums"
 import {SelectionBox} from "@opendaw/studio-boxes"
 import {SelectableVertex} from "./SelectableVertex"
 import {SelectionEntry} from "./SelectionEntry"
 import {FilteredSelection} from "./FilteredSelection"
+import {catchupSelection} from "./catchupSelection"
 
 /**
  * Represents the main selection management within a document.
@@ -32,6 +35,9 @@ export class VertexSelection implements Selection<SelectableVertex> {
     readonly #listeners: Listeners<SelectionListener<SelectableVertex>>
 
     #target: Option<Field> = Option.None
+    #generation: number = 0
+    #modifying: number = 0
+    #pending: Array<{selectable: SelectableVertex, selected: boolean, generation: number}> = []
 
     constructor(readonly editing: Editing, readonly boxGraph: BoxGraph) {
         this.#lifeTime = new Terminator()
@@ -41,20 +47,26 @@ export class VertexSelection implements Selection<SelectableVertex> {
     }
 
     switch(target: Field<Pointers.Selection>): this {
+        const generation = this.#generation + 1
         this.release()
+        if (generation !== this.#generation) {return this}
         console.debug(`VertexSelection.switch(${target.address.toString()})`)
         this.#target = Option.wrap(target)
-        this.#lifeTime.own(this.#watch(target))
+        this.#watch(target)
         return this
     }
 
     release(): void {
+        this.#generation++
         if (this.#target.isEmpty()) {return}
         this.#target = Option.None
-        this.#lifeTime.terminate()
-        this.#selectableMap.forEach(entry => this.#listeners.proxy.onDeselected(entry.selectable))
+        const previous = this.selected()
         this.#selectableMap.clear()
         this.#entityMap.clear()
+        this.#lifeTime.terminate()
+        previous.forEach(selectable => {
+            if (!this.isSelected(selectable)) {this.#listeners.proxy.onDeselected(selectable)}
+        })
     }
 
     createFilteredSelection<T extends Addressable>(affiliate: Predicate<SelectableVertex>,
@@ -68,9 +80,11 @@ export class VertexSelection implements Selection<SelectableVertex> {
             return
         }
         if (selectables.length === 0) {return}
-        this.editing.modify(() => {
+        const generation = this.#generation
+        this.#modify(() => {
             const selection = this.#target.unwrap()
             for (const selectable of selectables) {
+                if (generation !== this.#generation) {break}
                 if (!selectable.isAttached()) {continue}
                 if (!this.#selectableMap.hasKey(selectable.address)) {
                     SelectionBox.create(this.boxGraph, UUID.generate(), box => {
@@ -79,7 +93,7 @@ export class VertexSelection implements Selection<SelectableVertex> {
                     })
                 }
             }
-        }, false)
+        })
     }
 
     deselect(...selectables: ReadonlyArray<SelectableVertex>): void {
@@ -88,9 +102,9 @@ export class VertexSelection implements Selection<SelectableVertex> {
             return
         }
         if (selectables.length === 0) {return}
-        this.editing.modify(() => selectables
+        this.#modify(() => selectables
             .forEach(selectable => this.#selectableMap.opt(selectable.address)
-                .ifSome(entry => entry.box.delete())), false)
+                .ifSome(entry => entry.box.delete())))
     }
 
     deselectAll(): void {
@@ -117,31 +131,65 @@ export class VertexSelection implements Selection<SelectableVertex> {
     subscribe(listener: SelectionListener<SelectableVertex>): Subscription {return this.#listeners.subscribe(listener)}
 
     catchupAndSubscribe(listener: SelectionListener<SelectableVertex>): Subscription {
-        this.selected().forEach(element => listener.onSelected(element))
-        return this.#listeners.subscribe(listener)
+        return catchupSelection(this, listener)
     }
 
-    #watch(target: Field): Subscription {
-        return target.pointerHub.catchupAndSubscribe({
+    #watch(target: Field): void {
+        const generation = this.#generation
+        const observer: PointerListener = {
             onAdded: (pointer: PointerField) => {
-                const box = asInstanceOf(pointer.box, SelectionBox)
-                assert(box.isAttached(), "SelectionBox is not attached")
-                const selectable = box.selectable.targetVertex
-                    .unwrap(() => `SelectionBox has no target (${box.selectable.targetAddress.unwrapOrUndefined()
-                        ?.toString() ?? "No address"})`) as SelectableVertex
-                const entry: SelectionEntry = {box, selectable}
-                this.#listeners.proxy.onSelected(selectable)
-                assert(this.#entityMap.add(entry), "Could not add to entityMap")
-                assert(this.#selectableMap.add(entry), "Could not add to selectableMap")
+                if (generation !== this.#generation || !target.pointerHub.contains(pointer)
+                    || this.#entityMap.hasKey(pointer.box.address.uuid)) {return}
+                this.#added(asInstanceOf(pointer.box, SelectionBox))
             },
             onRemoved: (pointer: PointerField) => {
-                const box = asInstanceOf(pointer.box, SelectionBox)
-                const entry = this.#entityMap.removeByKey(box.address.uuid)
-                assert(entry.box === box, "Broken selection")
-                const selectable: SelectableVertex = entry.selectable
-                this.#listeners.proxy.onDeselected(selectable)
-                this.#selectableMap.removeByKey(selectable.address)
+                if (generation !== this.#generation) {return}
+                this.#removed(asInstanceOf(pointer.box, SelectionBox))
             }
-        }, Pointers.Selection)
+        }
+        this.#lifeTime.own(target.pointerHub.subscribe(observer, Pointers.Selection))
+        target.pointerHub.filter(Pointers.Selection).forEach(pointer => observer.onAdded(pointer))
+    }
+
+    #added(box: SelectionBox): void {
+        if (this.#entityMap.hasKey(box.address.uuid)) {return}
+        assert(box.isAttached(), "SelectionBox is not attached")
+        const selectable = box.selectable.targetVertex.unwrap("SelectionBox has no target") as SelectableVertex
+        const entry: SelectionEntry = {box, selectable}
+        assert(this.#entityMap.add(entry), "Could not add to entityMap")
+        assert(this.#selectableMap.add(entry), "Could not add to selectableMap")
+        this.#notify(selectable, true)
+    }
+
+    #removed(box: SelectionBox): void {
+        if (!this.#entityMap.hasKey(box.address.uuid)) {return}
+        const entry = this.#entityMap.removeByKey(box.address.uuid)
+        assert(entry.box === box, "Broken selection")
+        this.#selectableMap.removeByKey(entry.selectable.address)
+        this.#notify(entry.selectable, false)
+    }
+
+    #modify(modifier: Exec): void {
+        this.#modifying++
+        const result = tryCatch(() => this.editing.modify(modifier, false))
+        this.#modifying--
+        if (this.#modifying === 0 && !this.boxGraph.inTransaction()) {this.#flush()}
+        if (result.status === "failure") {throw result.error}
+    }
+
+    #notify(selectable: SelectableVertex, selected: boolean): void {
+        this.#pending.push({selectable, selected, generation: this.#generation})
+        if (this.#modifying > 0) {return}
+        // External graph edits also notify from inside pointer finalization.
+        if (this.boxGraph.inTransaction()) {queueMicrotask(() => this.#flush())}
+        else {this.#flush()}
+    }
+
+    #flush(): void {
+        for (const {selectable, selected, generation} of this.#pending.splice(0)) {
+            if (generation !== this.#generation || this.isSelected(selectable) !== selected) {continue}
+            if (selected) {this.#listeners.proxy.onSelected(selectable)}
+            else {this.#listeners.proxy.onDeselected(selectable)}
+        }
     }
 }

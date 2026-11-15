@@ -103,3 +103,21 @@ Chunk planner arguments must be nonnegative safe integers, with a positive windo
 strictly larger than overlap. Outputs must be float32 arrays of exactly the declared
 window shape: `[1,4,channels,samples]` stacked, or four `[1,channels,samples]` tensors,
 in drums/bass/other/vocals order. Invalid tensors fail before slicing or stitching.
+
+### Tempo task admission and working memory
+
+Tempo detection accepts at most 30 minutes of finite mono PCM at 11025, 22050,
+44100 or 88200 Hz. Duration/rate admission precedes feature allocation; PCM
+validation and downsampling yield/check cancellation every 32768 samples.
+Mel preprocessing yields after at most 16 FFT frames. It retains one 256-frame
+feature window (40 KiB) and its packed input (40 KiB), plus the fixed filterbank
+(about 81 KiB) and FFT scratch. Overlapping windows are recomputed; no whole-track
+spectrogram is allocated. Caller PCM and the admitted downsampled PCM are separate
+from this feature budget. Already running ONNX work remains non-interruptible;
+its result is checked for cancellation before publication.
+
+Each model output must be float32 storage with exactly 256 entries and shape
+`[1,256]`. Entries must be finite probabilities in [0,1] with total mass within
+0.001 of one. Invalid windows fail before accumulation/progress. Valid softmax
+averaging and octave selection retain their previous behavior. Synthetic tests
+mock the session and exercise cancellation and allocation counts without models.

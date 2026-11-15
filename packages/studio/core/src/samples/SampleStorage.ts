@@ -1,4 +1,5 @@
-import {ByteArrayInput, Lazy, Progress, tryCatch, UUID} from "@opendaw/lib-std"
+import {ByteArrayInput, Lazy, Progress, Provider, tryCatch, UUID} from "@opendaw/lib-std"
+import {Promises} from "@opendaw/lib-runtime"
 import {OpfsProtocol, Peaks, SamplePeaks} from "@opendaw/lib-fusion"
 import {Sample, SampleMetaData} from "@opendaw/studio-adapters"
 import {Workers} from "../Workers"
@@ -22,15 +23,24 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
 
     private constructor() {super(SampleStorage.Folder)}
 
-    async save({uuid, audio, peaks, meta}: SampleStorage.NewSample): Promise<void> {
+    async save(sample: SampleStorage.NewSample): Promise<void> {await this.#save(sample, false)}
+
+    async saveOwned(sample: SampleStorage.NewSample): Promise<Provider<Promise<void>>> {return this.#save(sample, true)}
+
+    async #save({uuid, audio, peaks, meta}: SampleStorage.NewSample, owned: boolean): Promise<Provider<Promise<void>>> {
         const path = `${this.folder}/${UUID.toString(uuid)}`
-        await navigator.locks.request(`opendaw:storage:${this.folder}`, async () => {
+        const ownerPath = `${path}/import-owner`
+        const token = UUID.toString(UUID.generate())
+        return navigator.locks.request(`opendaw:storage:${this.folder}`, async () => {
             const existing = await Workers.Opfs.list(this.folder)
             if (existing.some(entry => entry.name === UUID.toString(uuid))) {
                 // Validate and preserve a complete content-addressed asset. An existing
                 // incomplete folder belongs to an earlier operation and needs repair.
                 await this.load(uuid)
-                return
+                const owner = await Promises.tryCatch(Workers.Opfs.read(ownerPath, 36))
+                if (owner.status === "resolved") {await Workers.Opfs.delete(ownerPath)}
+                else if (!(owner.error instanceof DOMException && owner.error.name === "NotFoundError")) {throw owner.error}
+                return async () => {}
             }
             const data = new Uint8Array(WavFile.encodeFloats({
                 frames: audio.frames.slice(),
@@ -39,14 +49,26 @@ export class SampleStorage extends Storage<Sample, SampleMetaData, SampleStorage
                 sampleRate: audio.sampleRate
             }))
             SamplePeaks.from(new ByteArrayInput(peaks))
-            try {
+            const result = await Promises.tryCatch((async () => {
                 await Workers.Opfs.write(`${path}/audio.wav`, data)
                 await Workers.Opfs.write(`${path}/peaks.bin`, new Uint8Array(peaks))
+                if (owned) {await Workers.Opfs.write(ownerPath, new TextEncoder().encode(token))}
                 await Workers.Opfs.write(`${path}/meta.json`, new TextEncoder().encode(JSON.stringify(meta)))
-            } catch (error) {
-                await Workers.Opfs.delete(path)
-                throw error
+            })())
+            if (result.status === "rejected") {
+                const cleanup = await Promises.tryCatch(Workers.Opfs.delete(path))
+                if (cleanup.status === "rejected") {console.warn("Sample import cleanup failed", cleanup.error)}
+                throw result.error
             }
+            return async () => navigator.locks.request(`opendaw:storage:${this.folder}`, async () => {
+                if (!owned) {return}
+                const owner = await Promises.tryCatch(Workers.Opfs.read(ownerPath, 36))
+                if (owner.status === "rejected") {
+                    if (owner.error instanceof DOMException && owner.error.name === "NotFoundError") {return}
+                    throw owner.error
+                }
+                if (new TextDecoder().decode(owner.value) === token) {await Workers.Opfs.delete(path)}
+            })
         })
     }
 

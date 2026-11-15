@@ -31,7 +31,9 @@ beforeEach(() => {
         return files.get(file)!
     })
     vi.mocked(Workers.Opfs.write).mockImplementation(async (file, data) => {files.set(file, data)})
-    vi.mocked(Workers.Opfs.delete).mockImplementation(async () => {files.clear()})
+    vi.mocked(Workers.Opfs.delete).mockImplementation(async path => {
+        for (const file of files.keys()) {if (file === path || file.startsWith(`${path}/`)) {files.delete(file)}}
+    })
 })
 for (const file of ["audio.wav", "peaks.bin", "meta.json"]) {
     it(`cleans only its new sample after a partial ${file} write and permits retry`, async () => {
@@ -77,4 +79,20 @@ it("preserves an existing incomplete folder for recovery", async () => {
     expect(files.get(`${path}/audio.wav`)).toEqual(new Uint8Array([7]))
     expect(Workers.Opfs.delete).not.toHaveBeenCalled()
     expect(Workers.Opfs.write).not.toHaveBeenCalled()
+})
+it("does not roll back an owned sample adopted by another save", async () => {
+    const rollback = await SampleStorage.get().saveOwned(sample)
+    await SampleStorage.get().save(sample)
+    await rollback()
+    expect((await SampleStorage.get().load(sample.uuid))[0].numberOfFrames).toBe(2)
+    expect(files.has(`${path}/import-owner`)).toBe(false)
+})
+it("fences old cleanup against a replacement with the same UUID", async () => {
+    const first = await SampleStorage.get().saveOwned(sample)
+    await first()
+    const second = await SampleStorage.get().saveOwned(sample)
+    await first()
+    expect(files.has(`${path}/meta.json`)).toBe(true)
+    await second()
+    expect(files.size).toBe(0)
 })

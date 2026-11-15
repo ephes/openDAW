@@ -462,6 +462,16 @@ to 18/19, so that one is left as is.
 
 ### MIDI and file boundaries
 
+Selection notifications expose updated indexes; catchup owns replay and live events
+across reentrant edits and release preserves a newly installed target. See the
+[adapter contracts](packages/studio/adapters/README.md). DAWproject export uses UUID
+media paths and current effect order. Imports admit at most 512 MiB compressed input,
+run at most two sample pipelines, and compensate only owned sample generations on
+failure. See the [core contracts](packages/studio/core/README.md). Tempo detection
+admits finite PCM up to 30 minutes and uses cancellable feature tiles with validated
+model outputs; see [inference](packages/lib/inference/README.md). The Chromium
+selection/import fixtures use invented PCM and mocked decoder/storage publication.
+
 The [MIDI contributor notes](packages/lib/midi/README.md) describe supported
 messages, musical metadata, deterministic export ordering and import admission.
 File picker lifecycle and WAV source geometry are documented in the

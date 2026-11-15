@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Publish selection indexes before callbacks, own reentrant catchup replay in both selections, and preserve targets installed during release.
+
 - Add the engine `invalidateSample` command for replacing loaded client samples without an engine restart.
 
 - Keep an overlapped pitch lit in note displays until its last start is stopped; ignore stops without a displayed start.

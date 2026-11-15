@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Validate sample-rate conversion geometry before early returns and allocation.
+- Correct clipped centered transient RMS energy and use a running sum for linear-work valley refinement.
+
 - Validate WAV source planes, sample/channel geometry, prefix length and RIFF size before output allocation.
 
 - Cover pulse harmonic/state limits and deterministic C64 noise clocks/reset.

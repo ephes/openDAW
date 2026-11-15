@@ -526,7 +526,7 @@ export namespace DawProjectImport {
 
                 const audioFileBox: AudioFileBox = boxGraph.findBox<AudioFileBox>(uuid)
                     .unwrapOrElse(() => AudioFileBox.create(boxGraph, uuid, box => {
-                        box.fileName.setValue(name)
+                        box.fileName.setValue(audio.name ?? name)
                         box.endInSeconds.setValue(asDefined(audio.duration, "Duration not defined"))
                     }))
                 audioIdSet.add(uuid, true)

@@ -129,3 +129,18 @@ exports; maxLength deliberately selects at most that many frames, including zero
 
 Run `npm test -w @opendaw/lib-dsp` for exact interleaved prefix/header and
 pre-allocation admission regressions.
+
+## Rate conversion and transient energy
+
+Rate conversion and length prediction share admission: rates must be finite and
+positive, source lengths must be nonnegative safe integers, and source/output
+float32 storage must fit 0xFFFFFFFF bytes. Invalid rates also reject for empty
+and equal-rate requests. Valid empty output stays empty; equal-rate output is copied.
+
+Transient envelopes use the inclusive centered window `[i-floor(window/2),
+i+floor(window/2)]`, clipped to the source, divided by its actual sample count.
+Even nominal windows therefore contain one additional sample in the interior.
+Valley search retains its backward scan, strict minimum/tie policy, 0.66 threshold
+and fixed 6 ms RMS divisor at the right edge. A running squared sum makes each
+search linear in search span plus RMS window, with constant extra storage.
+Direct RMS/valley oracles and counted 48/96 kHz reads run in the DSP tests.

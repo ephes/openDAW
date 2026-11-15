@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Export DAWproject audio by UUID with independent display labels; serialize effect chains by current index and stable UUID ties.
+- Bound compressed DAWproject picker input and sample-import concurrency; unwind owned sample generations on failure while preserving reused/preexisting assets and the primary error.
+
 - Retain YSync factory conflict policies and restore both graph and Y.Doc on refused edits, including shared-map deletion.
 - Unwind failed join transactions and preserve existing shared-map identities/extensions without bootstrap publication.
 - Apply compatible same-UUID map replacements and refuse incompatible box types or noncanonical/out-of-range field paths.

@@ -347,6 +347,9 @@ export class MediaFileSchema extends TimelineSchema {
 
 @Xml.Class("Audio")
 export class AudioSchema extends MediaFileSchema {
+    @Xml.Attribute("name")
+    readonly name?: string
+
     @Xml.Attribute("algorithm")
     readonly algorithm?: string
 
