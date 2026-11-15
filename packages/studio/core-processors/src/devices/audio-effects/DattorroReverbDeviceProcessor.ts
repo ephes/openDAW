@@ -83,8 +83,11 @@ export class DattorroReverbDeviceProcessor extends AudioProcessor implements Aud
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
@@ -93,7 +96,10 @@ export class DattorroReverbDeviceProcessor extends AudioProcessor implements Aud
     handleEvent(_event: Event): void {}
 
     processAudio({s0, s1}: Block): void {
-        if (this.#source.isEmpty()) {return}
+        if (this.#source.isEmpty()) {
+            this.#output.clear(s0, s1)
+            return
+        }
         const source = this.#source.unwrap()
         this.#dsp.process(source.channels() as StereoMatrix.Channels, this.#output.channels() as StereoMatrix.Channels, s0, s1)
         this.#peaks.process(this.#output.getChannel(0), this.#output.getChannel(1), s0, s1)

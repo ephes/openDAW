@@ -67,6 +67,7 @@ export class StereoToolDeviceProcessor extends AudioProcessor implements AudioEf
         this.#output.clear()
         this.eventInput.clear()
         this.#processed = false
+        this.#needsUpdate = true
     }
 
     get uuid(): UUID.Bytes {return this.#adapter.uuid}
@@ -74,15 +75,21 @@ export class StereoToolDeviceProcessor extends AudioProcessor implements AudioEf
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
     adapter(): AudioEffectDeviceAdapter {return this.#adapter}
 
     processAudio({s0, s1}: Block): void {
-        if (this.#source.isEmpty()) {return}
+        if (this.#source.isEmpty()) {
+            this.#output.clear(s0, s1)
+            return
+        }
         if (this.#needsUpdate) {
             this.#matrix.update(this.#params, this.#mixing, this.#processed)
             this.#needsUpdate = false

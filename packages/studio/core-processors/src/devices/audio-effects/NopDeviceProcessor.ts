@@ -46,15 +46,21 @@ export class NopDeviceProcessor extends AbstractProcessor implements AudioEffect
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
     adapter(): AudioEffectDeviceAdapter {return this.#adapter}
 
     process(_processInfo: ProcessInfo): void {
-        if (this.#source.isEmpty()) {return}
+        if (this.#source.isEmpty()) {
+            this.#output.clear()
+            return
+        }
         const input = this.#source.unwrap()
         const [inpL, inpR] = input.channels()
         const [outL, outR] = this.#output.channels()

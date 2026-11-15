@@ -99,9 +99,10 @@ export class VocoderDeviceProcessor extends AudioProcessor implements AudioEffec
             }),
             context.subscribeProcessPhase(phase => {
                 if (phase === ProcessPhase.Before && this.#needsSideChainResolution) {
-                    this.#needsSideChainResolution = false
+                    this.#needsSideChainResolution = adapter.sideChain.targetVertex.nonEmpty()
                     adapter.sideChain.targetVertex.map(({box}) => box.address).ifSome(address => {
                         context.audioOutputBufferRegistry.resolve(address).ifSome(output => {
+                            this.#needsSideChainResolution = false
                             this.#sideChain = Option.wrap(output.buffer)
                             this.#sideChainConnection.own(context.registerEdge(output.processor, this.incoming))
                         })
@@ -138,8 +139,11 @@ export class VocoderDeviceProcessor extends AudioProcessor implements AudioEffec
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
@@ -148,7 +152,10 @@ export class VocoderDeviceProcessor extends AudioProcessor implements AudioEffec
     handleEvent(_event: Event): void {}
 
     processAudio({s0, s1}: Block): void {
-        if (this.#source.isEmpty()) return
+        if (this.#source.isEmpty()) {
+            this.#output.clear(s0, s1)
+            return
+        }
         const source = this.#source.unwrap()
         const srcL = source.getChannel(0)
         const srcR = source.getChannel(1)

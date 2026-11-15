@@ -23,7 +23,7 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
         if (isDefined(this.#wasmLoading)) {
             return this.#wasmLoading
         }
-        this.#wasmLoading = (async () => {
+        const loading = (async () => {
             const wasmBinary = await engineToClient.fetchNamWasm()
             const emscriptenModule = await createNamModule({
                 wasmBinary,
@@ -32,10 +32,14 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
             const module = NamWasmModule.fromModule(emscriptenModule)
             module.setSampleRate(sampleRate)
             this.#wasmModule = Option.wrap(module)
-            this.#wasmLoading = null
             return module
         })()
-        return this.#wasmLoading
+        this.#wasmLoading = loading
+        try {
+            return await loading
+        } finally {
+            if (this.#wasmLoading === loading) {this.#wasmLoading = null}
+        }
     }
 
     readonly #id: int = NeuralAmpDeviceProcessor.ID++
@@ -55,6 +59,8 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
 
     #needsSpectrum: boolean = false
     #pendingModelJson: string = ""
+    #modelApplyPending: boolean = false
+    #modelApplyFailed: boolean = false
     #source: Option<AudioBuffer> = Option.None
     #instances: [int, int] = [-1, -1]
     #modelLoaded: boolean = false
@@ -125,8 +131,11 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     get audioOutput(): AudioBuffer {return this.#output}
 
     setAudioSource(source: AudioBuffer): Terminable {
-        this.#source = Option.wrap(source)
-        return {terminate: () => this.#source = Option.None}
+        const attachment = Option.wrap(source)
+        this.#source = attachment
+        return {terminate: () => {
+            if (this.#source === attachment) {this.#source = Option.None}
+        }}
     }
 
     index(): int {return this.#adapter.indexField.getValue()}
@@ -135,11 +144,19 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     handleEvent(_event: Event): void {}
 
     processAudio({s0, s1}: Block): void {
-        if (this.#terminated || this.#source.isEmpty()) {return}
+        if (this.#terminated || this.#source.isEmpty()) {
+            this.#output.clear(s0, s1)
+            return
+        }
         const [inL, inR] = this.#source.unwrap().channels() as StereoMatrix.Channels
         const [outL, outR] = this.#output.channels() as StereoMatrix.Channels
         const numFrames = s1 - s0
         const module = NeuralAmpDeviceProcessor.#wasmModule
+        if (this.#modelApplyFailed && module.nonEmpty()) {
+            this.#modelApplyFailed = false
+            this.#initInstance()
+            this.#applyModel()
+        }
         if (module.isEmpty() || !this.#modelLoaded || this.#instances[0] < 0) {
             for (let i = s0; i < s1; i++) {
                 outL[i] = inL[i]
@@ -195,9 +212,12 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     }
 
     terminate(): void {
+        if (this.#terminated) {return}
         this.#terminated = true
-        super.terminate()
-        this.#destroyInstances()
+        const errors: unknown[] = []
+        try {super.terminate()} catch (error) {errors.push(error)}
+        try {this.#destroyInstances()} catch (error) {errors.push(error)}
+        if (errors.length > 0) {throw errors[0]}
     }
 
     toString(): string {return `{${this.constructor.name} (${this.#id})}`}
@@ -215,52 +235,68 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
         }
     }
 
+    static #destroyInstance(wasm: NamWasmModule, instance: int): void {
+        const errors: unknown[] = []
+        try {wasm.unloadModel(instance)} catch (error) {errors.push(error)}
+        try {wasm.destroyInstance(instance)} catch (error) {errors.push(error)}
+        if (errors.length > 0) {throw errors[0]}
+    }
+
     #destroyInstances(): void {
-        const module = NeuralAmpDeviceProcessor.#wasmModule
-        if (module.nonEmpty()) {
-            const wasm = module.unwrap()
-            for (let i = 0; i < 2; i++) {
-                if (this.#instances[i] >= 0) {
-                    try {
-                        wasm.unloadModel(this.#instances[i])
-                        wasm.destroyInstance(this.#instances[i])
-                    } catch (error) {
-                        console.error("NAM destroyInstance failed:", error)
-                    }
-                    this.#instances[i] = -1
-                }
-            }
-        }
+        const instances = this.#instances
+        this.#instances = [-1, -1]
         this.#modelLoaded = false
+        const errors: unknown[] = []
+        NeuralAmpDeviceProcessor.#wasmModule.ifSome(wasm => {
+            for (const instance of instances) {
+                if (instance < 0) {continue}
+                try {NeuralAmpDeviceProcessor.#destroyInstance(wasm, instance)} catch (error) {errors.push(error)}
+            }
+        })
+        if (errors.length > 0) {throw errors[0]}
     }
 
     #onMonoChanged(mono: boolean): void {
         if (this.#terminated) {return}
-        this.#mono = mono
         const module = NeuralAmpDeviceProcessor.#wasmModule
-        if (module.isEmpty()) {return}
+        if (module.isEmpty()) {
+            this.#mono = mono
+            return
+        }
         const wasm = module.unwrap()
         if (mono) {
+            this.#mono = true
             if (this.#instances[1] >= 0) {
+                const instance = this.#instances[1]
+                this.#instances[1] = -1
                 try {
-                    wasm.unloadModel(this.#instances[1])
-                    wasm.destroyInstance(this.#instances[1])
+                    NeuralAmpDeviceProcessor.#destroyInstance(wasm, instance)
                 } catch (error) {
                     console.error("NAM destroyInstance failed in onMonoChanged:", error)
                 }
-                this.#instances[1] = -1
             }
         } else {
             if (this.#instances[1] < 0) {
-                this.#instances[1] = wasm.createInstance()
-                if (this.#pendingModelJson.length > 0) {
-                    try {
-                        wasm.loadModel(this.#instances[1], this.#pendingModelJson)
-                    } catch (error) {
-                        console.error("NAM loadModel failed in onMonoChanged:", error)
+                let instance = -1
+                try {
+                    instance = wasm.createInstance()
+                    if (instance < 0 || (this.#modelLoaded && !wasm.loadModel(instance, this.#pendingModelJson))) {
+                        throw new Error("NAM right model was not loaded")
                     }
+                    this.#instances[1] = instance
+                } catch (error) {
+                    if (instance >= 0) {
+                        try {
+                            NeuralAmpDeviceProcessor.#destroyInstance(wasm, instance)
+                        } catch (cleanupError) {
+                            console.error("NAM right instance cleanup failed:", cleanupError)
+                        }
+                    }
+                    console.error("NAM stereo activation failed:", error)
+                    return
                 }
             }
+            this.#mono = false
         }
     }
 
@@ -271,18 +307,27 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     #onModelJsonChanged(modelJson: string): void {
         if (this.#terminated) {return}
         this.#pendingModelJson = modelJson
+        if (this.#modelApplyPending) {return}
+        this.#modelApplyFailed = false
         const module = NeuralAmpDeviceProcessor.#wasmModule
         if (module.nonEmpty()) {
             this.#initInstance()
             this.#applyModel()
         } else {
+            this.#modelApplyPending = true
             NeuralAmpDeviceProcessor.fetchWasm(this.#context.engineToClient)
                 .then(() => {
+                    this.#modelApplyPending = false
                     if (this.#terminated) {return}
                     this.#initInstance()
                     this.#applyModel()
                 })
-                .catch(error => console.error("Failed to load NAM WASM:", error))
+                .catch(error => {
+                    this.#modelApplyPending = false
+                    if (this.#terminated) {return}
+                    this.#modelApplyFailed = true
+                    console.error("Failed to load NAM WASM:", error)
+                })
         }
     }
 

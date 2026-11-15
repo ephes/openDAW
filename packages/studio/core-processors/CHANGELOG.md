@@ -7,6 +7,20 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Reset old soundfont voices and display state on file-pointer transitions; process releases without a loaded font and own note-display disposal.
 
+- Retry unresolved Gate sidechains until registration and snap Stereo Tool matrix controls on restart.
+
+- Retry unresolved Compressor and Vocoder sidechains like Gate, and apply a NAM model whose own module load failed once the shared module becomes ready.
+
+- Keep vocoder coefficient interpolation on its sample clock across partial blocks; reset coefficients and band fades to current controls.
+
+- Correct the delay limiter to 50 ms attack/250 ms release and clear modulation smoothing history on restart.
+
+- Give effect inputs independent connection leases and silence disconnected output spans instead of replaying stale samples.
+
+- Retire all owned NAM instances despite teardown errors and coalesce pending model edits to the latest request.
+
+- Retry failed shared NAM module loads and admit stereo only after the right model is ready, retaining usable mono on failure.
+
 - Reload invalidated worklet samples by attempt; ignore late fetch success/error after removal, reload or manager termination.
 
 - Clear Pitch, Velocity and Zeitgeist note displays on reset, and bound the Velocity display cursor to its broadcast buffer.

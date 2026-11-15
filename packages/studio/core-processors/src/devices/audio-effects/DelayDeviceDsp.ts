@@ -49,12 +49,13 @@ export class DelayDeviceDsp {
         this.#preDelayR = new Delay(maxFrames, this.#interpolationLength)
         this.#preDelayBuf = [new Float32Array(128), new Float32Array(128)]
         this.#lfoDepthSmoother = new Smooth(0.003, sampleRate)
-        this.#envelopeAttack = Math.exp(-1.0 / (sampleRate * LIMITER_ATTACK_MS))
-        this.#envelopeRelease = Math.exp(-1.0 / (sampleRate * LIMITER_RELEASE_MS))
+        this.#envelopeAttack = Math.exp(-1.0 / (sampleRate * LIMITER_ATTACK_MS * 0.001))
+        this.#envelopeRelease = Math.exp(-1.0 / (sampleRate * LIMITER_RELEASE_MS * 0.001))
     }
 
     reset(): void {
         this.#delayLinePosition = 0
+        this.#lfoDepthSmoother.value = 0.0
         this.#preDelayL.clear()
         this.#preDelayR.clear()
         if (this.#processed) {
