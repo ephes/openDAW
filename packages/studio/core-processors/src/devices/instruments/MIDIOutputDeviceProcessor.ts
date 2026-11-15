@@ -1,4 +1,4 @@
-import {Arrays, asInstanceOf, byte, int, Option, Terminable, UUID} from "@opendaw/lib-std"
+import {Arrays, asInstanceOf, Option, Terminable, UUID} from "@opendaw/lib-std"
 import {AudioBuffer, Event, PPQN} from "@opendaw/lib-dsp"
 import {MIDIOutputDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {EngineContext} from "../../EngineContext"
@@ -16,11 +16,11 @@ export class MIDIOutputDeviceProcessor extends AudioProcessor implements Instrum
 
     readonly #audioOutput: AudioBuffer
 
-    readonly #activeNotes: Array<byte> = []
+    readonly #activeNotes = new Map<number, {pitch: number, id: string, channel: number, delay: number}>()
+    #routeSubscription: Terminable = Terminable.Empty
 
     readonly #parameters: Array<AutomatableParameter<number>>
 
-    #lastChannel: byte
     #enabled: boolean = true
     #source: Option<NoteEventSource> = Option.None
 
@@ -33,7 +33,6 @@ export class MIDIOutputDeviceProcessor extends AudioProcessor implements Instrum
 
         const {midiDevice, box, parameters} = adapter
 
-        this.#lastChannel = box.channel.getValue()
 
         this.ownAll(
             box.enabled.catchupAndSubscribe(owner => {
@@ -48,13 +47,13 @@ export class MIDIOutputDeviceProcessor extends AudioProcessor implements Instrum
                     Arrays.removeIf(this.#parameters, parameter =>
                         parameter.address === asInstanceOf(box, MIDIOutputParameterBox).value.address))
             }),
-            box.channel.subscribe(owner => {
-                midiDevice.ifSome(outputBox => this.#activeNotes.forEach(pitch =>
-                    context.sendMIDIData(outputBox.id.getValue(),
-                        MidiData.noteOff(this.#lastChannel, pitch), outputBox.delayInMs.getValue())))
-                this.#activeNotes.length = 0
-                this.#lastChannel = owner.getValue()
+            box.channel.subscribe(() => this.reset()),
+            midiDevice.catchupAndSubscribe(output => {
+                this.reset()
+                this.#routeSubscription.terminate()
+                this.#routeSubscription = output.mapOr(box => box.id.subscribe(() => this.reset()), Terminable.Empty)
             }),
+            Terminable.create(() => this.#routeSubscription.terminate()),
             context.registerProcessor(this)
         )
         this.readAllParameters()
@@ -78,14 +77,18 @@ export class MIDIOutputDeviceProcessor extends AudioProcessor implements Instrum
                 const channelIndex = channel.getValue()
                 if (NoteLifecycleEvent.isStart(event)) {
                     const velocityAsByte = Math.round(event.velocity * 127)
-                    this.#activeNotes.push(event.pitch)
-                    optDevice.ifSome(device => this.context.sendMIDIData(device.id.getValue(),
-                        MidiData.noteOn(channelIndex, event.pitch, velocityAsByte), relativeTimeInMs))
+                    optDevice.ifSome(device => {
+                        const id = device.id.getValue()
+                        this.#activeNotes.set(event.id, {pitch: event.pitch, id, channel: channelIndex, delay: delayInMs})
+                        this.context.sendMIDIData(id, MidiData.noteOn(channelIndex, event.pitch, velocityAsByte), relativeTimeInMs)
+                    })
                 } else if (NoteLifecycleEvent.isStop(event)) {
-                    const deleteIndex = this.#activeNotes.indexOf(event.pitch)
-                    if (deleteIndex > -1) {this.#activeNotes.splice(deleteIndex, 1)}
-                    optDevice.ifSome(optDevice => this.context.sendMIDIData(optDevice.id.getValue(),
-                        MidiData.noteOff(channelIndex, event.pitch), relativeTimeInMs))
+                    const owned = this.#activeNotes.get(event.id)
+                    if (owned !== undefined) {
+                        this.#activeNotes.delete(event.id)
+                        this.context.sendMIDIData(owned.id, MidiData.noteOff(owned.channel, owned.pitch),
+                            relativeTimeInMs - delayInMs + owned.delay)
+                    }
                 }
             }
         }
@@ -93,13 +96,27 @@ export class MIDIOutputDeviceProcessor extends AudioProcessor implements Instrum
 
     setNoteEventSource(source: NoteEventSource): Terminable {
         this.#source = Option.wrap(source)
-        return Terminable.create(() => this.#source = Option.None)
+        const attachment = this.#source
+        return Terminable.create(() => {
+            if (this.#source === attachment) {this.reset(); this.#source = Option.None}
+        })
     }
 
     get incoming(): Processor {return this}
     get outgoing(): Processor {return this}
 
-    reset(): void {}
+    reset(): void {
+        for (const note of this.#activeNotes.values()) {
+            this.context.sendMIDIData(note.id, MidiData.noteOff(note.channel, note.pitch), note.delay)
+        }
+        this.#activeNotes.clear()
+        this.eventInput.clear()
+    }
+
+    terminate(): void {
+        this.reset()
+        super.terminate()
+    }
 
     get uuid(): UUID.Bytes {return this.#adapter.uuid}
     get audioOutput(): AudioBuffer {return this.#audioOutput}

@@ -66,3 +66,9 @@ CC parameters can be:
 - Automated in the timeline like any other parameter
 - MIDI-learned from external controllers
 - Used to control any CC-assignable parameter on external synthesizers
+
+### Held-note ownership
+
+Reset, disable and device removal send one note-off for every held note. Changing
+the output endpoint or channel first releases notes on their original route; later
+source releases cannot send orphan note-offs to the new route.

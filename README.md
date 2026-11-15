@@ -289,6 +289,12 @@ Shared collection and subscription ownership contracts are documented in
 [`lib-runtime`](packages/lib/runtime/README.md). See the
 [round 94 repair plan](plans/scout-round94-collections-lifecycle.md) for regression evidence.
 
+### Hardware MIDI output
+
+Hardware notes retain the endpoint and channel that received their starts. Reset,
+disable, disconnect and teardown release them once; routing edits retire the old
+route before new notes play. See the [MIDI Output manual](packages/app/studio/public/manuals/devices/instruments/midioutput.md).
+
 ### Audio effect lifecycle
 
 See the [core processor contracts](packages/studio/core-processors/README.md) for
