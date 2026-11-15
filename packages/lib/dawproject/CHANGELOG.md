@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve optional Audio display names separately from archive paths.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.70](https://github.com/andremichelle/openDAW/compare/@opendaw/lib-dawproject@0.0.69...@opendaw/lib-dawproject@0.0.70) (2026-05-22)

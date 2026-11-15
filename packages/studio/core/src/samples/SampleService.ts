@@ -33,6 +33,16 @@ export class SampleService extends AssetService<Sample, AudioData> {
     async importFile({uuid, name, bpm, arrayBuffer, progressHandler = Progress.Empty, origin = "import"}
                      : AssetService.ImportArgs,
                      transformMeta?: (meta: SampleMetaData, audioData: Readonly<AudioData>) => Promise<void>): Promise<Sample> {
+        const imported = await this.#importFile({uuid, name, bpm, arrayBuffer, progressHandler, origin}, false, transformMeta)
+        imported.publish()
+        return imported.sample
+    }
+
+    async importOwnedFile(args: AssetService.ImportArgs) {return this.#importFile(args, true)}
+
+    async #importFile({uuid, name, bpm, arrayBuffer, progressHandler = Progress.Empty, origin = "import"}: AssetService.ImportArgs,
+                      owned: boolean,
+                      transformMeta?: (meta: SampleMetaData, audioData: Readonly<AudioData>) => Promise<void>) {
         console.debug(`importSample '${name}' (${arrayBuffer.byteLength >> 10}kb)`)
         uuid ??= await UUID.sha256(arrayBuffer)
         const audioData = await this.#decodeAudio(arrayBuffer)
@@ -55,9 +65,10 @@ export class SampleService extends AssetService<Sample, AudioData> {
             await transformMeta(meta, audioData)
         }
         const sample = {uuid: UUID.toString(uuid), ...meta}
-        await SampleStorage.get().save({uuid, audio: audioData, peaks, meta})
-        this.notifier.notify([sample, audioData])
-        return sample
+        const storage = SampleStorage.get()
+        const parts = {uuid, audio: audioData, peaks, meta}
+        const rollback = owned ? await storage.saveOwned(parts) : (await storage.save(parts), async () => {})
+        return {sample, rollback, publish: () => this.notifier.notify([sample, audioData])}
     }
 
     async replaceMissingFiles(boxGraph: BoxGraph, manager: { invalidate: (uuid: UUID.Bytes) => void }): Promise<void> {

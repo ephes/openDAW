@@ -2,6 +2,21 @@ import {describe, expect, test} from "vitest"
 import {SampleRateConverter} from "./sample-rate-converter"
 
 describe("SampleRateConverter", () => {
+    test.each([0, -1, NaN, Infinity, -Infinity])("rejects invalid rate %s even for empty or equal-rate conversions", rate => {
+        for (const length of [0, 1]) {
+            for (const [sourceRate, targetRate] of [[rate, rate], [rate, 48000], [48000, rate]]) {
+                expect(() => SampleRateConverter.calculateOutputLength(length, sourceRate, targetRate)).toThrow(RangeError)
+                expect(() => SampleRateConverter.convert(new Float32Array(length), sourceRate, targetRate)).toThrow(RangeError)
+            }
+        }
+    })
+    test.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER])("rejects unrepresentable length %s", length => {
+        expect(() => SampleRateConverter.calculateOutputLength(length, 48000, 48000)).toThrow(RangeError)
+    })
+    test("rejects excessive expansion in prediction and conversion before allocation", () => {
+        expect(() => SampleRateConverter.calculateOutputLength(1, Number.MIN_VALUE, 48000)).toThrow(RangeError)
+        expect(() => SampleRateConverter.convert(new Float32Array(1), Number.MIN_VALUE, 48000)).toThrow(RangeError)
+    })
     describe("convert", () => {
         test("same sample rate returns identical copy", () => {
             const source = new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5])

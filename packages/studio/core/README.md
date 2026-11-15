@@ -355,3 +355,26 @@ whole batch instead of one per transaction.
 The studio file observer acknowledges only after `close()` succeeds, so its commit
 counter never claims a failed write was saved. These guarantees do not change the
 existing recovery-log wire format.
+
+### Portable DAWproject identity and import ownership
+
+Exports assign each AudioFile UUID one `samples/<uuid>.wav` path, shared by ZIP
+packing and every region reference. Display names remain Audio metadata and are
+restored on import; slashes/dots in labels cannot affect archive paths. MIDI/audio
+effect chains serialize by current index, then UUID for deterministic ties.
+Instrument placement and host routing retain their existing rules.
+
+The picker rejects compressed files above 512 MiB before `arrayBuffer()`. Expanded
+archive entry/media/total limits still apply. At most two sample decode/peak/save
+pipelines run simultaneously. After failure, no further pipeline starts; already
+active siblings finish before cleanup. Sample notifications wait for the full batch.
+
+Owned sample saves return a rollback receipt under the existing storage Web Lock.
+Preexisting complete assets are preserved. New assets carry an opaque `import-owner`
+generation token; compensation removes only a matching generation. Another save
+adopts a reused asset by clearing the token, so an earlier import cannot remove it.
+Successful imports may retain the inert token until the next save. A later replacement
+receives a fresh token. Cleanup failures are logged without replacing the primary
+import error; such storage failures can require manual library recovery. No promise
+of process-crash recovery is added. Run the core DAWproject/SamplePublication tests
+and the synthetic Chromium selection/import fixtures after building.

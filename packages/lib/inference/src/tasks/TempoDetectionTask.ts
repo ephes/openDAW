@@ -1,7 +1,7 @@
 import {asDefined, clampUnit, panic} from "@opendaw/lib-std"
 import {FFT, ResamplerMono} from "@opendaw/lib-dsp"
 import {defineTask, TaskEnvironment} from "../Task"
-import {tensor, TensorMap} from "../Tensor"
+import {tensor, Tensor, TensorMap} from "../Tensor"
 
 export interface TempoDetectionInput {
     /** Mono PCM. Sample rate must be a 1/2/4/8 multiple of 11025. */
@@ -56,6 +56,39 @@ const OCTAVE_MASS_FRAC = 0.3
 const CLUSTER_HALF_WIDTH = 2
 
 const RESAMPLE_CHUNK_OUT = 128
+const MAX_DURATION_SECONDS = 30 * 60
+const PCM_BATCH = 32768
+
+const checkAbort = (env: TaskEnvironment): void => env.signal.ifSome(signal => signal.throwIfAborted())
+// Yield on a work-time budget instead of a fixed batch size: browsers clamp nested
+// `setTimeout(0)` to about 4 ms, so yielding after every small batch would spend
+// most of the run waiting. Cancellation is still observed at every yield.
+const YIELD_BUDGET_MS = 8
+type Yielder = {due(): boolean, yield(): Promise<void>}
+const createYielder = (env: TaskEnvironment): Yielder => {
+    let last = performance.now()
+    return {
+        due: () => performance.now() - last >= YIELD_BUDGET_MS,
+        yield: async () => {
+            await new Promise<void>(resolve => setTimeout(resolve, 0))
+            last = performance.now()
+            checkAbort(env)
+        }
+    }
+}
+
+const validateOutput = (output: Tensor): Float32Array => {
+    if (output.type !== "float32" || !(output.data instanceof Float32Array)
+        || output.dims.length !== 2 || output.dims[0] !== 1 || output.dims[1] !== BPM_BINS
+        || output.data.length !== BPM_BINS) {return panic("tempo-cnn: invalid output tensor layout")}
+    let mass = 0
+    for (const value of output.data) {
+        if (!Number.isFinite(value) || value < 0 || value > 1) {return panic("tempo-cnn: invalid output probability")}
+        mass += value
+    }
+    if (Math.abs(mass - 1) > 0.001) {return panic("tempo-cnn: invalid output probability mass")}
+    return output.data
+}
 
 export const TempoDetectionTask = defineTask<TempoDetectionInput, TempoDetectionOutput>({
     key: "tempo-detection",
@@ -72,13 +105,28 @@ export const TempoDetectionTask = defineTask<TempoDetectionInput, TempoDetection
     },
     executionProviders: ["wasm"],
     async run(input: TempoDetectionInput, env: TaskEnvironment): Promise<TempoDetectionOutput> {
-        env.signal.match({none: () => {}, some: signal => signal.throwIfAborted()})
-        const audio = downsampleTo11025(input.audio, input.sampleRate)
+        checkAbort(env)
+        const ratio = input.sampleRate / TARGET_SR
+        if (![1, 2, 4, 8].includes(ratio)) {
+            return panic("tempo-cnn requires sampleRate to be 11025, 22050, 44100, or 88200 Hz")
+        }
+        if (input.audio.length / input.sampleRate > MAX_DURATION_SECONDS) {
+            return panic("tempo-cnn accepts at most 30 minutes of audio")
+        }
+        const yielder = createYielder(env)
+        for (let start = 0; start < input.audio.length; start += PCM_BATCH) {
+            const end = Math.min(input.audio.length, start + PCM_BATCH)
+            for (let index = start; index < end; index++) {
+                if (!Number.isFinite(input.audio[index])) {return panic("tempo-cnn requires finite PCM")}
+            }
+            if (yielder.due()) {await yielder.yield()}
+        }
+        checkAbort(env)
+        const audio = await downsampleTo11025(input.audio, input.sampleRate, yielder, env)
         const numFrames = Math.max(0, Math.floor((audio.length - N_FFT) / HOP) + 1)
         if (numFrames === 0) {
             return panic(`Audio too short for tempo detection (need ≥${N_FFT / TARGET_SR}s at 11025 Hz, got ${audio.length} samples)`)
         }
-        const mel = computeMelSpectrogram(audio, numFrames)
         const inputName = asDefined(env.inputNames[0], "tempo-cnn: missing input name")
         const outputName = asDefined(env.outputNames[0], "tempo-cnn: missing output name")
         const accumulated = new Float64Array(BPM_BINS)
@@ -86,14 +134,17 @@ export const TempoDetectionTask = defineTask<TempoDetectionInput, TempoDetection
             ? 1
             : Math.floor((numFrames - FRAMES_PER_WINDOW) / WINDOW_STRIDE_FRAMES) + 1
         for (let windowIndex = 0; windowIndex < numWindows; windowIndex++) {
-            env.signal.match({none: () => {}, some: signal => signal.throwIfAborted()})
+            checkAbort(env)
             const startFrame = windowIndex * WINDOW_STRIDE_FRAMES
-            const tile = packWindow(mel, startFrame, numFrames)
+            const tileFrames = Math.min(FRAMES_PER_WINDOW, numFrames - startFrame)
+            const mel = await computeMelSpectrogram(audio, startFrame, tileFrames, yielder, env)
+            const tile = packWindow(mel, 0, tileFrames)
             const feeds: TensorMap = {
                 [inputName]: tensor("float32", tile, [1, N_MELS, FRAMES_PER_WINDOW, 1])
             }
             const output = await env.session(feeds)
-            const probs = asDefined(output[outputName], `tempo-cnn: missing output '${outputName}'`).data as Float32Array
+            checkAbort(env)
+            const probs = validateOutput(asDefined(output[outputName], `tempo-cnn: missing output '${outputName}'`))
             for (let bin = 0; bin < BPM_BINS; bin++) accumulated[bin] += probs[bin]
             env.progress(clampUnit((windowIndex + 1) / numWindows))
         }
@@ -152,7 +203,8 @@ const clampOctave = (winner: TempoCandidate, probs: Float32Array): TempoCandidat
 // 4× / 2× / 1× polyphase decimation to 11025 Hz. Other sample rates are
 // rejected to keep the model's mel filterbank aligned with what it was
 // trained against (40 bands across 0..5512.5 Hz).
-const downsampleTo11025 = (audio: Float32Array, sampleRate: number): Float32Array => {
+const downsampleTo11025 = async (audio: Float32Array, sampleRate: number, yielder: Yielder,
+                                 env: TaskEnvironment): Promise<Float32Array> => {
     if (sampleRate === TARGET_SR) {return audio}
     const ratio = sampleRate / TARGET_SR
     if (ratio !== 2 && ratio !== 4 && ratio !== 8) {
@@ -168,7 +220,9 @@ const downsampleTo11025 = (audio: Float32Array, sampleRate: number): Float32Arra
         resampler.downsample(audio.subarray(written * factor, (written + chunkOut) * factor),
             out, written, written + chunkOut)
         written += chunkOut
+        if (yielder.due()) {await yielder.yield()}
     }
+    checkAbort(env)
     return out
 }
 
@@ -179,7 +233,8 @@ const downsampleTo11025 = (audio: Float32Array, sampleRate: number): Float32Arra
 // catastrophically corrupts the input distribution and the model produces
 // garbage (verified empirically: drums-stem reported 49 BPM on a 155-BPM
 // track when log-dB normalization was applied).
-const computeMelSpectrogram = (audio: Float32Array, numFrames: number): Float32Array => {
+const computeMelSpectrogram = async (audio: Float32Array, startFrame: number, numFrames: number,
+                                     yielder: Yielder, env: TaskEnvironment): Promise<Float32Array> => {
     const fft = new FFT(N_FFT)
     const window = hannWindow(N_FFT)
     const real = new Float32Array(N_FFT)
@@ -188,7 +243,7 @@ const computeMelSpectrogram = (audio: Float32Array, numFrames: number): Float32A
     const melWeights = melFilterbank(TARGET_SR, N_FFT, N_MELS, FMIN_HZ, FMAX_HZ)
     const mel = new Float32Array(numFrames * N_MELS)
     for (let frame = 0; frame < numFrames; frame++) {
-        const start = frame * HOP
+        const start = (startFrame + frame) * HOP
         for (let i = 0; i < N_FFT; i++) {
             real[i] = audio[start + i] * window[i]
             imag[i] = 0
@@ -203,7 +258,9 @@ const computeMelSpectrogram = (audio: Float32Array, numFrames: number): Float32A
             }
             mel[frame * N_MELS + melIndex] = sum
         }
+        if (yielder.due()) {await yielder.yield()}
     }
+    checkAbort(env)
     return mel
 }
 

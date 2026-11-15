@@ -2,6 +2,7 @@ import {AudioData} from "./audio-data"
 import {BiquadCoeff} from "./biquad-coeff"
 import {BiquadMono} from "./biquad-processor"
 import {panic} from "@opendaw/lib-std"
+import {centeredEnergyEnvelope, transientValley} from "./transient-energy"
 
 const LR_ORDER = 48
 const LOW_CROSSOVER_HZ = 200.0
@@ -13,7 +14,6 @@ const MAX_TRANSIENT_DENSITY_PER_SEC = 40.0
 const MIN_TRANSIENT_SEPARATION_MS = 120.0
 const VALLEY_BIAS = 0.2
 const MAX_VALLEY_SEARCH_MS = 20.0
-const ONSET_ENERGY_RATIO = 0.66
 const VALLEY_RMS = 0.006
 
 const BAND_WEIGHTS: Record<Band, number> = {
@@ -50,7 +50,6 @@ export class TransientDetector {
     readonly #maxValleySearchSamples: number
     readonly #minSeparationSamples: number
     readonly #windowSamples: number
-    readonly #halfWindow: number
     readonly #maxCount: number
     readonly #mono: Float32Array
 
@@ -60,7 +59,6 @@ export class TransientDetector {
         this.#maxValleySearchSamples = Math.floor((MAX_VALLEY_SEARCH_MS / 1000.0) * this.#sampleRate)
         this.#minSeparationSamples = Math.floor((MIN_TRANSIENT_SEPARATION_MS / 1000.0) * this.#sampleRate)
         this.#windowSamples = Math.floor((RMS_WINDOW_MS / 1000.0) * this.#sampleRate)
-        this.#halfWindow = Math.floor(this.#windowSamples / 2)
         const durationSeconds = this.#numberOfFrames / this.#sampleRate
         this.#maxCount = Math.floor(durationSeconds * MAX_TRANSIENT_DENSITY_PER_SEC)
         this.#mono = this.#mixToMono(audio)
@@ -120,30 +118,7 @@ export class TransientDetector {
             const gapBasedStart = prev + Math.floor(gap * VALLEY_BIAS)
             const windowBasedStart = curr - this.#maxValleySearchSamples
             const searchStart = Math.max(gapBasedStart, windowBasedStart)
-            // Compute RMS at candidate position (the transient energy)
-            let candidateRms = 0.0
-            for (let k = 0; k < rmsWindow && curr + k < this.#numberOfFrames; k++) {
-                candidateRms += this.#mono[curr + k] * this.#mono[curr + k]
-            }
-            candidateRms = Math.sqrt(candidateRms / rmsWindow)
-            const thresoldEnergy = candidateRms * ONSET_ENERGY_RATIO
-            let minRms = Infinity
-            let minPos = curr
-            for (let j = curr - 1; j >= searchStart; j--) {
-                let sum = 0.0
-                for (let k = 0; k < rmsWindow && j + k < this.#numberOfFrames; k++) {
-                    sum += this.#mono[j + k] * this.#mono[j + k]
-                }
-                const rms = Math.sqrt(sum / rmsWindow)
-                if (rms < minRms) {
-                    minRms = rms
-                    minPos = j
-                }
-                if (rms < thresoldEnergy) {
-                    break
-                }
-            }
-            refined.push(minPos)
+            refined.push(transientValley(this.#mono, curr, searchStart, rmsWindow))
         }
         refined.push(candidates[candidates.length - 1])
         return refined
@@ -198,26 +173,7 @@ export class TransientDetector {
     }
 
     #computeEnergyEnvelope(buffer: Float32Array): Float32Array {
-        const envelope = new Float32Array(buffer.length)
-        let sumSq = 0.0
-        for (let i = 0; i < this.#windowSamples && i < buffer.length; i++) {
-            sumSq += buffer[i] * buffer[i]
-        }
-        for (let i = 0; i < buffer.length; i++) {
-            const windowStart = i - this.#halfWindow
-            const windowEnd = i + this.#halfWindow
-            if (windowStart > 0 && windowStart - 1 < buffer.length) {
-                const old = buffer[windowStart - 1]
-                sumSq -= old * old
-            }
-            if (windowEnd < buffer.length) {
-                const next = buffer[windowEnd]
-                sumSq += next * next
-            }
-            const count = Math.min(windowEnd, buffer.length - 1) - Math.max(windowStart, 0) + 1
-            envelope[i] = Math.sqrt(Math.max(0.0, sumSq) / count)
-        }
-        return envelope
+        return centeredEnergyEnvelope(buffer, this.#windowSamples)
     }
 
     #detectOnsets(envelope: Float32Array): Onset[] {
