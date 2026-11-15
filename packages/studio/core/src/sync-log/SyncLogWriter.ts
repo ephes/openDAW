@@ -1,4 +1,4 @@
-import {Func, isDefined, Observer, Subscription, Terminable} from "@opendaw/lib-std"
+import {Func, isDefined, Observer, Option, RuntimeNotifier, Subscription, Terminable} from "@opendaw/lib-std"
 import {BoxGraph, Update} from "@opendaw/lib-box"
 import {Project} from "../project/Project"
 import {Commit} from "./Commit"
@@ -11,50 +11,84 @@ export class SyncLogWriter implements Terminable {
 
     readonly #observer: Observer<Commit>
     readonly #subscription: Subscription
-
     #transactionSubscription: Subscription = Terminable.Empty
-    #lastPromise: Promise<Commit>
+    #updates: Array<Update> = []
+    // Completed transactions waiting for the next update commit. While a commit is
+    // being written, later transactions join one batch instead of one file write each.
+    #completed: Array<Update> = []
+    #commitScheduled = false
+    #lastPromise: Promise<Commit | undefined>
+    #error: Option<unknown> = Option.None
+    #terminated = false
+
+    get error(): Option<unknown> {return this.#error}
 
     private constructor(project: Project, observer: Observer<Commit>, lastCommit?: Commit) {
         this.#observer = observer
-
-        this.#lastPromise = Promise.resolve<Commit>(lastCommit ?? Commit.createFirst(project).then(commit => {
-            this.#observer(commit)
+        // Capture the initial graph now; later edits belong to update commits.
+        let initial: Promise<Commit>
+        try {initial = Promise.resolve(lastCommit ?? Commit.createFirst(project))}
+        catch (error) {initial = Promise.reject(error)}
+        this.#lastPromise = initial.then(async commit => {
+            if (!isDefined(lastCommit)) {await this.#observer(commit)}
             return commit
-        }))
+        }).catch(error => this.#fail(error))
         this.#appendCommit(previous => Commit.createOpen(previous.thisHash))
         this.#subscription = this.#listen(project.boxGraph)
     }
 
     terminate(): void {
-        console.debug("SyncLogWriter.terminate")
-        this.#subscription.terminate()
+        if (this.#terminated) {return}
+        this.#terminated = true
+        // Discard only the unfinished transaction; completed ones still flush.
+        this.#updates = []
+        Terminable.many(this.#subscription, this.#transactionSubscription).terminate()
+        this.#transactionSubscription = Terminable.Empty
     }
 
-    #appendCommit(factory: Func<Commit, Promise<Commit>>): Promise<Commit> {
-        return this.#lastPromise = this.#lastPromise.then(async (previous) => {
+    #fail(error: unknown): undefined {
+        if (this.#error.nonEmpty()) {return}
+        this.#error = Option.wrap(error instanceof Error ? error : new Error("Recovery log write failed", {cause: error}))
+        try {this.terminate()} catch {console.warn("Recovery log cleanup failed")} finally {
+            void Promise.resolve().then(() => RuntimeNotifier.info({
+                headline: "Recovery Log Stopped",
+                message: "The recovery log could not be written. Further edits are not being logged. Save your project and start a new recovery log."
+            })).catch(() => console.warn("Recovery log failure notification failed"))
+        }
+    }
+
+    #appendCommit(factory: Func<Commit, Promise<Commit>>): void {
+        this.#lastPromise = this.#lastPromise.then(async previous => {
+            if (!isDefined(previous) || this.#error.nonEmpty()) {return}
             const commit = await factory(previous)
-            this.#observer(commit)
+            await this.#observer(commit)
             return commit
-        })
+        }).catch(error => this.#fail(error))
     }
 
     #listen(boxGraph: BoxGraph): Subscription {
-        let updates: Array<Update> = []
         return boxGraph.subscribeTransaction({
-            onBeginTransaction: () =>
-                this.#transactionSubscription =
-                    boxGraph.subscribeToAllUpdatesImmediate({onUpdate: (update: Update) => updates.push(update)}),
+            onBeginTransaction: () => {
+                if (this.#terminated) {return}
+                this.#transactionSubscription = boxGraph.subscribeToAllUpdatesImmediate({
+                    onUpdate: (update: Update) => {if (!this.#terminated) {this.#updates.push(update)}}
+                })
+            },
             onEndTransaction: (rolledBack) => {
                 this.#transactionSubscription.terminate()
                 this.#transactionSubscription = Terminable.Empty
-                if (rolledBack || updates.length === 0) {
-                    updates = []
-                    return
-                }
-                const ref = updates
-                updates = []
-                this.#appendCommit(previous => Commit.createUpdate(previous.thisHash, ref))
+                const updates = this.#updates
+                this.#updates = []
+                if (this.#terminated || rolledBack || updates.length === 0) {return}
+                this.#completed.push(...updates)
+                if (this.#commitScheduled) {return}
+                this.#commitScheduled = true
+                this.#appendCommit(previous => {
+                    this.#commitScheduled = false
+                    const batch = this.#completed
+                    this.#completed = []
+                    return Commit.createUpdate(previous.thisHash, batch)
+                })
             }
         })
     }

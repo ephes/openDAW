@@ -14,6 +14,7 @@ import {
     VertexVisitor
 } from "@opendaw/lib-box"
 import {YSync} from "./YSync"
+import {YMapper} from "./YMapper"
 
 // --- Minimal box fixtures ------------------------------------------------
 
@@ -335,4 +336,234 @@ describe("YSync.flush", () => {
 
         expect(scene.graph.findBox(leafId!).nonEmpty()).toBe(true)
     })
+})
+
+const copyDoc = (source: Y.Doc): Y.Doc => {
+    const doc = new Y.Doc()
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(source))
+    return doc
+}
+const graphForJoin = () => new BoxGraph<Record<string, Box>>(Option.wrap(factory))
+const exchange = (source: Y.Doc, target: Y.Doc) => Y.applyUpdate(target, Y.encodeStateAsUpdate(source))
+
+describe("YSync conflict admission", () => {
+    it.each(["constructor", "populate", "join"])("retains the %s conflict provider", async mode => {
+        const source = await makeScene()
+        const doc = copyDoc(source.doc)
+        const graph = graphForJoin()
+        const conflict = vi.fn(() => false)
+        const construct = {boxGraph: graph, boxes: doc.getMap("boxes"), conflict}
+        const sync = mode === "constructor" ? new YSync(construct)
+            : mode === "populate" ? await YSync.populateRoom(construct) : await YSync.joinRoom(construct)
+        beginCommit(source.graph, () => LeafBox.create(source.graph, UUID.generate()))
+        exchange(source.doc, doc)
+        expect(conflict).toHaveBeenCalledOnce()
+        expect(graph.boxes()).toHaveLength(1)
+        sync.terminate()
+    })
+
+    it.each(["primitive", "add", "delete"])("reverts a conflicting %s on both peers", async kind => {
+        const source = await makeScene()
+        let leaf!: LeafBox
+        beginCommit(source.graph, () => {leaf = LeafBox.create(source.graph, UUID.generate()); leaf.count.setValue(1)})
+        const doc = copyDoc(source.doc)
+        const graph = graphForJoin()
+        beginCommit(graph, () => LeafBox.create(graph, leaf.address.uuid, box => box.count.setValue(1)))
+        const sync = new YSync({boxGraph: graph, boxes: doc.getMap("boxes"), conflict: () =>
+            graph.boxes().length !== 1 || graph.findBox<LeafBox>(leaf.address.uuid).mapOr(box => box.count.getValue() > 1, true)})
+        const before = doc.getMap("boxes").toJSON()
+        beginCommit(source.graph, () => {
+            if (kind === "primitive") {leaf.count.setValue(2)}
+            if (kind === "add") {LeafBox.create(source.graph, UUID.generate())}
+            if (kind === "delete") {leaf.delete()}
+        })
+        exchange(source.doc, doc)
+        exchange(doc, source.doc)
+        expect(graph.inTransaction()).toBe(false)
+        expect(graph.boxes()).toHaveLength(1)
+        expect(graph.findBox<LeafBox>(leaf.address.uuid).unwrap().count.getValue()).toBe(1)
+        expect(doc.getMap("boxes").toJSON()).toEqual(before)
+        expect(source.doc.getMap("boxes").toJSON()).toEqual(before)
+        expect(source.graph.findBox<LeafBox>(leaf.address.uuid).unwrap().count.getValue()).toBe(1)
+        sync.terminate()
+    })
+})
+
+describe("YSync conflict revert failure", () => {
+    it("keeps both models on the committed remote edit when the inverse fails", async () => {
+        const source = await makeScene()
+        let leaf!: LeafBox
+        beginCommit(source.graph, () => {leaf = LeafBox.create(source.graph, UUID.generate()); leaf.count.setValue(1)})
+        const doc = copyDoc(source.doc)
+        const graph = graphForJoin()
+        beginCommit(graph, () => LeafBox.create(graph, leaf.address.uuid, box => box.count.setValue(1)))
+        const sync = new YSync({boxGraph: graph, boxes: doc.getMap("boxes"), conflict: () => true})
+        const end = graph.endTransaction.bind(graph)
+        let ends = 0
+        vi.spyOn(graph, "endTransaction").mockImplementation(() => {
+            if (++ends === 2) {throw new Error("synthetic inverse failure")}
+            end()
+        })
+        const error = vi.spyOn(console, "error").mockImplementation(() => {})
+        beginCommit(source.graph, () => leaf.count.setValue(2))
+        exchange(source.doc, doc)
+        expect(graph.inTransaction()).toBe(false)
+        expect(graph.findBox<LeafBox>(leaf.address.uuid).unwrap().count.getValue()).toBe(2)
+        const fields = (doc.getMap("boxes").get(UUID.toString(leaf.address.uuid)) as Y.Map<Y.Map<unknown>>).get("fields")!
+        expect(fields.get("1")).toBe(2)
+        expect(error).toHaveBeenCalledOnce()
+        sync.terminate()
+    })
+})
+
+describe("YSync join ownership", () => {
+    it.each(["uuid", "type"])("unwinds a malformed later %s and allows retry", async invalid => {
+        const source = await makeScene()
+        beginCommit(source.graph, () => LeafBox.create(source.graph, UUID.generate()))
+        const badKey = invalid === "uuid" ? "invalid" : UUID.toString(UUID.generate())
+        source.boxes.set(badKey, new Y.Map<unknown>([["name", "UnknownBox"], ["fields", new Y.Map<unknown>()]]))
+        const graph = graphForJoin()
+        const unobserve = vi.spyOn(source.boxes, "unobserveDeep")
+        await expect(YSync.joinRoom({boxGraph: graph, boxes: source.boxes})).rejects.toThrow()
+        expect(graph.inTransaction()).toBe(false)
+        expect(graph.boxes()).toHaveLength(0)
+        expect(unobserve).toHaveBeenCalledOnce()
+        source.boxes.delete(badKey)
+        const sync = await YSync.joinRoom({boxGraph: graph, boxes: source.boxes})
+        expect(graph.boxes()).toHaveLength(1)
+        sync.terminate()
+    })
+
+    it("preserves shared map identities and extensions without a bootstrap update", async () => {
+        const source = await makeScene()
+        let leaf!: LeafBox
+        beginCommit(source.graph, () => {leaf = LeafBox.create(source.graph, UUID.generate())})
+        const doc = copyDoc(source.doc)
+        const boxes = doc.getMap("boxes")
+        const map = boxes.get(UUID.toString(leaf.address.uuid)) as Y.Map<unknown>
+        map.set("extension", "preserve")
+        const fields = map.get("fields")
+        const update = vi.fn()
+        doc.on("update", update)
+        const graph = graphForJoin()
+        const sync = await YSync.joinRoom({boxGraph: graph, boxes})
+        expect(update).not.toHaveBeenCalled()
+        expect(boxes.get(UUID.toString(leaf.address.uuid))).toBe(map)
+        expect(map.get("fields")).toBe(fields)
+        expect(map.get("extension")).toBe("preserve")
+        beginCommit(graph, () => graph.findBox<LeafBox>(leaf.address.uuid).unwrap().count.setValue(7))
+        expect(update).toHaveBeenCalledOnce()
+        expect((fields as Y.Map<unknown>).get("1")).toBe(7)
+        sync.terminate()
+    })
+})
+
+describe("YSync remote identity", () => {
+    it("applies same-type root replacement including pointer fields", async () => {
+        const source = await makeScene()
+        let a!: LeafBox, b!: LeafBox, ref!: RefBox
+        beginCommit(source.graph, () => {
+            a = LeafBox.create(source.graph, UUID.generate())
+            b = LeafBox.create(source.graph, UUID.generate())
+            ref = RefBox.create(source.graph, UUID.generate(), box => box.target.refer(a))
+        })
+        const doc = copyDoc(source.doc)
+        const graph = graphForJoin()
+        const sync = await YSync.joinRoom({boxGraph: graph, boxes: doc.getMap("boxes")})
+        source.doc.transact(() => {
+            source.boxes.set(UUID.toString(a.address.uuid), new Y.Map<unknown>([
+                ["name", "LeafBox"], ["fields", new Y.Map<unknown>([["1", 9], ["2", "replacement"], ["3", false]])]
+            ]))
+            source.boxes.set(UUID.toString(ref.address.uuid), new Y.Map<unknown>([
+                ["name", "RefBox"], ["fields", new Y.Map<unknown>([["1", b.address.toString()]])]
+            ]))
+        })
+        exchange(source.doc, doc)
+        expect(graph.findBox<LeafBox>(a.address.uuid).unwrap().count.getValue()).toBe(9)
+        expect(graph.findBox<LeafBox>(a.address.uuid).unwrap().label.getValue()).toBe("replacement")
+        expect(graph.findBox<RefBox>(ref.address.uuid).unwrap().target.targetAddress.unwrap().equals(b.address)).toBe(true)
+        sync.terminate()
+    })
+
+    it("refuses an incompatible box type and restores the previous shared map", async () => {
+        const source = await makeScene()
+        let leaf!: LeafBox
+        beginCommit(source.graph, () => {leaf = LeafBox.create(source.graph, UUID.generate())})
+        const doc = copyDoc(source.doc)
+        const graph = graphForJoin()
+        const sync = await YSync.joinRoom({boxGraph: graph, boxes: doc.getMap("boxes")})
+        const before = doc.getMap("boxes").toJSON()
+        source.boxes.set(UUID.toString(leaf.address.uuid), new Y.Map<unknown>([
+            ["name", "RefBox"], ["fields", new Y.Map<unknown>([["1", null]])]
+        ]))
+        exchange(source.doc, doc)
+        expect(graph.findBox(leaf.address.uuid).unwrap()).toBeInstanceOf(LeafBox)
+        expect(doc.getMap("boxes").toJSON()).toEqual(before)
+        sync.terminate()
+    })
+
+    it.each(["65536", "0.5", "", "NaN", "01", "+1", "-0", "32768", "-32769"])("refuses noncanonical/out-of-domain field %j", key => {
+        expect(() => YMapper.pathToAddress([UUID.toString(UUID.generate()), "fields"], key)).toThrow()
+    })
+    it("checks the fields marker and preserves legal signed i16 keys", () => {
+        const uuid = UUID.toString(UUID.generate())
+        expect(() => YMapper.pathToAddress([uuid, "wrong"], "0")).toThrow()
+        expect(Array.from(YMapper.pathToAddress([uuid, "fields", "-32768"], "32767").fieldKeys)).toEqual([-32768, 32767])
+    })
+})
+
+describe("YSync populate ownership", () => {
+    it("prepares every detached map before publishing and retires failed setup", async () => {
+        const graph = graphForJoin()
+        beginCommit(graph, () => {
+            LeafBox.create(graph, UUID.generate())
+            LeafBox.create(graph, UUID.generate())
+        })
+        const doc = new Y.Doc()
+        const boxes = doc.getMap("boxes")
+        const unobserve = vi.spyOn(boxes, "unobserveDeep")
+        const original = YMapper.createBoxMap
+        const mapping = vi.spyOn(YMapper, "createBoxMap")
+            .mockImplementationOnce(original).mockImplementationOnce(() => {throw new Error("serialization")})
+        await expect(YSync.populateRoom({boxGraph: graph, boxes})).rejects.toThrow("serialization")
+        mapping.mockRestore()
+        expect(boxes.size).toBe(0)
+        expect(unobserve).toHaveBeenCalledOnce()
+        beginCommit(graph, () => LeafBox.create(graph, UUID.generate()))
+        expect(boxes.size).toBe(0)
+        const updates = vi.fn()
+        doc.on("update", updates)
+        const sync = await YSync.populateRoom({boxGraph: graph, boxes})
+        expect(boxes.size).toBe(3)
+        expect(updates).toHaveBeenCalledOnce()
+        sync.terminate()
+    })
+})
+
+it("evaluates conflict policy with finalized pointer hubs and bounds live inverse exchange", async () => {
+    const source = await makeScene()
+    let leaf!: LeafBox, ref!: RefBox
+    beginCommit(source.graph, () => {
+        leaf = LeafBox.create(source.graph, UUID.generate())
+        ref = RefBox.create(source.graph, UUID.generate())
+    })
+    const doc = copyDoc(source.doc)
+    const graph = graphForJoin()
+    const sync = await YSync.joinRoom({boxGraph: graph, boxes: doc.getMap("boxes"),
+        conflict: () => graph.findBox<LeafBox>(leaf.address.uuid).unwrap().incomingEdges().length > 0})
+    let transmissions = 0
+    const forward = (target: Y.Doc) => (update: Uint8Array) => {
+        expect(++transmissions).toBeLessThan(8)
+        Y.applyUpdate(target, update)
+    }
+    source.doc.on("update", forward(doc))
+    doc.on("update", forward(source.doc))
+    beginCommit(source.graph, () => ref.target.refer(leaf))
+    expect(graph.findBox<RefBox>(ref.address.uuid).unwrap().target.targetAddress.isEmpty()).toBe(true)
+    expect(ref.target.targetAddress.isEmpty()).toBe(true)
+    expect(doc.getMap("boxes").toJSON()).toEqual(source.boxes.toJSON())
+    sync.terminate()
+    source.sync.terminate()
+    doc.destroy()
+    source.doc.destroy()
 })

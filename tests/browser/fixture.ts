@@ -1,6 +1,6 @@
 import {Events, Html} from "@opendaw/lib-dom"
 import {HTML} from "@opendaw/lib-jsx"
-import {RuntimeNotifier, Terminable, Terminator} from "@opendaw/lib-std"
+import {MutableObservableOption, RuntimeNotifier, Terminable, Terminator} from "@opendaw/lib-std"
 import {RoomStatus} from "@/ui/RoomStatus"
 import type {StudioService} from "@/service/StudioService"
 
@@ -88,6 +88,52 @@ export const html = async () => {
     check(failures.length === 0, "unhandled HTML rejection")
 }
 
-export type BrowserFixtures = {gestures: typeof gestures, clipboard: typeof clipboard, html: typeof html}
+let roomScenario: {newest: () => void, finish: () => Promise<void>} | undefined
+export const roomIntent = async (step: "start" | "newest" | "finish") => {
+    if (step === "newest") {roomScenario!.newest(); return}
+    if (step === "finish") {await roomScenario!.finish(); return}
+    const {connectRoom} = await import("@/service/StudioLiveRoomConnect")
+    const {Surface} = await import("@/ui/surface/Surface")
+    const {YService} = await import("@opendaw/studio-core")
+    const getSurface = Surface.get
+    const getRoom = YService.getOrCreateRoom
+    Surface.get = () => ({flyout: document.body}) as Surface
+    const pending = Promise.withResolvers<YService.RoomResult>()
+    let calls = 0
+    YService.getOrCreateRoom = () => {calls++; return pending.promise}
+    let retired = 0
+    const currentLifetime = new Terminator()
+    const current = {own: (value: Terminable) => currentLifetime.own(value)}
+    const profiles = new MutableObservableOption<{project: typeof current}>()
+    profiles.wrap({project: current})
+    let installations = 0
+    const service = {projectProfileService: {
+        getValue: () => profiles,
+        subscribe: (observer: (value: typeof profiles) => void) => profiles.subscribe(() => observer(profiles)),
+        setProject: () => installations++
+    }} as unknown as StudioService
+    const first = connectRoom(service, "synthetic-a")
+    let newest: Promise<void>
+    roomScenario = {
+        newest: () => {newest = connectRoom(service, "synthetic-b")},
+        finish: async () => {
+            try {
+                await newest
+                pending.resolve({project: {terminate: () => retired++}} as unknown as YService.RoomResult)
+                await first
+                check(calls === 1, "cancelled latest dialog started a connection")
+                check(installations === 0 && retired === 1, "older room installed after newer intent")
+                check(failures.length === 0, "unhandled room connection failure")
+            } finally {
+                currentLifetime.terminate()
+                YService.getOrCreateRoom = getRoom
+                Surface.get = getSurface
+                roomScenario = undefined
+            }
+        }
+    }
+}
 
-Object.assign(window, {fixtures: {gestures, clipboard, html}})
+export type BrowserFixtures = {gestures: typeof gestures, clipboard: typeof clipboard, html: typeof html, roomIntent: typeof roomIntent}
+
+Object.assign(window, {fixtures: {gestures, clipboard, html, roomIntent}})

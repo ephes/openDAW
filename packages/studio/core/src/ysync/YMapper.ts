@@ -33,6 +33,7 @@ export namespace YMapper {
         const apply = (vertex: Vertex, map: Y.Map<unknown>) => {
             const record = vertex.record()
             map.forEach((value, key) => {
+                fieldKey(key)
                 const field = record[key]
                 if (isUndefined(field)) {return}
                 field.accept({
@@ -58,12 +59,16 @@ export namespace YMapper {
         apply(box, source)
     }
 
-    export const pathToAddress = ([uuidAsString, _, ...fieldKeysFromPath]: ReadonlyArray<string | number>, leafKey: string): Address => {
-        assert(isDefined(uuidAsString), "Invalid path")
-        const fieldKeys = new Int16Array(fieldKeysFromPath.length + 1)
-        fieldKeysFromPath.forEach((key, index) => fieldKeys[index] = Number(key))
-        fieldKeys[fieldKeysFromPath.length] = Number(leafKey)
-        return new Address(UUID.parse(String(uuidAsString)), fieldKeys)
+    const fieldKey = (key: string | number): number => {
+        const value = Number(key)
+        assert(Number.isInteger(value) && value >= -32768 && value <= 32767
+            && String(value) === String(key), "Invalid field key")
+        return value
+    }
+
+    export const pathToAddress = ([uuidAsString, marker, ...fieldKeysFromPath]: ReadonlyArray<string | number>, leafKey: string): Address => {
+        assert(isDefined(uuidAsString) && marker === "fields", "Invalid fields path")
+        return Address.compose(UUID.parse(String(uuidAsString)), ...fieldKeysFromPath.map(fieldKey), fieldKey(leafKey))
     }
 
     export const findMap = (map: Y.Map<unknown>, fieldKeys: ReadonlyArray<string | number>): Y.Map<unknown> =>
