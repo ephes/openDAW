@@ -54,6 +54,9 @@ it("refuses duration beyond thirty minutes before preprocessing", async () => {
     expect(session).not.toHaveBeenCalled()
 })
 it("yields during preprocessing so cancellation stops before model invocation", async () => {
+    // Each clock read advances 1 ms, so the 8 ms work budget expires every eight checks.
+    let now = 0
+    vi.spyOn(performance, "now").mockImplementation(() => ++now)
     const controller = new AbortController()
     const original = FFT.prototype.process
     let calls = 0
@@ -79,4 +82,11 @@ it("bounds feature allocations independently of track length", async () => {
     await result
     expect(session.mock.calls.length).toBeGreaterThan(1)
     expect(Math.max(...allocations)).toBeLessThanOrEqual(40 * 513)
+})
+it("yields on a work-time budget rather than after every small batch", async () => {
+    vi.spyOn(performance, "now").mockReturnValue(0)
+    const timeout = vi.spyOn(globalThis, "setTimeout")
+    const {result} = run(valid(), new Float32Array(11025 * 20))
+    await result
+    expect(timeout).not.toHaveBeenCalled()
 })

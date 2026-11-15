@@ -7,5 +7,13 @@ export default defineConfig({
     esbuild: {jsxFactory: "createElement", jsxFragment: "Fragment"},
     // Scan the worklet too: a cold dependency cache otherwise re-optimizes and reloads mid-test.
     optimizeDeps: {entries: ["index.html", "script-worklet.ts"]},
-    server: {host: "127.0.0.1", port: 4179, strictPort: true}
+    // Match the studio's cross-origin isolation so SharedArrayBuffer-backed AudioData works.
+    server: {
+        host: "127.0.0.1", port: 4179, strictPort: true,
+        headers: {
+            "Cross-Origin-Opener-Policy": "same-origin",
+            "Cross-Origin-Embedder-Policy": "require-corp",
+            "Cross-Origin-Resource-Policy": "cross-origin"
+        }
+    }
 })

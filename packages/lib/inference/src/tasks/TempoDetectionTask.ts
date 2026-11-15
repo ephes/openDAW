@@ -60,9 +60,21 @@ const MAX_DURATION_SECONDS = 30 * 60
 const PCM_BATCH = 32768
 
 const checkAbort = (env: TaskEnvironment): void => env.signal.ifSome(signal => signal.throwIfAborted())
-const yieldTask = async (env: TaskEnvironment): Promise<void> => {
-    await new Promise<void>(resolve => setTimeout(resolve, 0))
-    checkAbort(env)
+// Yield on a work-time budget instead of a fixed batch size: browsers clamp nested
+// `setTimeout(0)` to about 4 ms, so yielding after every small batch would spend
+// most of the run waiting. Cancellation is still observed at every yield.
+const YIELD_BUDGET_MS = 8
+type Yielder = {due(): boolean, yield(): Promise<void>}
+const createYielder = (env: TaskEnvironment): Yielder => {
+    let last = performance.now()
+    return {
+        due: () => performance.now() - last >= YIELD_BUDGET_MS,
+        yield: async () => {
+            await new Promise<void>(resolve => setTimeout(resolve, 0))
+            last = performance.now()
+            checkAbort(env)
+        }
+    }
 }
 
 const validateOutput = (output: Tensor): Float32Array => {
@@ -101,14 +113,16 @@ export const TempoDetectionTask = defineTask<TempoDetectionInput, TempoDetection
         if (input.audio.length / input.sampleRate > MAX_DURATION_SECONDS) {
             return panic("tempo-cnn accepts at most 30 minutes of audio")
         }
+        const yielder = createYielder(env)
         for (let start = 0; start < input.audio.length; start += PCM_BATCH) {
             const end = Math.min(input.audio.length, start + PCM_BATCH)
             for (let index = start; index < end; index++) {
                 if (!Number.isFinite(input.audio[index])) {return panic("tempo-cnn requires finite PCM")}
             }
-            await yieldTask(env)
+            if (yielder.due()) {await yielder.yield()}
         }
-        const audio = await downsampleTo11025(input.audio, input.sampleRate, env)
+        checkAbort(env)
+        const audio = await downsampleTo11025(input.audio, input.sampleRate, yielder, env)
         const numFrames = Math.max(0, Math.floor((audio.length - N_FFT) / HOP) + 1)
         if (numFrames === 0) {
             return panic(`Audio too short for tempo detection (need ≥${N_FFT / TARGET_SR}s at 11025 Hz, got ${audio.length} samples)`)
@@ -123,7 +137,7 @@ export const TempoDetectionTask = defineTask<TempoDetectionInput, TempoDetection
             checkAbort(env)
             const startFrame = windowIndex * WINDOW_STRIDE_FRAMES
             const tileFrames = Math.min(FRAMES_PER_WINDOW, numFrames - startFrame)
-            const mel = await computeMelSpectrogram(audio, startFrame, tileFrames, env)
+            const mel = await computeMelSpectrogram(audio, startFrame, tileFrames, yielder, env)
             const tile = packWindow(mel, 0, tileFrames)
             const feeds: TensorMap = {
                 [inputName]: tensor("float32", tile, [1, N_MELS, FRAMES_PER_WINDOW, 1])
@@ -189,7 +203,8 @@ const clampOctave = (winner: TempoCandidate, probs: Float32Array): TempoCandidat
 // 4× / 2× / 1× polyphase decimation to 11025 Hz. Other sample rates are
 // rejected to keep the model's mel filterbank aligned with what it was
 // trained against (40 bands across 0..5512.5 Hz).
-const downsampleTo11025 = async (audio: Float32Array, sampleRate: number, env: TaskEnvironment): Promise<Float32Array> => {
+const downsampleTo11025 = async (audio: Float32Array, sampleRate: number, yielder: Yielder,
+                                 env: TaskEnvironment): Promise<Float32Array> => {
     if (sampleRate === TARGET_SR) {return audio}
     const ratio = sampleRate / TARGET_SR
     if (ratio !== 2 && ratio !== 4 && ratio !== 8) {
@@ -205,7 +220,7 @@ const downsampleTo11025 = async (audio: Float32Array, sampleRate: number, env: T
         resampler.downsample(audio.subarray(written * factor, (written + chunkOut) * factor),
             out, written, written + chunkOut)
         written += chunkOut
-        if (written % PCM_BATCH === 0) {await yieldTask(env)}
+        if (yielder.due()) {await yielder.yield()}
     }
     checkAbort(env)
     return out
@@ -219,7 +234,7 @@ const downsampleTo11025 = async (audio: Float32Array, sampleRate: number, env: T
 // garbage (verified empirically: drums-stem reported 49 BPM on a 155-BPM
 // track when log-dB normalization was applied).
 const computeMelSpectrogram = async (audio: Float32Array, startFrame: number, numFrames: number,
-                                     env: TaskEnvironment): Promise<Float32Array> => {
+                                     yielder: Yielder, env: TaskEnvironment): Promise<Float32Array> => {
     const fft = new FFT(N_FFT)
     const window = hannWindow(N_FFT)
     const real = new Float32Array(N_FFT)
@@ -243,7 +258,7 @@ const computeMelSpectrogram = async (audio: Float32Array, startFrame: number, nu
             }
             mel[frame * N_MELS + melIndex] = sum
         }
-        if ((frame + 1) % 16 === 0) {await yieldTask(env)}
+        if (yielder.due()) {await yielder.yield()}
     }
     checkAbort(env)
     return mel

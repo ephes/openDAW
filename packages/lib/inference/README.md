@@ -108,8 +108,9 @@ in drums/bass/other/vocals order. Invalid tensors fail before slicing or stitchi
 
 Tempo detection accepts at most 30 minutes of finite mono PCM at 11025, 22050,
 44100 or 88200 Hz. Duration/rate admission precedes feature allocation; PCM
-validation and downsampling yield/check cancellation every 32768 samples.
-Mel preprocessing yields after at most 16 FFT frames. It retains one 256-frame
+validation, downsampling and mel preprocessing yield to the event loop and check
+cancellation once about 8 ms of work has accumulated (browsers clamp nested
+`setTimeout(0)` to about 4 ms, so fixed small batches would mostly wait). It retains one 256-frame
 feature window (40 KiB) and its packed input (40 KiB), plus the fixed filterbank
 (about 81 KiB) and FFT scratch. Overlapping windows are recomputed; no whole-track
 spectrogram is allocated. Caller PCM and the admitted downsampled PCM are separate

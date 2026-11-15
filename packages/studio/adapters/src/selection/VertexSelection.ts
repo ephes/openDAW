@@ -24,6 +24,8 @@ import {SelectionEntry} from "./SelectionEntry"
 import {FilteredSelection} from "./FilteredSelection"
 import {catchupSelection} from "./catchupSelection"
 
+export type SelectionIndex = {added(selectable: SelectableVertex): void, removed(selectable: SelectableVertex): void}
+
 /**
  * Represents the main selection management within a document.
  * This class maintains selections for different users, with each user having their own unique selection.
@@ -37,7 +39,13 @@ export class VertexSelection implements Selection<SelectableVertex> {
     #target: Option<Field> = Option.None
     #generation: number = 0
     #modifying: number = 0
-    #pending: Array<{selectable: SelectableVertex, selected: boolean, generation: number}> = []
+    // Listeners are told about changes after the pointer transaction; the indexes below
+    // (and every FilteredSelection index) change synchronously. `#delivered` holds what
+    // listeners were last told is selected, so deferred delivery stays balanced.
+    #pending: Array<SelectableVertex> = []
+    #flushScheduled: boolean = false
+    readonly #delivered: SortedSet<Address, SelectableVertex> = Address.newSet(selectable => selectable.address)
+    readonly #indexes: Set<SelectionIndex> = new Set()
 
     constructor(readonly editing: Editing, readonly boxGraph: BoxGraph) {
         this.#lifeTime = new Terminator()
@@ -64,9 +72,14 @@ export class VertexSelection implements Selection<SelectableVertex> {
         this.#selectableMap.clear()
         this.#entityMap.clear()
         this.#lifeTime.terminate()
-        previous.forEach(selectable => {
-            if (!this.isSelected(selectable)) {this.#listeners.proxy.onDeselected(selectable)}
-        })
+        previous.forEach(selectable => this.#indexes.forEach(index => index.removed(selectable)))
+        this.#delivered.values().slice().forEach(selectable => this.#reconcile(selectable))
+    }
+
+    /** Synchronous index hook for derived selections; it must not call back into the selection. */
+    subscribeIndex(index: SelectionIndex): Subscription {
+        this.#indexes.add(index)
+        return {terminate: () => {this.#indexes.delete(index)}}
     }
 
     createFilteredSelection<T extends Addressable>(affiliate: Predicate<SelectableVertex>,
@@ -131,7 +144,11 @@ export class VertexSelection implements Selection<SelectableVertex> {
     subscribe(listener: SelectionListener<SelectableVertex>): Subscription {return this.#listeners.subscribe(listener)}
 
     catchupAndSubscribe(listener: SelectionListener<SelectableVertex>): Subscription {
-        return catchupSelection(this, listener)
+        return catchupSelection({
+            delivered: () => this.#delivered.values(),
+            isDelivered: selectable => this.#delivered.hasKey(selectable.address),
+            subscribe: listener => this.#listeners.subscribe(listener)
+        }, listener)
     }
 
     #watch(target: Field): void {
@@ -158,7 +175,8 @@ export class VertexSelection implements Selection<SelectableVertex> {
         const entry: SelectionEntry = {box, selectable}
         assert(this.#entityMap.add(entry), "Could not add to entityMap")
         assert(this.#selectableMap.add(entry), "Could not add to selectableMap")
-        this.#notify(selectable, true)
+        this.#indexes.forEach(index => index.added(selectable))
+        this.#notify(selectable)
     }
 
     #removed(box: SelectionBox): void {
@@ -166,7 +184,8 @@ export class VertexSelection implements Selection<SelectableVertex> {
         const entry = this.#entityMap.removeByKey(box.address.uuid)
         assert(entry.box === box, "Broken selection")
         this.#selectableMap.removeByKey(entry.selectable.address)
-        this.#notify(entry.selectable, false)
+        this.#indexes.forEach(index => index.removed(entry.selectable))
+        this.#notify(entry.selectable)
     }
 
     #modify(modifier: Exec): void {
@@ -177,19 +196,37 @@ export class VertexSelection implements Selection<SelectableVertex> {
         if (result.status === "failure") {throw result.error}
     }
 
-    #notify(selectable: SelectableVertex, selected: boolean): void {
-        this.#pending.push({selectable, selected, generation: this.#generation})
+    #notify(selectable: SelectableVertex): void {
+        this.#pending.push(selectable)
         if (this.#modifying > 0) {return}
-        // External graph edits also notify from inside pointer finalization.
-        if (this.boxGraph.inTransaction()) {queueMicrotask(() => this.#flush())}
-        else {this.#flush()}
+        // External graph edits (including undo/redo) notify from inside pointer finalization,
+        // where listeners must not start a new modification yet.
+        if (this.boxGraph.inTransaction()) {
+            if (!this.#flushScheduled) {
+                this.#flushScheduled = true
+                queueMicrotask(() => {
+                    this.#flushScheduled = false
+                    this.#flush()
+                })
+            }
+        } else {this.#flush()}
     }
 
     #flush(): void {
-        for (const {selectable, selected, generation} of this.#pending.splice(0)) {
-            if (generation !== this.#generation || this.isSelected(selectable) !== selected) {continue}
-            if (selected) {this.#listeners.proxy.onSelected(selectable)}
-            else {this.#listeners.proxy.onDeselected(selectable)}
+        // Reentrant listener changes append to the queue and drain in this same loop.
+        while (this.#pending.length > 0) {this.#reconcile(this.#pending.shift()!)}
+    }
+
+    // Deliver only the transition from what listeners were last told to the current state,
+    // so superseded or reverted changes never produce an unmatched select or deselect.
+    #reconcile(selectable: SelectableVertex): void {
+        const selected = this.isSelected(selectable)
+        if (selected === this.#delivered.hasKey(selectable.address)) {return}
+        if (selected) {
+            this.#delivered.add(selectable)
+            this.#listeners.proxy.onSelected(selectable)
+        } else {
+            this.#listeners.proxy.onDeselected(this.#delivered.removeByKey(selectable.address))
         }
     }
 }

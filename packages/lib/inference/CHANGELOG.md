@@ -6,7 +6,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 ## Unreleased
 
 - Reject malformed tempo model tensors/probabilities before publishing tempo results.
-- Admit finite PCM/duration before tempo preprocessing and tile features with bounded cancellation/yield intervals.
+- Admit finite PCM/duration before tempo preprocessing and tile features, yielding and checking cancellation on an 8 ms work budget.
 
 - Bound cached model and metadata OPFS reads before allocation with the existing model ceiling and a 1 MiB sidecar budget.
 

@@ -19,6 +19,8 @@ export class FilteredSelection<T extends Addressable> implements Selection<T>, T
     readonly #filter: Predicate<SelectableVertex>
     readonly #mapping: Bijective<T, SelectableVertex>
     readonly #set: SortedSet<Address, T>
+    readonly #delivered: SortedSet<Address, T>
+    readonly #index: Subscription
     readonly #listeners: Listeners<SelectionListener<T>>
     readonly #subscription: Subscription
 
@@ -30,25 +32,44 @@ export class FilteredSelection<T extends Addressable> implements Selection<T>, T
         this.#mapping = mapping
 
         this.#set = Address.newSet(({address}) => address)
+        this.#delivered = Address.newSet(({address}) => address)
         this.#listeners = new Listeners<SelectionListener<T>>()
 
+        // The index follows the vertex index synchronously; listeners follow its deferred,
+        // balanced notifications.
+        this.#selection.selected().forEach(element => {
+            if (this.#filter(element)) {this.#set.add(this.#mapping.fy(element))}
+        })
+        this.#index = this.#selection.subscribeIndex({
+            added: (element: SelectableVertex) => {
+                if (this.#filter(element) && !this.#set.hasKey(element.address)) {
+                    this.#set.add(this.#mapping.fy(element))
+                }
+            },
+            removed: (element: SelectableVertex) => {
+                if (this.#set.hasKey(element.address)) {this.#set.removeByKey(element.address)}
+            }
+        })
         this.#subscription = this.#selection.catchupAndSubscribe({
             onSelected: (element: SelectableVertex) => {
-                if (this.#filter(element)) {
+                if (this.#filter(element) && !this.#delivered.hasKey(element.address)) {
                     const value = this.#mapping.fy(element)
-                    this.#set.add(value)
+                    this.#delivered.add(value)
                     this.#listeners.proxy.onSelected(value)
                 }
             },
             onDeselected: (element: SelectableVertex) => {
-                if (this.#set.hasKey(element.address)) {
-                    this.#listeners.proxy.onDeselected(this.#set.removeByKey(element.address))
+                if (this.#delivered.hasKey(element.address)) {
+                    this.#listeners.proxy.onDeselected(this.#delivered.removeByKey(element.address))
                 }
             }
         })
     }
 
-    terminate(): void {this.#subscription.terminate()}
+    terminate(): void {
+        this.#index.terminate()
+        this.#subscription.terminate()
+    }
 
     select(...selectables: Array<T>): void {
         this.#selection.select(...selectables.map(selectable => this.#mapping.fx(selectable)))
@@ -81,6 +102,10 @@ export class FilteredSelection<T extends Addressable> implements Selection<T>, T
     }
 
     catchupAndSubscribe(listener: SelectionListener<T>): Subscription {
-        return catchupSelection(this, listener)
+        return catchupSelection({
+            delivered: () => this.#delivered.values(),
+            isDelivered: value => this.#delivered.hasKey(value.address),
+            subscribe: listener => this.#listeners.subscribe(listener)
+        }, listener)
     }
 }
