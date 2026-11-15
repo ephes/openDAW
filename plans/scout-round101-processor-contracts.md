@@ -28,3 +28,15 @@ Real AudioProcessor update-event splits (17+31+80 and loop wrap) reproduce
 Tidal phase drift. Output, end phase and RMS agree after repair. Fold impulse
 restart comparisons fail before repair at all 2x/4x/8x factors; uneven subspans,
 silence, a second impulse and interrupted gain ramps match fresh controls afterward.
+
+## B05 — Native DSP outcomes
+
+All three partial-write NAM regressions fail before the exception boundary.
+Mono/left/right failures, repeated blocks, reset/mono edits, cleanup refusal and
+replacement recovery pass afterward. One constant diagnostic avoids serializing
+unbounded native errors. Model changes are the explicit recovery boundary.
+
+Dattorro needs no runtime repair: fresh/restarted output and irregular partitions
+agree exactly, with 1e-7 tolerance only for independently specified dB gain mapping.
+Unity dry preserves channels and the wet network decorrelates stereo. The test
+rejects an intentional omitted-DSP-reset mutation; restored production code passes.

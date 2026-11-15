@@ -68,3 +68,13 @@ Re-enabling starts from silence rather than resuming pre-bypass ringing.
 Tidal derives phase from each chunk's pulse origin and relative sample offset;
 metering consumes only that span. Fold reset retires all anti-alias resampler
 history and snaps drive/output ramps to current controls, preserving oversampling.
+
+### Native DSP outcomes
+
+A NAM process exception retires both native instances and reports one fixed
+diagnostic. The complete requested span uses dry bypass, including when a native
+channel already wrote partial output. Later blocks stay bypassed; reset and mono
+edits do not retry that generation. Explicitly changing/reloading a valid model
+creates new instances and permits recovery. Cleanup attempts both channels even
+if unloading one fails. Dattorro restart/partition tests exercise the real network
+at 44.1, 48 and 96 kHz, including nonzero pre-delay and unity dry stereo routing.
