@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve devices, parameters, undo history and pager position when a preset is refused; only the newest selection for a destination can install, and closed projects or removed targets discard pending loads.
+- Refuse preset save/replace confirmations whose source changed while the dialog was open, with a request to start a fresh save.
+- Close temporary demux decoders on every exit; retain shared audio suspension until the last separation finishes and keep results bound to the initiating project.
+- Report each failed stem import/audio load and add tracks only for a complete four-stem group; retain imported samples for retry.
+- Fence NAM metadata/cache scans by pack generation; abort model switches when their editor or target retires and ignore obsolete completions and errors.
+
 - Let only the latest room connection intent install its project; retire superseded results and invalidate attempts when their project leaves.
 - Close connection progress on every exit and keep awareness, traffic and chat cleanup tied to their owning room.
 - Acknowledge recovery commits only after file closure succeeds; propagate write failures to the terminal recovery-log error path.

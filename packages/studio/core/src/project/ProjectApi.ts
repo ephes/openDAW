@@ -3,6 +3,7 @@ import {
     assert,
     Attempt,
     Attempts,
+    BinarySearch,
     clamp,
     float,
     int,
@@ -54,7 +55,7 @@ import {
     NoteEventBoxAdapter,
     NoteEventCollectionBoxAdapter,
     ProjectQueries,
-    TrackBoxAdapter,
+    RegionAdapters,
     TrackType
 } from "@opendaw/studio-adapters"
 import {Project} from "./Project"
@@ -199,34 +200,49 @@ export class ProjectApi {
             .filter(track => track.type === targetType)
             .toSorted((a, b) => a.indexField.getValue() - b.indexField.getValue())
         if (tracks.length < 2) {return}
-        const fits = (track: TrackBoxAdapter, position: ppqn, complete: ppqn): boolean => {
-            // Read regions live from the pointerHub (not from track.regions.collection),
-            // because the cached collection isn't updated within the running transaction
-            // and would miss regions just moved here in a previous iteration.
-            const regions = track.box.regions.pointerHub.incoming()
-                .map(({box}) => box as AnyRegionBox)
-                .toSorted((a, b) => a.position.getValue() - b.position.getValue())
-            for (const existing of regions) {
-                const existingPosition = existing.position.getValue()
-                if (existingPosition >= complete) {return true}
-                if (existingPosition + existing.duration.getValue() > position) {return false}
+        // Read live transaction membership once. Resolve intervals with the
+        // region adapter so seconds-based audio follows the current tempo map.
+        const regionsByTrack = tracks.map(track => track.box.regions.pointerHub.incoming()
+            .map(({box}) => box as AnyRegionBox))
+        const intervals = new Map(regionsByTrack.flat().map(box => {
+            const position = box.position.getValue()
+            const complete = RegionAdapters.for(this.#project.boxAdapters, box).resolveComplete(position)
+            return [box, {position, complete}]
+        }))
+        const positions = [...new Set([...intervals.values()].map(span => span.position))].sort((a, b) => a - b)
+        const compare = (a: number, b: number) => a - b
+        // Sparse Fenwick prefix maxima: an overlap exists iff a region starting
+        // before candidate.complete ends after candidate.position. Inserts and
+        // queries cost O(log N), with no growing-prefix scans or array splices.
+        const occupied = tracks.map(() => new Map<number, number>())
+        const insert = (lane: number, box: AnyRegionBox) => {
+            const {position, complete} = intervals.get(box)!
+            for (let index = BinarySearch.leftMost(positions, position, compare) + 1;
+                 index <= positions.length; index += index & -index) {
+                occupied[lane].set(index, Math.max(occupied[lane].get(index) ?? -Infinity, complete))
+            }
+        }
+        const fits = (lane: number, position: ppqn, complete: ppqn): boolean => {
+            for (let index = BinarySearch.leftMost(positions, complete, compare); index > 0; index -= index & -index) {
+                if ((occupied[lane].get(index) ?? -Infinity) > position) {return false}
             }
             return true
         }
+        regionsByTrack[0].forEach(box => insert(0, box))
         for (let i = 1; i < tracks.length; i++) {
-            // Snapshot the region list before mutating; moving via `refer` will
-            // remove the region from this track's collection mid-iteration.
-            const regions = [...tracks[i].box.regions.pointerHub.incoming().map(({box}) => box as AnyRegionBox)]
-            for (const region of regions) {
+            for (const region of regionsByTrack[i]) {
+                const {position, complete} = intervals.get(region)!
                 for (let j = 0; j < i; j++) {
-                    const position = region.position.getValue()
-                    const complete = position + region.duration.getValue()
-                    if (fits(tracks[j], position, complete)) {
+                    if (fits(j, position, complete)) {
                         region.regions.refer(tracks[j].box.regions)
+                        insert(j, region)
                         break
                     }
                 }
             }
+            // This lane can become a target only after its own moves finish.
+            // PointerHub reflects moves immediately, unlike adapter collections.
+            tracks[i].box.regions.pointerHub.incoming().forEach(({box}) => insert(i, box as AnyRegionBox))
         }
         for (let i = tracks.length - 1; i >= 1; i--) {
             const track = tracks[i]

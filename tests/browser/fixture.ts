@@ -1,3 +1,4 @@
+import {presetOwnership, trackCompaction} from "./preset-ownership"
 import {Events, Html} from "@opendaw/lib-dom"
 import {HTML} from "@opendaw/lib-jsx"
 import {MutableObservableOption, RuntimeNotifier, Terminable, Terminator} from "@opendaw/lib-std"
@@ -135,7 +136,8 @@ export const roomIntent = async (step: "start" | "newest" | "finish") => {
     }
 }
 
-export type BrowserFixtures = {gestures: typeof gestures, clipboard: typeof clipboard, html: typeof html,
-    roomIntent: typeof roomIntent, selection: typeof selection, portableImport: typeof portableImport}
+export type BrowserFixtures = {presetOwnership: typeof presetOwnership, trackCompaction: typeof trackCompaction,
+    gestures: typeof gestures, clipboard: typeof clipboard, html: typeof html, roomIntent: typeof roomIntent,
+    selection: typeof selection, portableImport: typeof portableImport}
 
-Object.assign(window, {fixtures: {gestures, clipboard, html, roomIntent, selection, portableImport}})
+Object.assign(window, {fixtures: {gestures, clipboard, html, roomIntent, presetOwnership, trackCompaction, selection, portableImport}})

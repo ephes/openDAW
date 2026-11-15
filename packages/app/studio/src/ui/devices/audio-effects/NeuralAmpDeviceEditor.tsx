@@ -43,6 +43,20 @@ export const NeuralAmpDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
     const isDownloading = new DefaultObservableValue<boolean>(false)
     const urlsExpired = new DefaultObservableValue<boolean>(false)
     let switchController: Nullable<AbortController> = null
+    let active = true
+    let packGeneration = 0
+    const attached = () => active && service.optProject.unwrapOrNull() === project
+        && boxGraph.findBox(adapter.box.address.uuid).unwrapOrNull() === adapter.box
+    const retireSwitch = () => {
+        switchController?.abort(Errors.AbortError)
+        switchController = null
+        isDownloading.setValue(false)
+    }
+    lifecycle.own({terminate: () => {
+        active = false
+        packGeneration++
+        retireSwitch()
+    }})
     const updateModel = () => {
         const modelJson = adapter.getModelJson()
         if (modelJson.length === 0) {
@@ -56,30 +70,29 @@ export const NeuralAmpDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
         }
     }
     const updatePackMeta = () => {
+        const generation = ++packGeneration
+        packMeta.clear()
+        cachedModelIds.clear()
         const target = adapter.box.model.targetVertex
-        if (target.isEmpty()) {
-            packMeta.clear()
-            cachedModelIds.clear()
-            return
-        }
+        if (target.isEmpty()) {return}
         const modelBox = target.unwrap().box as NeuralAmpModelBox
         const packId = modelBox.packId.getValue()
-        if (packId.length === 0) {
+        if (packId.length === 0) {return}
+        const current = () => attached() && generation === packGeneration
+            && adapter.box.model.targetVertex.unwrapOrNull()?.box === modelBox
+            && modelBox.packId.getValue() === packId
+        readPackMetaFromId(packId).then(async meta => {
+            if (!current() || !isDefined(meta)) {return}
+            packMeta.wrap(meta)
+            const ids = await scanCachedModels(packId, meta)
+            if (!current()) {return}
+            cachedModelIds.clear()
+            for (const id of ids) {cachedModelIds.add(id)}
+        }).catch(error => {
+            if (!current()) {return}
             packMeta.clear()
             cachedModelIds.clear()
-            return
-        }
-        readPackMetaFromId(packId).then(meta => {
-            if (isDefined(meta)) {
-                packMeta.wrap(meta)
-                scanCachedModels(packId, meta).then(ids => {
-                    cachedModelIds.clear()
-                    for (const id of ids) {cachedModelIds.add(id)}
-                })
-            } else {
-                packMeta.clear()
-                cachedModelIds.clear()
-            }
+            console.warn("Could not read NAM pack metadata", error)
         })
     }
     lifecycle.own(model)
@@ -87,6 +100,7 @@ export const NeuralAmpDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
     lifecycle.own(isDownloading)
     lifecycle.own(urlsExpired)
     lifecycle.own(adapter.modelField.subscribe(() => {
+        retireSwitch()
         updateModel()
         updatePackMeta()
     }))
@@ -118,10 +132,11 @@ export const NeuralAmpDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
     }
     const switchModel = async (entry: PackMeta["models"][number]) => {
         const meta = packMeta.unwrapOrNull()
-        if (!isDefined(meta)) {return}
+        if (!attached() || !isDefined(meta)) {return}
         if (isDefined(switchController)) {switchController.abort()}
         const controller = new AbortController()
         switchController = controller
+        const current = () => attached() && switchController === controller && !controller.signal.aborted
         isDownloading.setValue(true)
         urlsExpired.setValue(false)
         try {
@@ -129,13 +144,13 @@ export const NeuralAmpDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
                 meta.toneId.toString(), entry.id, entry.name,
                 boxGraph, editing, adapter, meta.title, controller.signal
             )
-            cachedModelIds.add(entry.id)
+            if (current()) {cachedModelIds.add(entry.id)}
         } catch (error) {
-            if (Errors.isAbort(error)) {return}
+            if (!current() || Errors.isAbort(error)) {return}
             console.error("Failed to switch model:", error)
             urlsExpired.setValue(true)
         } finally {
-            if (switchController === controller) {
+            if (active && switchController === controller) {
                 isDownloading.setValue(false)
                 switchController = null
             }

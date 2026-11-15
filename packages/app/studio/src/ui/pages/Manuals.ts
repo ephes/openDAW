@@ -21,11 +21,13 @@ export const Manuals: ReadonlyArray<Manual> = [
         type: "folder",
         label: "General",
         files: [
+            {type: "page", label: "AI Demux", path: "/manuals/ai-demux"},
             {type: "page", label: "Audio Bus", path: "/manuals/audio-bus"},
             {type: "page", label: "Automation", path: "/manuals/automation"},
             {type: "page", label: "Browser Support", path: "/manuals/browser-support"},
             {type: "page", label: "Capture MIDI", path: "/manuals/capture-midi"},
             {type: "page", label: "Cloud Backup", path: "/manuals/cloud-backup"},
+            {type: "page", label: "Compact Tracks", path: "/manuals/compact-tracks"},
             {type: "page", label: "Firefox MIDI", path: "/manuals/firefox-midi"},
             {type: "page", label: "Freeze AudioUnit", path: "/manuals/freeze-audiounit"},
             {type: "page", label: "Keyboard Shortcuts", path: "/manuals/keyboard-shortcuts"},

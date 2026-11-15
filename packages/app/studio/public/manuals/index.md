@@ -16,3 +16,5 @@ Please join our [discord community](https://discord.opendaw.studio) for updates 
 * Not optimised.
 * Clicks & Pops can occur, since there are no fadings to avoid discontinuities.
 * Fast automation or value changes can potentially crash the dsp, since there is no interpolation.
+
+See [AI Demux](/manuals/ai-demux) for separation, project ownership and retry behavior.
