@@ -18,6 +18,15 @@ neighbors, refusing intervals narrower than twice the minimum marker spacing.
 Changes to the dragged marker's position or source seconds retire its proposal;
 external edits survive both cancellation and approval.
 
+## Transient analysis admission
+
+Transient hover and insertion require a finite, strictly increasing snapshot of
+both warp positions and source seconds, with at least two markers. Invalid or
+unrepresentable mappings return `null`, hide the insertion cursor and create no
+marker. Mapping accounts for the waveform offset. A cached hovered transient is
+usable only while its box remains attached and its identity is present in the
+current audio file's transient collection; replacing analysis requires a new hit.
+
 ## Implementation and validation
 
 Round 114 was implemented with Codex from a fresh checkout. Each bundle adds

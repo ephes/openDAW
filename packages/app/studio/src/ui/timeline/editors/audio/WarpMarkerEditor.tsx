@@ -1,6 +1,6 @@
 import css from "./WarpMarkerEditor.sass?inline"
 import {Events, Html} from "@opendaw/lib-dom"
-import {isDefined, isNull, Lifecycle, MutableObservableValue, Nullable, TAU, Terminator} from "@opendaw/lib-std"
+import {isNotNull, isNull, Lifecycle, MutableObservableValue, Nullable, TAU, Terminator} from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
 import {AudioEventOwnerReader} from "@/ui/timeline/editors/EventOwnerReader"
 import {CanvasPainter, Project, TimelineRange} from "@opendaw/studio-core"
@@ -81,9 +81,16 @@ export const WarpMarkerEditor = ({
                                                 clientY: point.y
                                             })
                                             hoverTransient.setValue(target)
+                                            if (!TransientMarkerUtils.isValidWarpMarkers(warpMarkers.asArray())) {
+                                                cursorModel.setValue(null)
+                                                return
+                                            }
                                             let local: ppqn
-                                            if (isDefined(target) && !noSnapping) {
-                                                local = TransientMarkerUtils.secondsToUnits(target.position, warpMarkers)
+                                            if (isNotNull(target) && !noSnapping) {
+                                                const mapped = TransientMarkerUtils.secondsToUnits(
+                                                    target.position - audioContent.waveformOffset.getValue(), warpMarkers)
+                                                if (isNull(mapped)) {cursorModel.setValue(null); return}
+                                                local = mapped
                                             } else {
                                                 const x = point.x - canvas.getBoundingClientRect().left
                                                 local = noSnapping ? range.xToUnit(x) - reader.offset : snapping.xToUnitRound(x) - reader.offset

@@ -11,7 +11,6 @@ import {
     clamp,
     isNotNull,
     isNull,
-    Iterables,
     Nullable,
     ObservableValue,
     Option,
@@ -24,6 +23,7 @@ import {DebugMenus} from "@/ui/menu/debug"
 import {WarpMarkerUtils} from "@/ui/timeline/editors/audio/WarpMarkerUtils"
 import {Dragging, Events, Keyboard} from "@opendaw/lib-dom"
 import {PPQN} from "@opendaw/lib-dsp"
+import {TransientMarkerUtils} from "./TransientMarkerUtils"
 import {Snapping} from "@/ui/timeline/Snapping"
 
 export namespace WarpMarkerEditing {
@@ -83,12 +83,14 @@ export namespace WarpMarkerEditing {
                         project.editing.modify(() => marker.box.delete())
                     }
                 } else {
+                    if (!TransientMarkerUtils.isValidWarpMarkers(warpMarkers.asArray())) {return}
                     const transient = hoverTransient.getValue()
                     if (isNull(transient)) {
                         const rect = canvas.getBoundingClientRect()
                         const x = event.clientX - rect.left
                         const unit = event.shiftKey ? range.xToUnit(x) : snapping.xToUnitRound(x)
                         const local = unit - reader.offset
+                        if (!Number.isFinite(local)) {return}
                         const adjacentWarpMarkers = WarpMarkerUtils.findAdjacent(local, warpMarkers, true)
                         if (isNull(adjacentWarpMarkers)) {return}
                         const [left, right] = adjacentWarpMarkers
@@ -97,45 +99,23 @@ export namespace WarpMarkerEditing {
                         const clamped = clamp(local, left.position + MIN_DISTANCE, right.position - MIN_DISTANCE)
                         const alpha = (clamped - left.position) / (right.position - left.position)
                         const seconds = left.seconds + alpha * (right.seconds - left.seconds)
+                        if (!Number.isFinite(seconds)) {return}
                         project.editing.modify(() => WarpMarkerBox.create(project.boxGraph, UUID.generate(), box => {
                             box.owner.refer(audioPlayMode.box.warpMarkers)
                             box.position.setValue(local)
                             box.seconds.setValue(seconds)
                         }))
                     } else {
+                        if (!transient.box.isAttached() || !reader.audioContent.file.transients.contains(transient)) {return}
                         const adjustedSeconds = transient.position - waveformOffset.getValue()
-                        const markers = warpMarkers.asArray()
-                        if (markers.length < 2) {return}
-                        const first = markers[0]
-                        const second = markers[1]
-                        const secondLast = markers[markers.length - 2]
-                        const last = markers[markers.length - 1]
-                        const firstRate = (second.position - first.position) / (second.seconds - first.seconds)
-                        const lastRate = (last.position - secondLast.position) / (last.seconds - secondLast.seconds)
-                        let position: number
-                        if (adjustedSeconds < first.seconds) {
-                            position = first.position + (adjustedSeconds - first.seconds) * firstRate
-                        } else if (adjustedSeconds > last.seconds) {
-                            position = last.position + (adjustedSeconds - last.seconds) * lastRate
-                        } else {
-                            let found = false
-                            for (const [left, right] of Iterables.pairWise(markers)) {
-                                if (isNull(right)) {break}
-                                if (left.seconds <= adjustedSeconds && adjustedSeconds <= right.seconds) {
-                                    const alpha = (adjustedSeconds - left.seconds) / (right.seconds - left.seconds)
-                                    position = left.position + alpha * (right.position - left.position)
-                                    found = true
-                                    break
-                                }
-                            }
-                            if (!found) {return}
-                        }
-                        const [adjLeft, adjRight] = WarpMarkerUtils.findAdjacent(position!, warpMarkers, true)
+                        const position = TransientMarkerUtils.secondsToUnits(adjustedSeconds, warpMarkers)
+                        if (isNull(position)) {return}
+                        const [adjLeft, adjRight] = WarpMarkerUtils.findAdjacent(position, warpMarkers, true)
                         if (isNull(adjLeft) || isNull(adjRight)) {return}
-                        if (position! - adjLeft.position < MIN_DISTANCE || adjRight.position - position! < MIN_DISTANCE) {return}
+                        if (position - adjLeft.position < MIN_DISTANCE || adjRight.position - position < MIN_DISTANCE) {return}
                         project.editing.modify(() => WarpMarkerBox.create(project.boxGraph, UUID.generate(), box => {
                             box.owner.refer(audioPlayModeBox.warpMarkers)
-                            box.position.setValue(position!)
+                            box.position.setValue(position)
                             box.seconds.setValue(adjustedSeconds)
                         }))
                     }

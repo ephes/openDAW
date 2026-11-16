@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse invalid warp mappings and retired transient analysis during hover and insertion.
+
 - Preview warp drags transactionally; recheck current neighbors and preserve external edits on approval or cancellation.
 
 - Target the nearest warp marker and preserve fractional immediate neighbors.

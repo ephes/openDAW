@@ -1,8 +1,9 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {EventCollection, PPQN} from "@opendaw/lib-dsp"
-import {Dragging} from "@opendaw/lib-dom"
+import {WarpMarkerBox} from "@opendaw/studio-boxes"
+import {Dragging, Events} from "@opendaw/lib-dom"
 import {Editing, Option, Terminable} from "@opendaw/lib-std"
-import {WarpMarkerBoxAdapter} from "@opendaw/studio-adapters"
+import {TransientMarkerBoxAdapter, WarpMarkerBoxAdapter} from "@opendaw/studio-adapters"
 import {WarpMarkerEditing} from "./WarpMarkerEditing"
 
 vi.mock("@/ui/menu/debug", () => ({DebugMenus: {}}))
@@ -33,16 +34,23 @@ const setup = () => {
         process = factory({clientX: 1000, clientY: 0} as PointerEvent).unwrap()
         return {terminate: () => process.cancel?.()}
     })
+    let doubleDown!: (event: PointerEvent) => void
+    vi.spyOn(Events, "subscribeDblDwn").mockImplementation((_element, listener) => {
+        doubleDown = listener
+        return Terminable.Empty
+    })
+    const transients = EventCollection.create<TransientMarkerBoxAdapter>()
+    let hover: TransientMarkerBoxAdapter | null = null
     const selection = {terminate() {}, deselectAll() {}, select() {}, catchupAndSubscribe: () => Terminable.Empty}
     const editing = {...Editing.Transient, modify: vi.fn(Editing.Transient.modify), mark: vi.fn()}
     const project = {editing, selection: {createFilteredSelection: () => selection}}
-    const reader = {offset: 0, audioContent: {optWarpMarkers: Option.wrap(markers),
+    const reader = {offset: 0, audioContent: {file: {transients}, waveformOffset: {getValue: () => 0}, optWarpMarkers: Option.wrap(markers),
         observableOptPlayMode: {map: () => Option.None}}}
     const args = [project, document.createElement("canvas"), {xToUnit: (x: number) => x, unitToX: (x: number) => x},
-        {xToUnitRound: (x: number) => x}, reader, {warpMarkers: markers}, {getValue: () => null}]
+        {xToUnitRound: (x: number) => x}, reader, {warpMarkers: markers}, {getValue: () => hover}]
     const owner = WarpMarkerEditing.install(...args as Parameters<typeof WarpMarkerEditing.install>)
     const move = (x: number) => process.update({clientX: x, clientY: 0, shiftKey: true, ctrlKey: false, altKey: false})
-    return {markers, add, left, target, right, process, editing, owner, move}
+    return {doubleDown, transients, setHover: (value: TransientMarkerBoxAdapter) => {hover = value}, markers, add, left, target, right, process, editing, owner, move}
 }
 
 it("rechecks inserted, moved and deleted neighbors on approval", () => {
@@ -97,4 +105,28 @@ it("accepts the remaining current neighbor after deletion", () => {
     h.right.remove()
     h.process.approve!()
     expect(h.target.marker.position).toBe(1760)
+})
+
+it.each(["removed", "replaced", "detached"])("refuses %s transient analysis cached by hover", state => {
+    const h = setup()
+    const transient = {position: 0.5, box: {isAttached: () => state !== "detached"}} as unknown as TransientMarkerBoxAdapter
+    h.setHover(transient)
+    if (state === "detached") {h.transients.add(transient)}
+    if (state === "replaced") {h.transients.add({position: 0.5} as TransientMarkerBoxAdapter)}
+    const create = vi.spyOn(WarpMarkerBox, "create").mockReturnValue({} as WarpMarkerBox)
+    h.doubleDown({clientX: 500, clientY: 0, shiftKey: true} as PointerEvent)
+    expect(create).not.toHaveBeenCalled()
+})
+
+it("creates from current attached transient analysis only with valid warp geometry", () => {
+    const h = setup()
+    const transient = {position: 0.5, box: {isAttached: () => true}} as unknown as TransientMarkerBoxAdapter
+    h.transients.add(transient)
+    h.setHover(transient)
+    const create = vi.spyOn(WarpMarkerBox, "create").mockReturnValue({} as WarpMarkerBox)
+    h.doubleDown({clientX: 500, clientY: 0, shiftKey: true} as PointerEvent)
+    expect(create).toHaveBeenCalledTimes(1)
+    Object.defineProperty(h.target.marker, "seconds", {value: 0})
+    h.doubleDown({clientX: 500, clientY: 0, shiftKey: true} as PointerEvent)
+    expect(create).toHaveBeenCalledTimes(1)
 })
