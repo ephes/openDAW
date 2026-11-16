@@ -1,10 +1,11 @@
 import {afterEach, beforeAll, expect, it, vi} from "vitest"
-import {AudioData, EventCollection, PPQN} from "@opendaw/lib-dsp"
+import {AudioData, EventCollection, FadingEnvelope, PPQN} from "@opendaw/lib-dsp"
 import {Option, Terminable, UUID} from "@opendaw/lib-std"
 import {AudioRegionBoxAdapter, TapeDeviceBoxAdapter, TrackType} from "@opendaw/studio-adapters"
 import {TransientPlayMode} from "@opendaw/studio-enums"
 import {block, processorFixture} from "../processor-test-fixture"
 import {TimeStretchSequencer} from "./Tape/TimeStretchSequencer"
+import {OnceVoice} from "./Tape/OnceVoice"
 import {PitchVoice} from "./Tape/PitchVoice"
 
 let Tape: typeof import("./TapeDeviceProcessor").TapeDeviceProcessor
@@ -80,5 +81,56 @@ it.each([false, true])("discards disabled lane voices without frozen tails, stre
     p.process({blocks: [block()]})
     expect(pitchProcess).not.toHaveBeenCalled()
     expect(p.audioOutput.getChannel(0).every(x => x === 0)).toBe(true)
+    p.terminate()
+})
+it.each([1000, 96000])("binds pitch voices to the current audio data generation (%i frames)", length => {
+    const old = AudioData.create(sampleRate, length, 1); old.frames[0].fill(0.25)
+    const {r, loader} = region(Option.wrap(old))
+    const {p} = fixture([r])
+    p.process({blocks: [block()]})
+    expect(p.audioOutput.getChannel(0).some(x => x > 0)).toBe(true)
+    const replacement = AudioData.create(sampleRate, length, 1); replacement.frames[0].fill(-0.5)
+    loader.data = Option.wrap(replacement)
+    p.process({blocks: [block(0, 128, pulses(128))]})
+    expect(p.audioOutput.getChannel(0).every(x => x <= 0)).toBe(true)
+    expect(p.audioOutput.getChannel(0)[127]).toBeLessThan(0)
+    p.terminate()
+})
+it.each([false, true])("partitions fractional pitch cycles once with block-independent fades=%s", faded => {
+    const render = (split: boolean) => {
+        const {r} = region(Option.wrap(audio(1)))
+        Object.defineProperty(r, "loopDuration", {value: pulses(17.25)})
+        const fading = {hasFading: faded, in: faded ? pulses(64) : 0, out: 0, inSlope: 0.5, outSlope: 0.5}
+        Object.defineProperty(r, "fading", {value: fading})
+        const {p} = fixture([r])
+        p.process({blocks: split ? [block(0, 29), block(29, 79, pulses(29)), block(79, 128, pulses(79))] : [block()]})
+        const result = Array.from(p.audioOutput.getChannel(0))
+        for (let i = 0; i < 128; i++) {
+            const expected = FadingEnvelope.gainAt(pulses(i), r.duration, fading)
+            expect(result[i], `frame=${i}, split=${split}`).toBeCloseTo(expected, 6)
+        }
+        p.terminate(); return result
+    }
+    const whole = render(false), split = render(true)
+    split.forEach((x, i) => expect(x).toBeCloseTo(whole[i], 6))
+})
+it.each([false, true])("initializes every stretch gain frame for fractional cycles, faded=%s", faded => {
+    const {r} = region(Option.wrap(audio(1)), true)
+    Object.defineProperty(r, "loopDuration", {value: pulses(17.25)})
+    const fading = {hasFading: faded, in: faded ? pulses(64) : 0, out: 0, inSlope: 0.5, outSlope: 0.5}
+    Object.defineProperty(r, "fading", {value: fading})
+    const original = OnceVoice.prototype.process
+    const visits = new Uint8Array(128)
+    vi.spyOn(OnceVoice.prototype, "process").mockImplementation(function(this: OnceVoice, start, count, gains) {
+        for (let i = 0; i < count; i++) {
+            visits[start + i]++
+            expect(gains[i], `gain frame=${start + i}`).toBeCloseTo(FadingEnvelope.gainAt(pulses(start + i), r.duration, fading), 6)
+        }
+        original.call(this, start, count, gains)
+    })
+    const {p} = fixture([r])
+    p.process({blocks: [block()]})
+    expect(Array.from(visits)).toEqual(Array(128).fill(1))
+    expect(p.audioOutput.channels().every(ch => ch.every(Number.isFinite))).toBe(true)
     p.terminate()
 })

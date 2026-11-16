@@ -22,3 +22,6 @@ processor README and pending notes in its CHANGELOG.
   are covered using real SampleProcessor and SampleVoice instances.
 - B04: both collection-order isolation cases and both pitch/stretch disabled-tail
   cases failed before fixing the visitor and adding hard sequencer retirement.
+- B05: both active/internal-fade generation replacements and all four fractional
+  pitch/stretch gain/partition cases failed first. Tests check every frame against
+  an independent envelope/grid oracle and compare whole versus split pitch blocks.

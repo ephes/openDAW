@@ -118,3 +118,12 @@ Disabling an audio lane or changing it to another track type immediately discard
 all its pitch, fade and stretch voices. Device reset discards them too. This hard
 retirement can create a mute discontinuity, but no old tail returns on re-enable.
 Transport stops/seeks retain their existing fade policy.
+
+Tape pitch voices bind both the source UUID and the admitted AudioData object.
+Replacing that data discards the previous generation and its pending fade tails;
+the replacement uses the ordinary new-voice fade policy. In-place PCM mutation
+is not a generation change: loaders must publish a new AudioData object.
+Cycle start/end boundaries are each floored to output frames, then their difference
+defines the span. Empty quantized spans do no work. Pitch and stretch gain buffers
+use those same boundaries and evaluate region fades on the output frame grid,
+so adjacent fractional cycles cover each frame once across block partitions.

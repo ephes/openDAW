@@ -211,9 +211,10 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
         const pn = p1 - p0
         const r0 = (cycle.resultStart - p0) / pn
         const r1 = (cycle.resultEnd - p0) / pn
-        const bp0 = s0 + sn * r0
-        const bp1 = s0 + sn * r1
-        const bpn = (bp1 - bp0) | 0
+        const bp0 = Math.floor(s0 + sn * r0)
+        const bp1 = Math.floor(s0 + sn * r1)
+        const bpn = bp1 - bp0
+        if (bpn <= 0) {return}
         const waveformOffset: number = adapter.waveformOffset.getValue()
         assert(s0 <= bp0 && bp1 <= s1, () => `Out of bounds ${bp0}, ${bp1}`)
         const asPlayModePitch = adapter.asPlayModePitchStretch
@@ -251,15 +252,15 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
         if (isInstanceOf(adapter, AudioRegionBoxAdapter) && adapter.fading.hasFading) {
             const regionPosition = adapter.position
             const regionDuration = adapter.duration
-            const startPpqn = cycle.resultStart - regionPosition
-            const endPpqn = cycle.resultEnd - regionPosition
+            const startPpqn = p0 + (bp0 - s0) / sn * pn - regionPosition
+            const endPpqn = p0 + (bp1 - s0) / sn * pn - regionPosition
             FadingEnvelope.fillGainBuffer(this.#fadingGainBuffer, startPpqn, endPpqn, regionDuration, bpn, adapter.fading)
         } else {
             this.#fadingGainBuffer.fill(1.0, 0, bpn)
         }
         const voice = lane.pitchVoices.getOrNull(sourceUuid)
         if (voice !== null) {
-            voice.process(bp0 | 0, bpn, this.#fadingGainBuffer)
+            voice.process(bp0, bpn, this.#fadingGainBuffer)
             if (voice.done()) {
                 lane.pitchVoices.removeByKey(sourceUuid)
             }
@@ -270,7 +271,12 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
                               playbackRate: number, offset: number, blockOffset: int): void {
         const fadeLengthSamples = Math.round(VOICE_FADE_DURATION * sampleRate)
         const existing = lane.pitchVoices.getOrNull(sourceUuid)
-        if (existing === null) {
+        // Replaced sample generations retire immediately, including already fading tails.
+        for (let i = lane.fadingVoices.length - 1; i >= 0; i--) {
+            const voice = lane.fadingVoices[i]
+            if (UUID.equals(voice.sourceUuid, sourceUuid) && voice.data !== data) {lane.fadingVoices.splice(i, 1)}
+        }
+        if (existing === null || existing.data !== data) {
             lane.pitchVoices.add(
                 new PitchVoice(sourceUuid, this.#audioOutput, data, fadeLengthSamples, playbackRate, offset, blockOffset), true)
         } else if (existing.isFadingOut()) {
@@ -333,12 +339,13 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
         const pn = p1 - p0
         const r0 = (cycle.resultStart - p0) / pn
         const r1 = (cycle.resultEnd - p0) / pn
-        const bp0 = s0 + sn * r0
-        const bp1 = s0 + sn * r1
-        const bpn = (bp1 - bp0) | 0
+        const bp0 = Math.floor(s0 + sn * r0)
+        const bp1 = Math.floor(s0 + sn * r1)
+        const bpn = bp1 - bp0
+        if (bpn <= 0) {return}
         if (fadingConfig !== null && FadingEnvelope.hasFading(fadingConfig)) {
-            const startPpqn = cycle.resultStart - regionPosition
-            const endPpqn = cycle.resultEnd - regionPosition
+            const startPpqn = p0 + (bp0 - s0) / sn * pn - regionPosition
+            const endPpqn = p0 + (bp1 - s0) / sn * pn - regionPosition
             FadingEnvelope.fillGainBuffer(this.#fadingGainBuffer, startPpqn, endPpqn, regionDuration, bpn, fadingConfig)
         } else {
             this.#fadingGainBuffer.fill(1.0, 0, bpn)
