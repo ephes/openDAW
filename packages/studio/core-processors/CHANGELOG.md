@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Isolate unavailable Tape timeline regions and discard disabled-lane pitch/stretch tails instead of freezing them across re-enable.
+
 - Keep Playfield one-shot boundary contributions in both directions; bound live sample polyphony and release tails to 16 with oldest-first stealing and event-owned stops.
 
 - Retire empty/invalid Playfield sample intervals and wrap forward/reverse loops in constant work, preserving fractional overshoot.

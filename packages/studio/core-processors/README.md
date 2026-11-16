@@ -111,3 +111,10 @@ the ceiling discards the oldest voice immediately (a possible discontinuity).
 Note-offs still match the surviving event IDs; mono retriggers and choke-group
 release dispatch remain intact. Position broadcasts include a terminator after
 all 16 voices.
+
+Tape skips an unavailable timeline region (including a stretch region with fewer
+than two transients) while continuing independent regions on the same lane.
+Disabling an audio lane or changing it to another track type immediately discards
+all its pitch, fade and stretch voices. Device reset discards them too. This hard
+retirement can create a mute discontinuity, but no old tail returns on re-enable.
+Transport stops/seeks retain their existing fade policy.

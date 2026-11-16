@@ -26,6 +26,11 @@ export class TimeStretchSequencer {
         this.#accumulatedDrift = 0.0
     }
 
+    clear(): void {
+        this.reset()
+        this.#voices.length = 0
+    }
+
     process(output: AudioBuffer,
             data: AudioData,
             transients: EventCollection<TransientMarkerBoxAdapter>,

@@ -20,3 +20,5 @@ processor README and pending notes in its CHANGELOG.
 - B03: the forward/reverse endpoint oracle and 100-start live-voice ceiling failed
   before the fix. Old-event stops, surviving-event stops and mono/choke dispatch
   are covered using real SampleProcessor and SampleVoice instances.
+- B04: both collection-order isolation cases and both pitch/stretch disabled-tail
+  cases failed before fixing the visitor and adding hard sequencer retirement.

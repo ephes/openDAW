@@ -86,7 +86,7 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
         this.#lanes.forEach(lane => {
             lane.pitchVoices.clear()
             lane.fadingVoices = []
-            lane.sequencer.reset()
+            lane.sequencer.clear()
         })
     }
 
@@ -104,8 +104,9 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
     #processBlock(lane: Lane, block: Block): void {
         const {adapter} = lane
         if (adapter.type !== TrackType.Audio || !adapter.enabled.getValue()) {
-            this.#fadeOutAllPitchVoices(lane)
-            lane.sequencer.reset()
+            lane.pitchVoices.clear()
+            lane.fadingVoices.length = 0
+            lane.sequencer.clear()
             return
         }
         const {p0, p1, s0, s1, flags} = block
@@ -132,11 +133,11 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
                         if (region.mute || !isInstanceOf(region, AudioRegionBoxAdapter)) {continue}
                         const file = region.file
                         const optData = file.getOrCreateLoader().data
-                        if (optData.isEmpty()) {return}
+                        if (optData.isEmpty()) {continue}
                         const timeStretch = region.asPlayModeTimeStretch
                         if (timeStretch.nonEmpty()) {
                             const transients: EventCollection<TransientMarkerBoxAdapter> = file.transients
-                            if (transients.length() < 2) {return}
+                            if (transients.length() < 2) {continue}
                             for (const cycle of LoopableRegion.locateLoops(region, p0, p1)) {
                                 const timeStretchBoxAdapter = timeStretch.unwrap()
                                 this.#processPassTimestretch(lane, block, cycle,
