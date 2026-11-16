@@ -52,7 +52,7 @@ export class OpenPresetAPI {
                 return panic(`Failed to fetch preset ${UUID.toString(uuid)}: ${response.status} ${response.statusText}`)
             }
             return network.readBounded(response, 16 * 1024 * 1024, signal, progress)
-        })
+        }, signal)
     }
 
     async upload(arrayBuffer: ArrayBuffer, meta: PresetMeta): Promise<void> {

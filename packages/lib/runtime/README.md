@@ -75,5 +75,6 @@ permanent HTTP and unclassified content/validation failures are terminal.
 retry only to idempotent reads/imports; mutations require explicit user approval.
 `network.withDownload` holds one of four shared FIFO permits through a complete
 stock sample/preset load, including metadata, body consumption and decoding. EOF,
-abort and failure release it. `limitFetch` remains a separate headers-only helper;
+abort and failure release it. With an optional signal, a queued entry rejects
+as soon as the signal aborts and never starts its work. `limitFetch` remains a separate headers-only helper;
 do not use it alone to claim bounded concurrent body materialization.

@@ -5,7 +5,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Scale the cloud operation deadline with its transfer budget, admit aggregate cloud catalogs up to 64 MiB and keep mid-body transport failures retryable.
+- Scale the cloud operation deadline with its transfer budget, admit aggregate cloud catalogs up to 64 MiB and keep mid-body transport failures retryable. Cancelled queued stock preset loads settle immediately.
 
 - Hold shared stock transfer permits through sample/preset body consumption and decoding; retain finite private cloud retry categories.
 

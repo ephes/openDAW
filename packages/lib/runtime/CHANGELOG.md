@@ -5,7 +5,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Use a finite transient-only default retry policy, preserve final failures and offer shared whole-download permits.
+- Use a finite transient-only default retry policy, preserve final failures and offer shared whole-download permits; queued permits settle on caller abort.
 
 - Add a bounded response reader with cancellation and observer-failure cleanup.
 

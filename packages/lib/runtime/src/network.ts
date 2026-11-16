@@ -29,9 +29,21 @@ export namespace network {
 
     const downloads = new Promises.Limit<unknown>(4)
     /** One permit owns metadata, response consumption and decoding at stock load boundaries. */
-    export const withDownload = <T>(consume: () => Promise<T>): Promise<T> =>
+    export const withDownload = <T>(consume: () => Promise<T>, signal?: AbortSignal | null): Promise<T> => {
         // Limit preserves the callback's exact result; the shared queue erases only its type.
-        downloads.add(consume) as Promise<T>
+        if (!signal) {return downloads.add(consume) as Promise<T>}
+        if (signal.aborted) {return Promise.reject(signal.reason)}
+        // A queued entry settles on abort; its later permit passes through without starting work.
+        return new Promise<T>((resolve, reject) => {
+            const abort = () => reject(signal.reason)
+            signal.addEventListener("abort", abort, {once: true})
+            const queued = downloads.add(() => {
+                signal.removeEventListener("abort", abort)
+                return signal.aborted ? Promise.reject(signal.reason) : consume()
+            }) as Promise<T>
+            queued.then(resolve, reject)
+        })
+    }
 
     const abortable = <T>(promise: Promise<T>, signal?: AbortSignal | null): Promise<T> => {
         if (!signal) {return promise}

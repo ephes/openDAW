@@ -4,7 +4,7 @@ import {UUID} from "@opendaw/lib-std"
 import {WavFile} from "@opendaw/lib-dsp"
 import type {OpenSampleAPI} from "./OpenSampleAPI"
 
-const network = vi.hoisted(() => ({defaultFetch: vi.fn(), limitFetch: vi.fn(), withDownload: <T>(run: () => Promise<T>) => run()}))
+const network = vi.hoisted(() => ({defaultFetch: vi.fn(), limitFetch: vi.fn(), withDownload: <T>(run: () => Promise<T>, _signal?: AbortSignal | null) => run()}))
 vi.mock("@opendaw/lib-runtime", async original => ({...await original<typeof import("@opendaw/lib-runtime")>(), network}))
 const uuid = UUID.parse("abcdef00-0000-4000-8000-000000000001")
 const sample = {uuid: UUID.toString(uuid), name: "Synthetic", bpm: 0, duration: 1, sample_rate: 44100, origin: "openDAW"}

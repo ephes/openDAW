@@ -460,8 +460,11 @@ retirement prevents any pending selection from installing.
 Drive and Dropbox inventories admit at most 1,000 pages and 100,000 names. Repeated
 or empty continuation cursors and overflow reject the entire inventory; partial
 results never authorize backup cleanup. Drive exact-name lookups request two matches
-and refuse duplicates or incomplete results before mutation. Repair duplicate backup
-names deliberately before retrying. Name query literals escape backslashes before
+and refuse duplicates or incomplete results before mutation. Backups live in Drive's
+hidden `appDataFolder`, and there is no in-app repair yet: a duplicated folder or file
+keeps that path's operations refused (nothing is changed) until a deterministic
+resolution or repair step exists. This deliberately trades backup availability for
+never mutating an arbitrary duplicate. Name query literals escape backslashes before
 apostrophes, independently of URL encoding.
 
 Every provider operation accepts optional cancellation and has one elapsed deadline
@@ -491,6 +494,7 @@ read failure rejects the load and cancels/unlocks the reader; EOF reports comple
 
 Stock sample and preset loads share four permits across metadata, body consumption
 and sample decoding, releasing on completion, abort or failure. Queued cancelled
-preset loads check their signal before starting requests. Cloud read retries stop
+preset loads settle as soon as their signal aborts, without waiting for a permit or
+starting requests. Cloud read retries stop
 after three transient attempts; permanent HTTP errors, missing files, aborts and
 invalid content stop immediately. Mutations retain explicit approval-based retry.
