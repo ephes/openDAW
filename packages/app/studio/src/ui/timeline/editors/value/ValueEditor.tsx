@@ -259,6 +259,7 @@ export const ValueEditor = ({lifecycle, service, range, snapping, eventMapping, 
                 }))
             } else if (target.type === "midpoint") {
                 return modifyContext.startModifier(ValueSlopeModifier.create({
+                    pointerY: event.clientY,
                     editing,
                     element: canvas,
                     valueAxis,

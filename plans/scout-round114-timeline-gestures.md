@@ -40,6 +40,20 @@ maximum pitches. Chords retain their intervals at MIDI 0 and 127, including
 copies and repeat-copies. Audition publishes the same preview pitch, only when
 the effective translation changes; repeated motion beyond a boundary is silent.
 
+## Automation slope ownership and loop diagnostics
+
+Slope movement starts at the pointer-down Y coordinate, so even a single move
+contributes its full distance; Alt precision scales each movement increment.
+The gesture owns one attached reference/successor segment. Editing either point
+retires it, including an edit that restores its original value. Membership and
+immediate-successor identity are checked for preview, movement and approval.
+Insertion, deletion, reparenting or collection retirement cancels stale approval;
+current interpolation is shown instead. Owned subscriptions end on all exits.
+
+Loop-duration approval emits no console diagnostic snapshots. It performs only
+the actual resize/overlap work; unrelated regions are never read or allocated
+solely for before/after logging. There is no enabled debug projection to bound.
+
 ## Implementation and validation
 
 Round 114 was implemented with Codex from a fresh checkout. Each bundle adds
