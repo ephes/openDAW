@@ -197,10 +197,16 @@ remain excluded; this adds no bidirectional conflict merging.
 Preset files are updated in place and the batch catalog is published afterward.
 If a later preset or catalog upload fails, some bytes can be newer than their catalog
 metadata; another device can restore that mismatched pair until retry succeeds. Keep
-the local edited presets and retry backup before restoring them elsewhere. A concurrent
-local save can also change bytes after the initial index scan; this slice does not
-capture a coherent preset pair or provide transactional preset generations. Successful
-project generation preservation does not extend to presets.
+the local edited presets and retry backup before restoring them elsewhere. Backup
+captures validated preset metadata and bytes together under the storage Web Lock,
+then checks upload eligibility from that captured timestamp and releases the lock
+before network work. Later local edits remain eligible on the next run. This does
+not provide transactional remote preset generations across files/catalogs.
+
+Restore reacquires the preset storage lock after downloading and creates only if
+metadata, physical bytes and deletion intent are still absent. A concurrent local
+save or delete causes an explicit skipped-restore log; local bytes/metadata survive.
+Successful new restores retain the remote metadata timestamp.
 
 Soundfont saves share the asset-domain Web Lock with inventory and deletion. New
 media and metadata must validate; SF2 bytes finish before metadata makes the asset

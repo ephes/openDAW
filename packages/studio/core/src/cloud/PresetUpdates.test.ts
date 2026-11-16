@@ -7,7 +7,10 @@ const meta = (modified: number, name = "Synthetic") => ({uuid: a, name, modified
 beforeEach(() => {
     vi.spyOn(OpenPresetAPI, "get").mockReturnValue({list: async () => []} as unknown as ReturnType<typeof OpenPresetAPI.get>)
     vi.spyOn(PresetStorage, "loadTrashedIds").mockResolvedValue([])
-    vi.spyOn(PresetStorage, "load").mockResolvedValue(new Uint8Array([9]).buffer)
+    vi.spyOn(PresetStorage, "readSnapshot").mockImplementation(async uuid => {
+        const entry = (await PresetStorage.readIndex()).find(meta => meta.uuid === UUID.toString(uuid))
+        return entry ? {meta: entry, data: new Uint8Array([9]).buffer} : undefined
+    })
     vi.spyOn(RuntimeNotifier, "approve").mockResolvedValue(false)
 })
 afterEach(() => {vi.restoreAllMocks(); vi.clearAllMocks()})

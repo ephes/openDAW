@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve concurrent local presets during cloud restore and upload coherent locked metadata/byte snapshots with captured eligibility.
+
 - Bound stock preset downloads in both progress modes; reject partial aborts and settle observer failures with reader cleanup.
 
 - Bound cloud transfers and entire provider operations; cancel late responses and expose private fixed error categories.

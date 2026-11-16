@@ -15,3 +15,9 @@ the worker handoff. Work is serialized B01 through B05 on one local branch.
 - B03: stock preset regressions fail before the change (11 of 12 cases, including
   unhandled observer continuations); all 12 pass with the shared awaited reader.
   Both progress modes now reject declared/streamed overflow and release ownership.
+- B04: four race/eligibility/physical-file regressions fail on original code; 98
+  focused storage/cloud cases pass after the fix, including edits during network
+  upload remaining eligible next run. Core build/lint pass; browser fixture lint
+  passes. Added a real Web Locks storage journey. Browser launch is sandbox-blocked
+  (`npm run test:browser -- tests/browser/r116.spec.ts`, Chromium MachPortRendezvous
+  bootstrap_check_in Permission denied 1100); external clerk must run it.
