@@ -135,3 +135,9 @@ length`. Invalid bounds and unsupported modes fall back to nonlooping playback;
 empty samples and nonfinite/nonpositive playback rates retire silently without
 reading PCM. Other voices continue. Valid loops wrap arbitrary finite overshoot
 with modulo arithmetic, including one-frame loops and high pitches.
+
+### MIDI and insert-return chain retirement
+
+Chain termination disconnects all wiring, releases collection/phase observers and
+retires every owned effect together with its enabled-field subscription. Repeated
+termination is harmless; edits to former effects cannot rewire the retired chain.

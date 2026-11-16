@@ -69,7 +69,13 @@ export class MidiDeviceChain implements DeviceChain {
         this.#needsWiring = true
     }
 
-    terminate() {this.#terminator.terminate()}
+    terminate(): void {
+        const retirement = new Terminator()
+        this.#effects.forEach(({device, subscription}) => retirement.ownAll(device, subscription))
+        this.#effects.clear()
+        retirement.own(this.#terminator) // Disconnect before retiring the processors.
+        retirement.terminate()
+    }
 
     toString(): string {return `{${this.constructor.name}}`}
 

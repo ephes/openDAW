@@ -84,10 +84,12 @@ export class InsertReturnAudioChain implements DeviceChain {
     }
 
     terminate(): void {
-        this.#terminator.terminate()
-        this.#effects.forEach(({device}) => device.terminate())
+        const retirement = new Terminator()
+        this.#effects.forEach(({device, subscription}) => retirement.ownAll(device, subscription))
         this.#effects.clear()
         this.#orderedEffects = []
+        retirement.own(this.#terminator) // Disconnect before retiring the processors.
+        retirement.terminate()
     }
 
     toString(): string {return `{${this.constructor.name}}`}
