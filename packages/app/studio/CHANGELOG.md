@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Settle project browsing and stem export on every dialog close; Enter exports stems while composing Enter keeps editing. Release dialog owners on setup failure.
+
 - Preflight pad-copy resources before replacing a destination; refuse whole effect selections from foreign chains, mixed kinds or retired identities.
 
 - Bind drum-pad moves to their source device and preserve authored sample fields when copying a pad, with shared audio-file identity.

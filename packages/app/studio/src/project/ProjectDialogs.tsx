@@ -65,81 +65,94 @@ export namespace ProjectDialogs {
     export const showBrowseDialog = async (service: StudioService): Promise<[UUID.Bytes, ProjectMeta]> => {
         const {resolve, reject, promise} = Promise.withResolvers<[UUID.Bytes, ProjectMeta]>()
         const lifecycle = new Terminator()
-        const dialog: HTMLDialogElement = (
-            <Dialog headline={"Browse Projects"}
-                    icon={IconSymbol.FileList}
-                    buttons={[{text: "Cancel", onClick: () => dialog.close()}]}
-                    cancelable={true} style={{height: "30em"}}>
-                <div style={{height: "2em"}}/>
-                <ProjectBrowser lifecycle={lifecycle} service={service} select={(result) => {
-                    resolve(result)
-                    dialog.close()
-                }}/>
-            </Dialog>
-        )
-        dialog.oncancel = () => reject("cancel")
-        dialog.onkeydown = event => {if (event.code === "Enter") {dialog.close()}}
-        Surface.get().flyout.appendChild(dialog)
-        dialog.showModal()
-        return promise.finally(() => lifecycle.terminate())
+        try {
+            const dialog: HTMLDialogElement = (
+                <Dialog headline={"Browse Projects"}
+                        icon={IconSymbol.FileList}
+                        buttons={[{text: "Cancel", onClick: () => dialog.close()}]}
+                        cancelable={true} style={{height: "30em"}}>
+                    <div style={{height: "2em"}}/>
+                    <ProjectBrowser lifecycle={lifecycle} service={service} select={(result) => {
+                        resolve(result)
+                        dialog.close()
+                    }}/>
+                </Dialog>
+            )
+            dialog.oncancel = () => reject(Errors.AbortError)
+            dialog.addEventListener("close", () => reject(Errors.AbortError), {once: true})
+            dialog.onkeydown = event => {if (event.code === "Enter" && !event.isComposing) {event.preventDefault(); dialog.close()}}
+            Surface.get().flyout.appendChild(dialog)
+            try {dialog.showModal()} catch (error) {
+                dialog.dispatchEvent(new Event("close"))
+                // Observe the close fallback before propagating setup failure.
+                await promise.catch(() => {})
+                throw error
+            }
+            return await promise
+        } finally {lifecycle.terminate()}
     }
 
     export const showExportStemsDialog = async (project: Project): Promise<ExportConfiguration> => {
         const {resolve, reject, promise} = Promise.withResolvers<ExportConfiguration>()
         const terminator = new Terminator()
-        const configuration: EditableExportStemsConfiguration = Object
-            .fromEntries(project.rootBoxAdapter.audioUnits.adapters()
-                .map(unit => ([
-                    UUID.toString(unit.uuid),
-                    {
-                        type: unit.type,
-                        label: unit.input.label.unwrap(),
-                        include: !unit.isOutput,
-                        includeAudioEffects: true,
-                        includeSends: true,
-                        useInstrumentOutput: false,
-                        fileName: ExportConfiguration.sanitizeFileName(unit.input.label.unwrap())
-                    }
-                ])))
-        const dialog: HTMLDialogElement = (
-            <Dialog headline={"Export Stems"}
-                    icon={IconSymbol.FileList}
-                    style={{maxWidth: "40em"}}
-                    buttons={[
+        try {
+            const configuration: EditableExportStemsConfiguration = Object
+                .fromEntries(project.rootBoxAdapter.audioUnits.adapters()
+                    .map(unit => ([
+                        UUID.toString(unit.uuid),
                         {
-                            text: "Cancel",
-                            onClick: () => {
-                                dialog.close()
-                                reject(Errors.AbortError)
-                            }
-                        },
-                        {
-                            text: "Export", onClick: () => {
-                                // Keep the exact field set the original code shipped (no
-                                // `useInstrumentOutput`) so the rendered output is identical.
-                                const stems = Object.fromEntries(
-                                    Object.entries(configuration)
-                                        .filter(([_, value]) => value.include)
-                                        .map(([key, value]) => [key,
-                                            Objects.include(value, ...([
-                                                "includeAudioEffects",
-                                                "includeSends",
-                                                "fileName"
-                                            ] as const))])) as Record<string, ExportStemConfiguration>
-                                resolve({stems})
-                                dialog.close()
-                            },
-                            primary: true
+                            type: unit.type,
+                            label: unit.input.label.unwrap(),
+                            include: !unit.isOutput,
+                            includeAudioEffects: true,
+                            includeSends: true,
+                            useInstrumentOutput: false,
+                            fileName: ExportConfiguration.sanitizeFileName(unit.input.label.unwrap())
                         }
-                    ]}
-                    cancelable={true}>
-                <ExportStemsConfigurator lifecycle={terminator} configuration={configuration}/>
-            </Dialog>
-        )
-        dialog.oncancel = () => reject(Errors.AbortError)
-        dialog.onkeydown = event => {if (event.code === "Enter") {dialog.close()}}
-        Surface.get().flyout.appendChild(dialog)
-        dialog.showModal()
-        return promise.finally(() => terminator.terminate())
+                    ])))
+            const approve = () => {
+                const stems = Object.fromEntries(Object.entries(configuration)
+                    .filter(([_, value]) => value.include)
+                    .map(([key, value]) => [key, Objects.include(value,
+                        "includeAudioEffects", "includeSends", "fileName")])) as Record<string, ExportStemConfiguration>
+                resolve({stems})
+                dialog.close()
+            }
+            const dialog: HTMLDialogElement = (
+                <Dialog headline={"Export Stems"}
+                        icon={IconSymbol.FileList}
+                        style={{maxWidth: "40em"}}
+                        buttons={[
+                            {
+                                text: "Cancel",
+                                onClick: () => {
+                                    dialog.close()
+                                    reject(Errors.AbortError)
+                                }
+                            },
+                            {
+                                text: "Export", onClick: () => {
+                                    approve()
+                                },
+                                primary: true
+                            }
+                        ]}
+                        cancelable={true}>
+                    <ExportStemsConfigurator lifecycle={terminator} configuration={configuration}/>
+                </Dialog>
+            )
+            dialog.oncancel = () => reject(Errors.AbortError)
+            dialog.addEventListener("close", () => reject(Errors.AbortError), {once: true})
+            dialog.onkeydown = event => {
+                if (event.code === "Enter" && !event.isComposing) {event.preventDefault(); approve()}
+            }
+            Surface.get().flyout.appendChild(dialog)
+            try {dialog.showModal()} catch (error) {
+                dialog.dispatchEvent(new Event("close"))
+                await promise.catch(() => {})
+                throw error
+            }
+            return await promise
+        } finally {terminator.terminate()}
     }
 }

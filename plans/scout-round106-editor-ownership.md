@@ -27,3 +27,15 @@ host pointer kind. Partial selections are refused as a whole.
 Regression: missing-file getter at drop time, unchanged graph/history/undo/redo;
 foreign chains with matching indexes, MIDI/audio mixes, missing and duplicate
 UUIDs, plus a valid reorder. Both new tests failed before repair and pass after.
+
+## Project dialogs (B03)
+
+Cancel, Escape, Enter and programmatic close settle browsing as cancellation;
+selection resolves before close. Stem Enter uses the Export button action and
+prevents duplicate native activation; composing Enter is ignored. Unresolved
+close cancels. A finally block retires each dialog owner, including setup failure,
+without replacing Dialog's own close cleanup.
+
+Regression: actual ProjectDialogs functions with synthetic dialog controls cover
+all terminal paths, composing Enter and showModal refusal. The original code left
+close paths pending and leaked setup owners; the repaired functions settle once.
