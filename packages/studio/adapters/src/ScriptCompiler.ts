@@ -154,6 +154,7 @@ export namespace ScriptCompiler {
                 const {userCode, update} = parseHeader(deviceBox.code.getValue(), headerPattern)
                 if (update === 0) {return}
                 ScriptDeclaration.parseParams(userCode)
+                ScriptDeclaration.parseSamples(userCode)
                 const uuid = UUID.toString(deviceBox.address.uuid)
                 const wrappedCode = wrapCode(config, uuid, update, userCode)
                 validateCode(wrappedCode)

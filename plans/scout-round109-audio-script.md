@@ -33,3 +33,10 @@ regressions use a real project skeleton, BoxEditing, automation track and MIDI
 controller to check stable addresses/values, reset metadata and undo/redo. Numeric
 domain changes retain the prior explicit recreate policy. Saved source replaces
 the mutable declaration cache as the authoritative previous domain.
+
+## B09 — declaration admission
+
+Parser and real compiler tests reject invalid numeric domains and duplicate
+resources before installation or graph publication. Valid scientific notation,
+integer rounding and unique declaration reordering remain supported. Older test
+fixtures using zero exponential endpoints now use positive minima.

@@ -60,3 +60,35 @@ it("recreates a parameter when its numeric mapping domain changes", async () => 
     await f.compiler.compile(f.context, f.editing, f.box, source().replace("0 1 linear", "0 2 linear"))
     expect(f.box.parameters.pointerHub.filter()[0].box.address.toString()).not.toBe(address)
 })
+
+it.each(["Infinity", "1junk", "5", "0.5 -1 10 exp"])("rejects invalid numeric declaration %s before mutation", async value => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source())
+    const code = f.box.code.getValue(), address = f.box.parameters.pointerHub.filter()[0].box.address.toString()
+    f.addModule.mockClear()
+    await expect(f.compiler.compile(f.context, f.editing, f.box, `// @param gain ${value}\nclass Processor {}`)).rejects.toThrow()
+    expect(f.box.code.getValue()).toBe(code)
+    expect(f.box.parameters.pointerHub.filter()[0].box.address.toString()).toBe(address)
+    expect(f.addModule).not.toHaveBeenCalled()
+})
+
+it.each(["// @param gain 0.5\n// @param gain 0.75", "// @sample hit\n// @sample hit", "// @param gain\n// @sample gain"])(
+    "refuses duplicate resources before install/reconciliation: %s", async declarations => {
+        const f = fixture()
+        await f.compiler.compile(f.context, f.editing, f.box, source())
+        const before = f.box.code.getValue(), parameter = f.box.parameters.pointerHub.filter()[0].box
+        f.addModule.mockClear()
+        await expect(f.compiler.compile(f.context, f.editing, f.box, declarations + "\nclass Processor {}")).rejects.toThrow(/Duplicate.*line 2/)
+        expect(f.box.code.getValue()).toBe(before)
+        expect(f.box.parameters.pointerHub.filter()[0].box).toBe(parameter)
+        expect(f.addModule).not.toHaveBeenCalled()
+    })
+it("reorders unique declarations without replacing their bindings", async () => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source() + "\n// @sample hit")
+    const parameter = f.box.parameters.pointerHub.filter()[0].box
+    const sample = f.box.samples.pointerHub.filter()[0].box
+    await f.compiler.compile(f.context, f.editing, f.box, "// @sample hit\n" + source())
+    expect(f.box.parameters.pointerHub.filter()[0].box).toBe(parameter)
+    expect(f.box.samples.pointerHub.filter()[0].box).toBe(sample)
+})

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse incomplete/non-finite numeric script tokens, invalid shorthand/exponential/bool domains and duplicate parameter/sample names before graph edits or module installation.
+
 - Retire removed parameter adapters immediately; preserve script parameter UUIDs, current values, automation and MIDI links for default/display-only edits, including undo/redo. Update reset metadata in place.
 
 - Reserve an empty recording-ring slot and expose sticky dropped-frame evidence instead of overwriting unread audio.

@@ -235,3 +235,9 @@ channel, or detaching its storage, quarantines the generation and publishes
 silence. The buffers retain their full render-quantum length. Samples are checked
 in owned staging buffers before the requested span is copied to published audio;
 new compilations receive fresh staging buffers. No buffers are allocated per sample.
+
+Declaration numbers must be complete finite decimal or scientific tokens (for
+example `1e-3`); numeric prefixes and infinities are refused. Shorthand defaults
+must be in `[0,1]`. Exponential bounds must be strictly positive; boolean bounds
+are `0 1`. Parameter and sample labels must be unique across both kinds.
+Invalid declarations leave the previous working device unchanged.

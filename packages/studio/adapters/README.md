@@ -43,3 +43,11 @@ and automation/MIDI links. Reset follows the latest declaration through undo/red
 Changing mapping type or numeric endpoints recreates that parameter and retires
 its old links. Reconciliation compares against saved source, so undo does not
 leave an out-of-date declaration cache.
+
+Script declarations require complete finite decimal/scientific numbers representable
+as finite float32 values. Shorthand defaults are in [0,1]; explicit defaults are
+within their bounds. Exponential endpoints must be positive with a finite ratio.
+Boolean endpoints are 0 and 1. Integer mappings use ValueMapping's rounded/clamped
+bounds and must remain increasing. Parameter and sample labels share one unique,
+case-sensitive namespace; duplicates report the declaration line and preserve the
+previous device. These admission rules also apply to saved script loads.
