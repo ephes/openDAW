@@ -5,7 +5,7 @@ import {
     Section,
     TrackBoxAdapter
 } from "@opendaw/studio-adapters"
-import {Arrays, identity, Option, quantizeFloor, SortedSet, UUID} from "@opendaw/lib-std"
+import {Arrays, identity, Option, quantizeFloor, SortedSet, Terminator, UUID} from "@opendaw/lib-std"
 import {ppqn, PPQN} from "@opendaw/lib-dsp"
 import {BoxGraph, Update} from "@opendaw/lib-box"
 
@@ -21,7 +21,7 @@ class TrackState {
 }
 
 export class ClipSequencingAudioContext implements ClipSequencing {
-    readonly #boxGraph: BoxGraph
+    readonly #terminator = new Terminator()
     readonly #states: SortedSet<TrackKey, TrackState>
 
     readonly #started: Array<ClipKey> = []
@@ -29,16 +29,16 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     readonly #obsolete: Array<ClipKey> = []
 
     constructor(boxGraph: BoxGraph) {
-        this.#boxGraph = boxGraph
-        this.#boxGraph.subscribeToAllUpdatesImmediate({
+        this.#states = UUID.newSet<TrackState>(state => state.uuid)
+        this.#terminator.own(boxGraph.subscribeToAllUpdatesImmediate({
             onUpdate: (update: Update) => {
                 if (update.type === "delete") {
                     const uuid = update.uuid
                     // handle track deletion
                     this.#states.opt(uuid).ifSome(state => {
                         state.playing.ifSome(playing => this.#onStop(playing.uuid))
-                        state.playing = Option.None
-                        state.waiting = Option.None
+                        state.waiting.flatMap(identity).ifSome(clip => this.#obsolete.push(clip.uuid))
+                        this.#states.removeByKey(uuid)
                     })
                     // handle clip deletion
                     this.#states.forEach(state => {
@@ -53,8 +53,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
                     })
                 }
             }
-        })
-        this.#states = UUID.newSet<TrackState>(state => state.uuid)
+        }))
     }
 
     schedulePlay(clipAdapter: AnyClipBoxAdapter): void {
@@ -167,6 +166,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     }
 
     terminate(): void {
+        this.#terminator.terminate()
         this.#states.clear()
         this.#started.length = 0
         this.#stopped.length = 0

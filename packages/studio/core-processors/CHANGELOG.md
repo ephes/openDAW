@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Release clip graph observers and deleted track states, notifying both playing and queued clip owners.
+
 - Retire MIDI/insert-return effects and enabled subscriptions with their chain; disconnect wiring before processor cleanup.
 
 - Distinguish continuous and until-note-off Soundfont loops, validate sample-relative loop bounds with nonlooping fallback, and wrap arbitrary finite overshoot in constant work.

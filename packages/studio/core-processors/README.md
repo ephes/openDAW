@@ -141,3 +141,9 @@ with modulo arithmetic, including one-frame loops and high pitches.
 Chain termination disconnects all wiring, releases collection/phase observers and
 retires every owned effect together with its enabled-field subscription. Repeated
 termination is harmless; edits to former effects cannot rewire the retired chain.
+
+### Clip graph ownership
+
+Clip contexts release graph observation before clearing their state. Track deletion
+stops its playing clip, marks its queued clip obsolete and removes the track state;
+subsequent clip deletions visit only retained live tracks.

@@ -9,3 +9,6 @@ regressions are run against the old code before each fix, then the corrected cod
 B01: `ChainRetirement.test.ts` fails for both chain kinds before cleanup ownership
 is added (missing device disposal / retained enabled subscription). Both pass
 afterwards, including repeated termination, zero edges and zero connections.
+
+B02: graph disposal, queued deletion notifications and a 2000-track churn probe
+all fail before the fix. Disposal occurs once; later deletion visits one live state.
