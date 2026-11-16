@@ -135,7 +135,7 @@ export class CaptureMidi extends Capture<CaptureMidiBox> {
                 .map(device => device.name))
     }
 
-    async prepareRecording(): Promise<void> {}
+    async prepareRecording(): Promise<Terminable> {return Terminable.Empty}
 
     startRecording(): Terminable {
         return RecordMidi.start({notifier: this.#notifier, project: this.manager.project, capture: this})

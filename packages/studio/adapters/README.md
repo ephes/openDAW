@@ -71,3 +71,19 @@ rolled back. Successful graph publication remains successful if candidate cleanu
 is refused; that cleanup fault is logged. The first compile of a new device appends
 to the creation history step only if no other history change happened while the
 module installed; otherwise it publishes as its own step.
+
+### Tempo cursor bounds
+
+The tempo cursor integrates constant spans before the first and after the last
+event in closed form; work there is independent of tail length. Changing zones
+retain grid-origin sampling, including nonaligned event boundaries. Inputs must
+be finite, tempo must be positive, and pulse coordinates must fit within
+`Number.MAX_SAFE_INTEGER - TempoChangeGrid`. An unrepresentable position or
+nonprogressing step throws `RangeError`; positions are never silently clamped.
+Events must be sorted by `ValueEvent.Comparator`; a same-position pair (a tempo
+step) is valid. Only the first and last event positions and each sampled tempo
+are checked per call, so validation adds constant work on the audio thread.
+
+Signature moves to occupied bars are refused without graph edits. Other moves
+retain the absolute bar positions of every untouched signature event; undo/redo
+restores the original order and relative distances.

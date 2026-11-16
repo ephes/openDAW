@@ -35,15 +35,20 @@ export class TempoGridCursor {
      * Integrates the seconds elapsed across [fromPPQN, toPPQN] by stepping the TempoChangeGrid.
      */
     integrate(events: ReadonlyArray<ValueEvent>, fromPPQN: ppqn, toPPQN: ppqn, storageBpm: bpm): seconds {
+        this.#validateCoordinate(fromPPQN)
+        this.#validateCoordinate(toPPQN)
         this.#reset(events, storageBpm)
         let acc: seconds = 0.0
         let current: ppqn = fromPPQN
         while (current < toPPQN) {
             const currentBpm = this.#bpmAt(quantizeFloor(current, TempoChangeGrid))
-            const nextGrid = quantizeCeil(current, TempoChangeGrid)
-            const segmentEnd = nextGrid <= current ? nextGrid + TempoChangeGrid : nextGrid
+            this.#validateBpm(currentBpm)
+            const segmentEnd = this.#segmentEnd(current)
             const actualEnd = Math.min(segmentEnd, toPPQN)
-            acc += PPQN.pulsesToSeconds(actualEnd - current, currentBpm)
+            this.#requireProgress(current, actualEnd)
+            const nextAcc = acc + PPQN.pulsesToSeconds(actualEnd - current, currentBpm)
+            this.#requireProgress(acc, nextAcc)
+            acc = nextAcc
             current = actualEnd
         }
         return acc
@@ -58,26 +63,65 @@ export class TempoGridCursor {
             fromSeconds: seconds,
             targetSeconds: seconds,
             storageBpm: bpm): ppqn {
+        this.#validateCoordinate(fromPPQN)
+        if (!Number.isFinite(fromSeconds) || !Number.isFinite(targetSeconds)) {
+            throw new RangeError("Tempo cursor requires finite seconds")
+        }
         this.#reset(events, storageBpm)
         let accumulatedSeconds: seconds = fromSeconds
         let accumulatedPPQN: ppqn = fromPPQN
         while (accumulatedSeconds < targetSeconds) {
             const currentBpm = this.#bpmAt(quantizeFloor(accumulatedPPQN, TempoChangeGrid))
-            const nextGrid = quantizeCeil(accumulatedPPQN, TempoChangeGrid)
-            const segmentEnd = nextGrid <= accumulatedPPQN ? nextGrid + TempoChangeGrid : nextGrid
+            this.#validateBpm(currentBpm)
+            const segmentEnd = this.#segmentEnd(accumulatedPPQN)
             const segmentPPQN = segmentEnd - accumulatedPPQN
             const segmentSeconds = PPQN.pulsesToSeconds(segmentPPQN, currentBpm)
             if (accumulatedSeconds + segmentSeconds >= targetSeconds) {
-                accumulatedPPQN += PPQN.secondsToPulses(targetSeconds - accumulatedSeconds, currentBpm)
+                const next = accumulatedPPQN + PPQN.secondsToPulses(targetSeconds - accumulatedSeconds, currentBpm)
+                this.#validateCoordinate(next)
+                this.#requireProgress(accumulatedPPQN, next)
+                accumulatedPPQN = next
                 break
             }
-            accumulatedSeconds += segmentSeconds
+            const nextSeconds = accumulatedSeconds + segmentSeconds
+            this.#requireProgress(accumulatedSeconds, nextSeconds)
+            this.#validateCoordinate(segmentEnd)
+            this.#requireProgress(accumulatedPPQN, segmentEnd)
+            accumulatedSeconds = nextSeconds
             accumulatedPPQN = segmentEnd
         }
         return accumulatedPPQN
     }
 
+    #validateCoordinate(position: number): void {
+        if (!Number.isFinite(position) || Math.abs(position) > Number.MAX_SAFE_INTEGER - TempoChangeGrid) {
+            throw new RangeError("Tempo cursor coordinate is outside the supported range")
+        }
+    }
+
+    #validateBpm(value: number): void {
+        if (!Number.isFinite(value) || value <= 0) {throw new RangeError("Tempo cursor requires positive finite BPM")}
+    }
+
+    #requireProgress(from: number, to: number): void {
+        if (!Number.isFinite(to) || to <= from) {throw new RangeError("Tempo cursor cannot make representable progress")}
+    }
+
+    #segmentEnd(position: ppqn): ppqn {
+        const events = this.#events
+        const sample = quantizeFloor(position, TempoChangeGrid)
+        if (events.length <= 1 || sample >= events[events.length - 1].position) {return Infinity}
+        if (sample < events[0].position) {return quantizeCeil(events[0].position, TempoChangeGrid)}
+        const nextGrid = quantizeCeil(position, TempoChangeGrid)
+        return nextGrid <= position ? nextGrid + TempoChangeGrid : nextGrid
+    }
+
     #reset(events: ReadonlyArray<ValueEvent>, storageBpm: bpm): void {
+        this.#validateBpm(storageBpm)
+        if (events.length > 0) {
+            this.#validateCoordinate(events[0].position)
+            this.#validateCoordinate(events[events.length - 1].position)
+        }
         this.#events = events
         this.#storageBpm = storageBpm
         this.#segmentIndex = -2

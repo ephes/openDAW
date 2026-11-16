@@ -118,7 +118,18 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
             }
         )
 
-        const {resolve, promise: isReady} = Promise.withResolvers<void>()
+        const {resolve, reject, promise: isReady} = Promise.withResolvers<void>()
+        // Keep an internal rejection observer even when no caller awaits readiness.
+        void isReady.catch(() => {})
+        const onFault = (event: Event): void => reject(event instanceof ErrorEvent && event.error
+            ? event.error : new Error("Audio processor failed before readiness"))
+        this.addEventListener("processorerror", onFault)
+        this.addEventListener("error", onFault)
+        this.#terminator.own({terminate: () => {
+            reject(new Error("Engine retired before readiness"))
+            this.removeEventListener("processorerror", onFault)
+            this.removeEventListener("error", onFault)
+        }})
         const messenger = Messenger.for(this.port)
         this.#project = project
         this.#isReady = isReady
@@ -179,7 +190,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
         this.#commands.setupMIDI(port, sab)
         const sampleSource = this.#terminator.own(new EngineSampleSource(
             project.sampleManager, uuid => this.#commands.invalidateSample(uuid)))
-        Communicator.executor<EngineToClient>(messenger.channel("engine-to-client"), {
+        this.#terminator.own(Communicator.executor<EngineToClient>(messenger.channel("engine-to-client"), {
                 log: (message: string): void => console.log("WORKLET", message),
                 error: (reason: unknown) => this.dispatchEvent(new ErrorEvent("error", {error: reason})),
                 deviceMessage: (uuid: string, message: string): void => {
@@ -222,7 +233,7 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
                 },
                 switchMarkerState: (state: Nullable<[UUID.Bytes, int]>): void => this.#markerState.setValue(state)
             } satisfies EngineToClient
-        )
+        ))
         this.#preferences = this.#terminator.own(new PreferencesHost<EngineSettings>(EngineSettingsSchema.parse({})))
         this.#terminator.ownAll(
             AnimationFrame.add(() => reader.tryRead()),
@@ -236,10 +247,18 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
         this.wake()
         this.#commands.play()
     }
-    stop(reset: boolean = false): void {this.#commands.stop(reset)}
+    stop(reset: boolean = false): void {
+        if (this.#terminated) {return}
+        this.#project.cancelRecordingPreparation()
+        this.#commands.stop(reset)
+    }
     setPosition(position: ppqn): void {this.#commands.setPosition(position)}
     prepareRecordingState(countIn: boolean): void {this.#commands.prepareRecordingState(countIn)}
-    stopRecording(): void {this.#commands.stopRecording()}
+    stopRecording(): void {
+        if (this.#terminated) {return}
+        this.#project.cancelRecordingPreparation()
+        this.#commands.stopRecording()
+    }
     panic(): void {this.#commands.panic()}
     sleep(): void {
         Atomics.store(this.#controlFlags, 0, 1)
@@ -277,11 +296,17 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
         this.#commands.scheduleClipStop(trackIds)
     }
     subscribeClipNotification(observer: Observer<ClipNotification>): Subscription {
-        observer({
-            type: "sequencing",
-            changes: {started: this.#playingClips, stopped: Arrays.empty(), obsolete: Arrays.empty()}
-        })
-        return this.#notifyClipNotification.subscribe(observer)
+        const subscription = this.#notifyClipNotification.subscribe(observer)
+        try {
+            observer({
+                type: "sequencing",
+                changes: {started: this.#playingClips.slice(), stopped: Arrays.empty(), obsolete: Arrays.empty()}
+            })
+        } catch (error) {
+            subscription.terminate()
+            throw error
+        }
+        return subscription
     }
 
     subscribeDeviceMessage(uuid: string, listener: Procedure<string>): Subscription {
@@ -323,8 +348,6 @@ export class EngineWorklet extends AudioWorkletNode implements Engine {
     terminate(): void {
         if (this.#terminated) {return}
         this.#terminated = true
-        this.#commands.terminate()
-        this.#terminator.terminate()
-        this.disconnect()
+        try {this.#terminator.terminate()} finally {this.disconnect()}
     }
 }

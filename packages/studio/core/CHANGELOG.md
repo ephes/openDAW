@@ -5,6 +5,14 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Settle worklet readiness on faults/retirement and fence resumed playback against Stop, release and replacement.
+- Retire all prepared captures on recording acquisition/startup failures, own each startup resource immediately and report failures through Project.
+- Cancel pending recording acquisition on Project Stop/retirement and keep only the latest monitor sink selection.
+
+- Own initial clip notification snapshots and subscribe before catchup; unwind a throwing initial observer.
+
+- Preserve protected effects during device cut and restore the original master graph/history if output paste installation fails.
+
 - Publish recording-ring overflow as a terminal recording error and refuse clean sample persistence.
 
 - Publish clock timestamp/counter samples coherently and preserve consecutive measurements across signed Int32 counter rollover.

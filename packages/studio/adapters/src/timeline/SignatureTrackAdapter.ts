@@ -205,6 +205,7 @@ export class SignatureTrackAdapter implements Terminable {
         const originalBars = allEvents.map(e => e.accumulatedBars)
         const targetBar = this.#ppqnToBar(targetPpqn, movedEvent.index)
         if (targetBar === movedEvent.accumulatedBars) {return}
+        if (originalBars.some((bar, index) => index !== movedIdx && bar === targetBar)) {return}
         const newBars = [...originalBars]
         newBars[movedIdx] = targetBar
         const sortedIndices = newBars

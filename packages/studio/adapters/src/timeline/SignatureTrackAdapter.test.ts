@@ -523,3 +523,39 @@ describe("SignatureTrackAdapter", () => {
         })
     })
 })
+import {BoxEditing, BoxGraph} from "@opendaw/lib-box"
+import {UUID} from "@opendaw/lib-std"
+import {SignatureEventBox, TimelineBox} from "@opendaw/studio-boxes"
+import {SignatureTrackAdapter} from "./SignatureTrackAdapter"
+import {SignatureEventBoxAdapter} from "./SignatureEventBoxAdapter"
+import {BoxAdaptersContext} from "../BoxAdaptersContext"
+
+it.each([[0, 4, [2, 4, 6]], [1, 2, [2, 4, 6]], [0, 5, [4, 5, 6]], [1, 1, [1, 2, 6]], [0, 3, [3, 4, 6]], [1, 7, [2, 6, 7]]])(
+    "preserves unrelated signature bars moving event %s to bar %s", (index, target, expected) => {
+        const graph = new BoxGraph()
+        graph.beginTransaction()
+        const timeline = TimelineBox.create(graph, UUID.generate())
+        timeline.signatureTrack.enabled.setValue(true)
+        for (let i = 0; i < 3; i++) {
+            SignatureEventBox.create(graph, UUID.generate(), box => {
+                box.events.refer(timeline.signatureTrack.events)
+                box.index.setValue(i); box.relativePosition.setValue(2)
+                box.nominator.setValue(4); box.denominator.setValue(4)
+            })
+        }
+        graph.endTransaction()
+        const context = {boxGraph: graph, boxAdapters: {adapterFor: (box: SignatureEventBox) => ({
+            box, uuid: box.address.uuid, indexField: box.index,
+            get index() {return box.index.getValue()},
+            get relativePosition() {return box.relativePosition.getValue()},
+            get nominator() {return box.nominator.getValue()}, get denominator() {return box.denominator.getValue()}
+        })}} as unknown as BoxAdaptersContext
+        const adapter = new SignatureTrackAdapter(context, timeline.signature, timeline.signatureTrack)
+        const editing = new BoxEditing(graph)
+        const bars = () => Array.from(adapter.iterateAll()).slice(1).map(e => e.accumulatedBars)
+        const moved = adapter.adapterAt(index as number).unwrap() as SignatureEventBoxAdapter
+        editing.modify(() => adapter.moveEvent(moved, (target as number) * PPQN.Bar))
+        expect(bars()).toEqual(expected)
+        if (editing.canUndo()) {editing.undo(); expect(bars()).toEqual([2, 4, 6]); editing.redo(); expect(bars()).toEqual(expected)}
+        adapter.terminate()
+    })

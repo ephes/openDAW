@@ -1,4 +1,5 @@
 import {
+    Errors,
     Func,
     isDefined,
     isUndefined,
@@ -6,7 +7,8 @@ import {
     Nullable,
     Option,
     RuntimeNotifier,
-    Terminable
+    Terminable,
+    tryCatch
 } from "@opendaw/lib-std"
 import {dbToGain} from "@opendaw/lib-dsp"
 import {Promises} from "@opendaw/lib-runtime"
@@ -25,6 +27,8 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
     readonly #monitorGainNode: GainNode
     readonly #monitorPanNode: StereoPannerNode
 
+    #monitorSelection = 0
+    #retired = false
     #monitoringMode: MonitoringMode = "off"
     #requestChannels: Option<1 | 2> = Option.None
     #gainDb: number = 0.0
@@ -36,6 +40,7 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
         recordGainNode: GainNode
         channelCount: 1 | 2
     }> = null
+    #preparedCleanup: Terminable = Terminable.Empty
     #preparedWorklet: Nullable<RecordingWorklet> = null
     #monitorOutputDeviceId: Option<string> = Option.None
     #monitorAudioElement: Nullable<HTMLAudioElement> = null
@@ -53,13 +58,21 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
         this.#streamGenerator = Promises.sequentialize(() => this.#updateStream())
         this.ownAll(
             Terminable.create(() => {
-                this.#disconnectMonitoring()
-                if (isDefined(this.#monitorAudioElement)) {
-                    this.#monitorAudioElement.pause()
-                    this.#monitorAudioElement.srcObject = null
-                }
-                this.#monitorGainNode.disconnect()
-                this.#monitorPanNode.disconnect()
+                this.#retired = true
+                this.#monitorSelection++
+                Terminable.many(
+                    {terminate: () => this.#preparedCleanup.terminate()},
+                    {terminate: () => {
+                        this.#monitorAudioElement?.pause()
+                        if (this.#monitorAudioElement !== null) {this.#monitorAudioElement.srcObject = null}
+                        this.#monitorStreamDest?.disconnect()
+                        this.#monitorAudioElement = null
+                        this.#monitorStreamDest = null
+                        this.#monitorGainNode.disconnect()
+                        this.#monitorPanNode.disconnect()
+                    }},
+                    {terminate: () => this.#stopStream()}
+                ).terminate()
             }),
             captureAudioBox.requestChannels.catchupAndSubscribe(owner => {
                 const channels = owner.getValue()
@@ -133,41 +146,51 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
     get monitorOutputDeviceId(): Option<string> {return this.#monitorOutputDeviceId}
 
     async setMonitorOutputDevice(deviceId: Option<string>): Promise<void> {
-        const oldDestination = this.#monitorDestination()
-        this.#monitorOutputDeviceId = deviceId
-        if (isDefined(this.#monitorAudioElement)) {
-            this.#monitorAudioElement.pause()
-            this.#monitorAudioElement.srcObject = null
-            this.#monitorAudioElement = null
+        if (this.#retired) {return}
+        const selection = ++this.#monitorSelection
+        let destination: Nullable<MediaStreamAudioDestinationNode> = null
+        let audio: Nullable<HTMLAudioElement> = null
+        let outputId = deviceId
+        const retireCandidate = (): void => {
+            if (audio !== null) {audio.pause(); audio.srcObject = null}
+            destination?.disconnect()
         }
-        if (isDefined(this.#monitorStreamDest)) {
-            this.#monitorStreamDest.disconnect()
-            this.#monitorStreamDest = null
-        }
+        const current = (): boolean => !this.#retired && selection === this.#monitorSelection
         if (deviceId.nonEmpty()) {
-            const {audioContext} = this.manager.project.env
-            this.#monitorStreamDest = audioContext.createMediaStreamDestination()
-            const audio = new Audio()
-            audio.srcObject = this.#monitorStreamDest.stream
             try {
+                destination = this.manager.project.env.audioContext.createMediaStreamDestination()
+                audio = new Audio()
+                audio.srcObject = destination.stream
                 await audio.setSinkId(deviceId.unwrap())
+                if (!current()) {retireCandidate(); return}
                 await audio.play()
-                this.#monitorAudioElement = audio
             } catch {
-                audio.srcObject = null
-                this.#monitorStreamDest.disconnect()
-                this.#monitorStreamDest = null
-                this.#monitorOutputDeviceId = Option.None
-                RuntimeNotifier.info({headline: "Output Device Error", message: "Could not select output device; using default output"})
+                retireCandidate()
+                if (!current()) {return}
+                destination = null
+                audio = null
+                outputId = Option.None
+                void RuntimeNotifier.info({headline: "Output Device Error", message: "Could not select output device; using default output"}).catch(() => {})
             }
         }
+        if (!current()) {retireCandidate(); return}
+        const oldDestination = this.#monitorDestination()
         if (this.#monitoringMode !== "off" && isDefined(this.#audioChain)) {
             this.#monitorPanNode.disconnect(oldDestination)
+        }
+        this.#monitorAudioElement?.pause()
+        if (this.#monitorAudioElement !== null) {this.#monitorAudioElement.srcObject = null}
+        this.#monitorStreamDest?.disconnect()
+        this.#monitorAudioElement = audio
+        this.#monitorStreamDest = destination
+        this.#monitorOutputDeviceId = outputId
+        if (this.#monitoringMode !== "off" && isDefined(this.#audioChain)) {
             this.#monitorPanNode.connect(this.#monitorDestination())
         }
     }
 
-    async prepareRecording(): Promise<void> {
+    async prepareRecording(): Promise<Terminable> {
+        if (this.#retired) {throw Errors.AbortError}
         const {project} = this.manager
         const {env: {audioContext, audioWorklets, sampleManager, sampleService}} = project
         if (isUndefined(audioContext.outputLatency)) {
@@ -182,17 +205,38 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
             }
         }
         await this.#streamGenerator()
+        if (this.#retired) {throw Errors.AbortError}
         const audioChain = this.#audioChain
         if (!isDefined(audioChain)) {
             return Promise.reject("No audio chain available for recording.")
         }
         const {recordGainNode, channelCount} = audioChain
+        this.#preparedCleanup.terminate()
         const recordingWorklet = audioWorklets.createRecording(channelCount, RenderQuantum)
-        recordingWorklet.bpm = project.timelineBox.bpm.getValue()
-        recordingWorklet.sampleService = sampleService
-        sampleManager.record(recordingWorklet)
-        recordGainNode.connect(recordingWorklet)
         this.#preparedWorklet = recordingWorklet
+        const cleanup = this.#preparedCleanup = {
+            terminate: (): void => {
+                if (this.#preparedWorklet !== recordingWorklet) {return}
+                this.#preparedWorklet = null
+                this.#preparedCleanup = Terminable.Empty
+                Terminable.many(
+                    {terminate: () => recordingWorklet.terminate()},
+                    {terminate: () => recordingWorklet.disconnect()},
+                    {terminate: () => sampleManager.remove(recordingWorklet.uuid)},
+                    {terminate: () => {tryCatch(() => recordGainNode.disconnect(recordingWorklet))}}
+                ).terminate()
+            }
+        }
+        try {
+            recordingWorklet.bpm = project.timelineBox.bpm.getValue()
+            recordingWorklet.sampleService = sampleService
+            sampleManager.record(recordingWorklet)
+            recordGainNode.connect(recordingWorklet)
+            return cleanup
+        } catch (error) {
+            tryCatch(() => cleanup.terminate())
+            throw error
+        }
     }
 
     startRecording(): Terminable {
@@ -204,7 +248,6 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
             console.warn("No audio chain or worklet available for recording.")
             return Terminable.Empty
         }
-        this.#preparedWorklet = null
         const {recordGainNode} = audioChain
         const track = this.#stream.unwrapOrNull()?.getAudioTracks().at(0)
         const trackSettings = track?.getSettings()
@@ -213,17 +256,27 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
             baseLatency: audioContext.baseLatency,
             inputLatencyReported: trackSettings?.latency
         })
-        return RecordAudio.start({
-            recordingWorklet,
-            sourceNode: recordGainNode,
-            sampleManager,
-            project,
-            capture: this,
-            outputLatency: audioContext.outputLatency ?? 0
-        })
+        try {
+            const recording = RecordAudio.start({
+                recordingWorklet,
+                sourceNode: recordGainNode,
+                sampleManager,
+                project,
+                capture: this,
+                outputLatency: audioContext.outputLatency ?? 0
+            })
+            // Transfer ownership only after startup returned its cleanup handle.
+            this.#preparedWorklet = null
+            this.#preparedCleanup = Terminable.Empty
+            return recording
+        } catch (error) {
+            tryCatch(() => this.#preparedCleanup.terminate())
+            throw error
+        }
     }
 
     async #updateStream(): Promise<void> {
+        if (this.#retired) {return}
         if (this.#stream.nonEmpty()) {
             const stream = this.#stream.unwrap()
             const settings = stream.getAudioTracks().at(0)?.getSettings()
@@ -256,6 +309,7 @@ export class CaptureAudio extends Capture<CaptureAudioBox> {
             return AudioDevices.requestStream(baseConstraints)
         })
         const tracks = stream.getAudioTracks()
+        if (this.#retired) {tracks.forEach(track => track.stop()); return}
         const track = tracks.at(0)
         const settings = track?.getSettings()
         console.debug("[CaptureAudio] stream channels", {requested: channelCount, actual: settings?.channelCount})
