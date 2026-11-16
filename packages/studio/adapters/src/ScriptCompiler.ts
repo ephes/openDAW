@@ -1,4 +1,4 @@
-import {asInstanceOf, Editing, isDefined, UUID} from "@opendaw/lib-std"
+import {asInstanceOf, Editing, isDefined, Terminable, tryCatch, UUID} from "@opendaw/lib-std"
 import {BoxGraph, Field, StringField} from "@opendaw/lib-box"
 import {Pointers} from "@opendaw/studio-enums"
 import {WerkstattParameterBox, WerkstattSampleBox} from "@opendaw/studio-boxes"
@@ -260,21 +260,28 @@ export namespace ScriptCompiler {
                 maxUpdate = Math.max(maxUpdate, currentUpdate)
                 const newUpdate = maxUpdate + 1
                 maxUpdate = newUpdate
+                ScriptDeclaration.validate(userCode)
                 const params = ScriptDeclaration.parseParams(userCode)
                 const samples = ScriptDeclaration.parseSamples(userCode)
                 const order = ScriptDeclaration.parseDeclarationOrder(userCode)
                 const label = ScriptDeclaration.parseLabel(userCode)
                 const modifier = () => {
-                    const previousDeclarations = new Map(ScriptDeclaration.parseParams(deviceBox.code.getValue())
-                        .map(declaration => [declaration.label, declaration]))
+                    const previous = tryCatch(() => ScriptDeclaration.parseParams(deviceBox.code.getValue()))
+                    const previousDeclarations = new Map(previous.status === "success"
+                        ? previous.value.map(declaration => [declaration.label, declaration]) : [])
                     deviceBox.code.setValue(createHeader(newUpdate) + userCode)
                     label.ifSome(name => deviceBox.label.setValue(name))
                     reconcileParameters(deviceBox, params, order, previousDeclarations)
                     reconcileSamples(deviceBox, samples, order)
                 }
+                // Append only while history is untouched; a later unrelated step must not absorb the script.
+                let historyChanged = false, armed = false
+                queueMicrotask(() => {armed = true})
+                const history = append ? editing.subscribe(() => {if (armed) {historyChanged = true}}) : Terminable.Empty
                 return install(audioContext, config, deviceBox, request, newUpdate, userCode, () => {
-                    if (append) {editing.append(modifier)} else {editing.modify(modifier)}
-                })
+                    history.terminate()
+                    if (append && !historyChanged) {editing.append(modifier)} else {editing.modify(modifier)}
+                }).finally(() => history.terminate())
             }
         }
     }

@@ -87,9 +87,11 @@ describe("ScriptDeclaration", () => {
             expect(order.get("kick")).toBe(1)
             expect(order.get("decay")).toBe(2)
         })
-        it("rejects duplicate labels", () => {
+        it("keeps first index for duplicate labels in saved code", () => {
             const code = "// @param gain\n// @param gain"
-            expect(() => ScriptDeclaration.parseDeclarationOrder(code)).toThrow(/Duplicate/)
+            const order = ScriptDeclaration.parseDeclarationOrder(code)
+            expect(order.get("gain")).toBe(0)
+            expect(order.size).toBe(1)
         })
     })
 
@@ -274,6 +276,7 @@ describe("ScriptDeclaration", () => {
 
 it.each(["// @param x 1.2 1.1 1.4 int", "// @param x 3.5e20 3e20 4e20 int"])(
     "rejects collapsed integer mappings while parsing: %s", code => {
+        expect(() => ScriptDeclaration.validate(code)).toThrow(/Malformed @param/)
         expect(() => ScriptDeclaration.parseParams(code)).toThrow(/Malformed @param/)
         expect(() => ScriptDeclaration.parseGroups(code)).toThrow(/Malformed @param/)
     })
@@ -289,12 +292,12 @@ describe("numeric declaration admission", () => {
     it.each(["Infinity", "1junk", "1e309", "5", "-0.1", "NaN", "0x1", "0.5 0 Infinity linear",
         "0.5 0junk 1 linear", "0.5 -1 10 exp", "0.5 0 10 exp", "5 bool", "1 2 3 bool",
         "0 -1e308 1e308 linear", "1 1e-300 1e300 exp"])("refuses %s", text => {
-        const code = `// @param gain ${text}`
-        expect(() => ScriptDeclaration.parseParams(code)).toThrow(/Malformed @param/)
-        expect(() => ScriptDeclaration.parseGroups(code)).toThrow(/Malformed @param/)
+        expect(() => ScriptDeclaration.validate(`// @param gain ${text}`)).toThrow(/Malformed @param/)
     })
     it.each(["5e-1", "+.5", "1. 0 1 linear", "1000 20 2e4 exp Hz", "-2 -2 4 int", "1 0 1 bool"])("admits finite mapping %s", text => {
-        const declaration = ScriptDeclaration.parseParams(`// @param value ${text}`)[0]
+        const code = `// @param value ${text}`
+        expect(() => ScriptDeclaration.validate(code)).not.toThrow()
+        const declaration = ScriptDeclaration.parseParams(code)[0]
         const mapping = ScriptDeclaration.resolveValueMapping(declaration)
         for (const unit of [0, 0.25, 0.5, 0.75, 1]) {
             expect(Number.isFinite(mapping.y(unit))).toBe(true)
@@ -303,9 +306,18 @@ describe("numeric declaration admission", () => {
 })
 
 it.each(["// @param gain\n// @param gain", "// @sample hit\n// @sample hit", "// @sample gain\n// @param gain"])(
-    "all declaration views reject ambiguous names: %s", code => {
+    "compile admission rejects ambiguous names while saved views keep reading them: %s", code => {
+        expect(() => ScriptDeclaration.validate(code)).toThrow(/Duplicate.*line 2/)
         for (const parse of [ScriptDeclaration.parseParams, ScriptDeclaration.parseSamples,
             ScriptDeclaration.parseGroups, ScriptDeclaration.parseDeclarationOrder]) {
-            expect(() => parse(code)).toThrow(/Duplicate.*line 2/)
+            expect(() => parse(code)).not.toThrow()
         }
+    })
+
+it.each(["// @param release 0.5 0 5 exp s", "// @param decay 0.2 0 2.0 exp s", "// @param gain 1.5",
+    "// @param x 1.0000001 0 1 linear", "// @param on 1 0 2 bool", "// @param gain\n// @param gain"])(
+    "saved legacy declarations still parse for loads, bindings and the editor: %s", code => {
+        expect(() => ScriptDeclaration.validate(code)).toThrow()
+        expect(ScriptDeclaration.parseParams(code).length).toBeGreaterThan(0)
+        expect(ScriptDeclaration.parseGroups(code)[0].items.length).toBeGreaterThan(0)
     })

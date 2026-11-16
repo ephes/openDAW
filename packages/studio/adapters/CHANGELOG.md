@@ -7,7 +7,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Install attempt-owned script constructors before publishing saved code and bindings; fence registry activation across compiler instances and allow deliberate loads of older saved updates. Failed or superseded attempts preserve the previous working device.
 
-- Refuse incomplete/non-finite numeric script tokens, invalid shorthand/exponential/bool domains and duplicate parameter/sample names before graph edits or module installation.
+- Refuse incomplete/non-finite numeric script tokens, invalid shorthand/exponential/bool domains and duplicate parameter/sample names in new compile input before graph edits or module installation; saved code keeps the tolerant legacy reading so existing projects still load and can be recompiled. A deferred initial compile no longer appends to an unrelated history step.
 
 - Retire removed parameter adapters immediately; preserve script parameter UUIDs, current values, automation and MIDI links for default/display-only edits, including undo/redo. Update reset metadata in place.
 

@@ -230,3 +230,31 @@ it.each(["invalid request", "edit then undo"])("retires an in-flight install aft
     finish(); await pending
     expect(f.box.code.getValue()).toBe(saved)
 })
+
+it("loads saved legacy declarations and lets a corrected script compile over them", async () => {
+    const f = fixture()
+    const legacy = "// @werkstatt js 1 1\n// @param release 0.5 0 5 exp s\n// @param gain\n// @param gain\nclass Processor {}"
+    f.editing.modify(() => f.box.code.setValue(legacy))
+    await expect(f.compiler.load(f.context, f.box)).resolves.toBeUndefined()
+    await f.compiler.compile(f.context, f.editing, f.box, "// @param release 0.5 0.001 5 exp s\nclass Processor {}")
+    expect(f.compiler.stripHeader(f.box.code.getValue())).toBe("// @param release 0.5 0.001 5 exp s\nclass Processor {}")
+    expect(f.box.parameters.pointerHub.filter().length).toBe(1)
+})
+
+it.each([false, true])("appends the initial compile to the creation step only without an intervening edit (edit: %s)", async edited => {
+    const f = fixture()
+    let finish!: () => void
+    f.addModule.mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve}))
+    const pending = f.compiler.compile(f.context, f.editing, f.box, source(), true)
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    if (edited) {f.editing.modify(() => f.box.label.setValue("user edit"))}
+    finish(); await pending
+    expect(f.box.parameters.pointerHub.filter().length).toBe(1)
+    f.editing.undo()
+    if (edited) {
+        expect(f.box.label.getValue()).toBe("user edit")
+        expect(f.box.code.getValue()).toBe("")
+    } else {
+        expect(f.editing.canUndo()).toBe(false)
+    }
+})

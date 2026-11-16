@@ -50,7 +50,11 @@ within their bounds. Exponential endpoints must be positive with a finite ratio.
 Boolean endpoints are 0 and 1. Integer mappings use ValueMapping's rounded/clamped
 bounds and must remain increasing. Parameter and sample labels share one unique,
 case-sensitive namespace; duplicates report the declaration line and preserve the
-previous device. These admission rules also apply to saved script loads.
+previous device. ScriptDeclaration.validate applies these admission rules to new
+compile input only. Saved code, loads, parameter bindings and the device editor keep
+the legacy tolerant reading, so projects saved with earlier declarations (for example
+an exponential range starting at 0) still open, and a corrected script can be compiled
+over them.
 
 ### Script installation publication
 
@@ -64,4 +68,6 @@ saved update. Worklet staging fences late modules; retirement restores only the
 same attempt's activation and frees its candidate. Script top-level code runs
 during preparation, so external/global side effects authored by a script are not
 rolled back. Successful graph publication remains successful if candidate cleanup
-is refused; that cleanup fault is logged.
+is refused; that cleanup fault is logged. The first compile of a new device appends
+to the creation history step only if no other history change happened while the
+module installed; otherwise it publishes as its own step.

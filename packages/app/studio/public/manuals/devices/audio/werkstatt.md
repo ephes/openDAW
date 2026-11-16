@@ -119,9 +119,9 @@ Organize parameters visually using `// @group` comments:
 ```javascript
 // @group Envelope green
 // @param attack  0.01  0.001  1.0  exp  s
-// @param decay   0.2   0      2.0  exp  s
+// @param decay   0.2   0.001  2.0  exp  s
 // @param sustain 0.7
-// @param release 0.5   0      5.0  exp  s
+// @param release 0.5   0.001  5.0  exp  s
 // @group Filter blue
 // @param cutoff  1000  20  20000  exp  Hz
 // @param resonance 0.5
@@ -240,4 +240,6 @@ Declaration numbers must be complete finite decimal or scientific tokens (for
 example `1e-3`); numeric prefixes and infinities are refused. Shorthand defaults
 must be in `[0,1]`. Exponential bounds must be strictly positive; boolean bounds
 are `0 1`. Parameter and sample labels must be unique across both kinds.
-Invalid declarations leave the previous working device unchanged.
+Invalid declarations leave the previous working device unchanged. These rules
+apply when you compile; projects saved with older declarations still open, and you
+can fix and recompile them.

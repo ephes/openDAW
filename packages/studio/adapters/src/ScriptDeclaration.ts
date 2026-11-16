@@ -63,7 +63,8 @@ const validateResourceLabels = (code: string): void => {
     }
 }
 
-const parseNumber = (token: string, line: string): number => {
+const parseNumber = (token: string, line: string, strict: boolean): number => {
+    if (!strict) {return parseFloat(token)}
     const value = Number(token)
     if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(token)
         || !Number.isFinite(value) || !Number.isFinite(Math.fround(value))) {
@@ -72,7 +73,13 @@ const parseNumber = (token: string, line: string): number => {
     return value
 }
 
-const parseSingleParam = (line: string): ParamDeclaration => {
+const outOfBounds = (value: number, min: number, max: number, strict: boolean): boolean => {
+    const tolerance = strict ? 0 : FLOAT_TOLERANCE
+    return value < min - tolerance || value > max + tolerance
+}
+
+// Strict rules admit new compile input only; saved code keeps the legacy tolerant reading.
+const parseSingleParam = (line: string, strict: boolean): ParamDeclaration => {
     const tokens = line.replace(/^\/\/ @param\s+/, "").replace(/\s+\/\/.*$/, "").trim().split(/\s+/)
     if (tokens.length === 0) {
         throw new Error(`Malformed @param: '${line}'`)
@@ -88,11 +95,11 @@ const parseSingleParam = (line: string): ParamDeclaration => {
     if (second === "bool") {
         return {label, defaultValue: 0, min: 0, max: 1, mapping: "bool", unit: ""}
     }
-    const defaultValue = parseNumber(second, line)
+    const defaultValue = parseNumber(second, line, strict)
     if (isNaN(defaultValue)) {
         throw new Error(`Malformed @param: '${line}' — '${second}' is not a valid number`)
     }
-    if (tokens.length === 2 || (tokens.length === 3 && tokens[2] === "bool")) {
+    if (strict && (tokens.length === 2 || (tokens.length === 3 && tokens[2] === "bool"))) {
         if (defaultValue < 0 || defaultValue > 1) {
             throw new Error(`Malformed @param: '${line}' — shorthand default must be within [0, 1]`)
         }
@@ -104,15 +111,15 @@ const parseSingleParam = (line: string): ParamDeclaration => {
         return {label, defaultValue: defaultValue >= 0.5 ? 1 : 0, min: 0, max: 1, mapping: "bool", unit: ""}
     }
     if (tokens.length === 4) {
-        const min = parseNumber(tokens[2], line)
-        const max = parseNumber(tokens[3], line)
+        const min = parseNumber(tokens[2], line, strict)
+        const max = parseNumber(tokens[3], line, strict)
         if (isNaN(min) || isNaN(max)) {
             throw new Error(`Malformed @param: '${line}' — min/max must be numbers`)
         }
         if (max - min < FLOAT_TOLERANCE) {
             throw new Error(`Malformed @param: '${line}' — min (${min}) must be less than max (${max})`)
         }
-        if (defaultValue < min || defaultValue > max) {
+        if (outOfBounds(defaultValue, min, max, strict)) {
             throw new Error(`Malformed @param: '${line}' — default (${defaultValue}) must be within [${min}, ${max}]`)
         }
         return {label, defaultValue, min, max, mapping: "linear", unit: ""}
@@ -120,8 +127,8 @@ const parseSingleParam = (line: string): ParamDeclaration => {
     if (tokens.length < 5) {
         throw new Error(`Malformed @param: '${line}' — expected: // @param <name> <default> <min> <max> [type] [unit]`)
     }
-    const min = parseNumber(tokens[2], line)
-    const max = parseNumber(tokens[3], line)
+    const min = parseNumber(tokens[2], line, strict)
+    const max = parseNumber(tokens[3], line, strict)
     const mapping = tokens[4] as ParamMapping
     const unit = tokens.length >= 6 ? tokens[5] : ""
     if (isNaN(min) || isNaN(max)) {
@@ -133,13 +140,13 @@ const parseSingleParam = (line: string): ParamDeclaration => {
     if (mapping !== "bool" && max - min < FLOAT_TOLERANCE) {
         throw new Error(`Malformed @param: '${line}' — min (${min}) must be less than max (${max})`)
     }
-    if (defaultValue < min || defaultValue > max) {
+    if (outOfBounds(defaultValue, min, max, strict)) {
         throw new Error(`Malformed @param: '${line}' — default (${defaultValue}) must be within [${min}, ${max}]`)
     }
-    if (mapping === "bool" && (min !== 0 || max !== 1)) {
+    if (strict && mapping === "bool" && (min !== 0 || max !== 1)) {
         throw new Error(`Malformed @param: '${line}' — bool bounds must be 0 and 1`)
     }
-    if (mapping === "exp" && (min <= 0 || !Number.isFinite(max / min))) {
+    if (strict && mapping === "exp" && (min <= 0 || !Number.isFinite(max / min))) {
         throw new Error(`Malformed @param: '${line}' — exponential bounds must be positive with a finite ratio`)
     }
     if (mapping === "int" && tryCatch(() => ValueMapping.linearInteger(min, max)).status !== "success") {
@@ -167,19 +174,23 @@ export namespace ScriptDeclaration {
         return Option.wrap(label)
     }
 
-    export const parseParams = (code: string): ReadonlyArray<ParamDeclaration> => {
+    export const validate = (code: string): void => {
         validateResourceLabels(code)
+        for (const match of code.matchAll(new RegExp(PARAM_LINE))) {parseSingleParam(match[0], true)}
+        parseSamples(code)
+    }
+
+    export const parseParams = (code: string): ReadonlyArray<ParamDeclaration> => {
         const params: Array<ParamDeclaration> = []
         let match: Nullable<RegExpExecArray>
         PARAM_LINE.lastIndex = 0
         while ((match = PARAM_LINE.exec(code)) !== null) {
-            params.push(parseSingleParam(match[0]))
+            params.push(parseSingleParam(match[0], false))
         }
         return params
     }
 
     export const parseSamples = (code: string): ReadonlyArray<SampleDeclaration> => {
-        validateResourceLabels(code)
         const samples: Array<SampleDeclaration> = []
         let match: Nullable<RegExpExecArray>
         SAMPLE_LINE.lastIndex = 0
@@ -197,7 +208,6 @@ export namespace ScriptDeclaration {
     }
 
     export const parseDeclarationOrder = (code: string): Map<string, number> => {
-        validateResourceLabels(code)
         const order = new Map<string, number>()
         let match: Nullable<RegExpExecArray>
         DECLARATION_LINE.lastIndex = 0
@@ -212,7 +222,6 @@ export namespace ScriptDeclaration {
     }
 
     export const parseGroups = (code: string): ReadonlyArray<DeclarationSection> => {
-        validateResourceLabels(code)
         const sections: Array<DeclarationSection> = []
         let currentGroup: Nullable<GroupDeclaration> = null
         let currentItems: Array<DeclarationItem> = []
@@ -229,7 +238,7 @@ export namespace ScriptDeclaration {
                 currentGroup = {label: tokens[0], color: tokens[1] ?? "dark"}
                 currentItems = []
             } else if (type === "param") {
-                currentItems.push({type: "param", declaration: parseSingleParam(line)})
+                currentItems.push({type: "param", declaration: parseSingleParam(line, false)})
             } else if (type === "sample") {
                 const tokens = line.replace(/^\/\/ @sample\s+/, "").replace(/\s+\/\/.*$/, "").trim().split(/\s+/)
                 if (tokens.length === 0 || tokens[0].length === 0) {
