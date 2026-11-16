@@ -476,3 +476,6 @@ The [MIDI contributor notes](packages/lib/midi/README.md) describe supported
 messages, musical metadata, deterministic export ordering and import admission.
 File picker lifecycle and WAV source geometry are documented in the
 [DOM](packages/lib/dom/README.md) and [DSP](packages/lib/dsp/README.md) notes.
+
+Audio output selection switches the context back to the system default when selected.
+Switch refusals reach the selector; delayed device lookups cannot replace a newer sink.

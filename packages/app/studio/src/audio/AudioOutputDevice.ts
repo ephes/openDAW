@@ -11,10 +11,15 @@ export class AudioOutputDevice {
     readonly #switchable: boolean
     readonly #value: DefaultObservableValue<Option<MediaDeviceInfo>>
 
+    #queryGeneration = 0
+
     private constructor(context: AudioContext) {
         this.#context = context
         this.#context.addEventListener("sinkchange", async () => {
+            const generation = ++this.#queryGeneration
+            const sinkId = this.#resolveSinkId()
             const {status, value} = await Promises.tryCatch(this.resolveOutput())
+            if (generation !== this.#queryGeneration || sinkId !== this.#resolveSinkId()) {return}
             this.#value.setValue(status === "resolved" ? Option.wrap(value) : Option.None)
             console.debug(`New Device: ${status === "resolved" ? value.label : ""}`)
         })
@@ -27,9 +32,8 @@ export class AudioOutputDevice {
     get switchable(): boolean {return this.#switchable}
 
     async setOutput(device: MediaDeviceInfo) {
-        if (!this.#switchable || device.deviceId === "default") {return}
-        const {status} = await Promises.tryCatch(this.#context.setSinkId(device.deviceId))
-        console.debug("AudioContext.setSinkId", status)
+        if (!this.#switchable) {return}
+        await this.#context.setSinkId(device.deviceId === "default" ? "" : device.deviceId)
     }
 
     async resolveOutput(): Promise<MediaDeviceInfo> {
