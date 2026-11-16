@@ -94,6 +94,11 @@ lets you adjust the curve shape.
 - Hold **⌥** for fine control (10x slower adjustment)
 - Hold **⇧** to disable snapping to linear
 
+The slope responds from the first movement after pressing the handle. If either
+endpoint changes, or another event is inserted between them while you drag,
+the current curve is preserved and the pending slope edit is discarded. Start a
+new drag to adjust the changed segment.
+
 ### 3.4 Cutting Curves
 
 - Hold **⌥** and **click** on a midpoint to cut the curve, creating a new event at that position

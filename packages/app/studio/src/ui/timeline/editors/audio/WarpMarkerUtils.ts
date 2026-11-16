@@ -9,8 +9,8 @@ export namespace WarpMarkerUtils {
                                  warpMarkers: EventCollection<WarpMarkerBoxAdapter>,
                                  includePosition: boolean)
         : [Nullable<WarpMarkerBoxAdapter>, Nullable<WarpMarkerBoxAdapter>] => {
-        const left = warpMarkers.lowerEqual(includePosition ? position : position - 1)
-        const right = warpMarkers.greaterEqual(position + 1)
+        const left = warpMarkers.lowerEqual(position, marker => includePosition || marker.position < position)
+        const right = warpMarkers.greaterEqual(position, marker => marker.position > position)
         return [left, right]
     }
 
@@ -30,7 +30,7 @@ export namespace WarpMarkerUtils {
                 if (distance <= markerRadius) {
                     if (closest === null) {
                         closest = {marker, distance}
-                    } else if (closest.distance < distance) {
+                    } else if (distance < closest.distance) {
                         closest.marker = marker
                         closest.distance = distance
                     }

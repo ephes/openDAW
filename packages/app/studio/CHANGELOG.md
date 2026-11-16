@@ -5,6 +5,16 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Include the first slope-drag motion, retire changed automation segments and remove full-track loop-resize diagnostic snapshots.
+
+- Move and copy the original surviving note selection, preserve chord intervals at MIDI edges and keep audition aligned with preview, including copy origins after a selection change.
+
+- Refuse invalid warp mappings and retired transient analysis during hover and insertion.
+
+- Preview warp drags transactionally; recheck current neighbors and preserve external edits on approval or cancellation.
+
+- Target the nearest warp marker and preserve fractional immediate neighbors.
+
 - Preserve protected effects on Cut and restore master content after a failed output paste.
 - Refuse time-signature moves onto occupied bars and bound constant-tail tempo calculations.
 - Keep Stop effective during audio resume and recording preparation; failed recording startup releases prepared resources and permits retry.

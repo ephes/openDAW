@@ -8,6 +8,7 @@ import {NoteModifyStrategies, NoteModifyStrategy} from "@/ui/timeline/editors/no
 import {renderTimeGrid} from "@/ui/timeline/editors/TimeGridRenderer.ts"
 import {NoteModifier} from "@/ui/timeline/editors/notes/NoteModifier.ts"
 import {NoteEventOwnerReader} from "@/ui/timeline/editors/EventOwnerReader.ts"
+import {NoteEventBoxAdapter} from "@opendaw/studio-adapters"
 import {CanvasPainter, TimelineRange} from "@opendaw/studio-core"
 
 type Construct = {
@@ -57,6 +58,7 @@ export const createNotePitchPainter =
                     context.fillRect(0, pitchToY(note), width, noteHeight)
                 }
             }
+            const isSelected = (note: NoteEventBoxAdapter) => strategy.isSelected?.(note) ?? note.isSelected
             // NOTES
             const unitMin = range.unitMin - range.unitPadding - reader.offset
             const unitMax = range.unitMax - reader.offset
@@ -64,8 +66,8 @@ export const createNotePitchPainter =
             const render = (strategy: NoteModifyStrategy, filterSelected: boolean, hideSelected: boolean) => {
                 for (const noteEvent of strategy
                     .iterateRange(eventCollection.events, unitMin - eventCollection.maxDuration, unitMax)) {
-                    if (noteEvent.isSelected ? hideSelected : !filterSelected) {continue}
-                    const selected = noteEvent.isSelected && !filterSelected
+                    if (isSelected(noteEvent) ? hideSelected : !filterSelected) {continue}
+                    const selected = isSelected(noteEvent) && !filterSelected
                     const position = strategy.readPosition(noteEvent)
                     const complete = strategy.readComplete(noteEvent)
                     const pitch = strategy.readPitch(noteEvent)
@@ -111,14 +113,14 @@ export const createNotePitchPainter =
 
             context.fillStyle = `hsl(${reader.hue}, 50%, 50%)`
             for (const event of eventCollection.events.asArray()) {
-                if (event.isSelected) {continue}
+                if (isSelected(event)) {continue}
                 const ny = (1.0 - unselectedStrategy.readPitch(event) / 127) * bottom
                 context.fillRect(left, ny, scrollerWidth, devicePixelRatio)
             }
 
             context.fillStyle = "white"
             for (const event of eventCollection.events.asArray()) {
-                if (!event.isSelected) {continue}
+                if (!isSelected(event)) {continue}
                 const ny = (1.0 - selectedStrategy.readPitch(event) / 127) * bottom
                 context.fillRect(left, ny, scrollerWidth, devicePixelRatio)
             }
