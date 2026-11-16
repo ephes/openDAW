@@ -85,16 +85,23 @@ export const ProjectBrowser = ({service, lifecycle, select}: Construct) => {
                                                    {icon}
                                                </Group>
                                            )
-                                           icon.onclick = (event) => {
+                                           let deleting = false
+                                           icon.onclick = async (event) => {
                                                event.stopPropagation()
-                                               Dialogs.approve({
-                                                   headline: "Delete Project?",
-                                                   message: "Are you sure? This cannot be undone."
-                                               }).then(approved => {
-                                                   if (approved) {
-                                                       service.deleteProject(uuid, meta).then(() => {rowLifecycle.terminate(); row.remove()})
+                                               if (deleting) {return}
+                                               deleting = true
+                                               try {
+                                                   const approved = await Dialogs.approve({
+                                                       headline: "Delete Project?",
+                                                       message: "Are you sure? This cannot be undone."
+                                                   })
+                                                   if (approved && await service.deleteProject(uuid, meta)) {
+                                                       rowLifecycle.terminate()
+                                                       row.remove()
                                                    }
-                                               })
+                                               } catch (error) {
+                                                   await RuntimeNotifier.info({headline: "Could Not Delete Project", message: String(error)})
+                                               } finally {deleting = false}
                                            }
                                            return row
                                        })}

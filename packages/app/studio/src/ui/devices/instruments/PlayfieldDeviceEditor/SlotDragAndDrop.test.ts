@@ -68,3 +68,11 @@ it("preflights a detached file without deleting the target or adding history", (
     expect(f.editing.canUndo()).toBe(false)
     expect(f.editing.undo()).toBe(false); expect(f.editing.redo()).toBe(false)
 })
+it("emits the canonical UUID from the actual drag source", () => {
+    const f = fixture()
+    const install = vi.spyOn(DragAndDrop, "installSource").mockReturnValue(new Terminator())
+    SlotDragAndDrop.installSource({element: document.createElement("div"),
+        sample: {address: f.source.address} as Parameters<typeof SlotDragAndDrop.installSource>[0]["sample"],
+        getSlotIndex: () => f.source.index.getValue()})
+    expect(install.mock.calls[0][1]()).toMatchObject({uuid: UUID.toString(f.source.address.uuid), index: 60})
+})

@@ -66,3 +66,50 @@ Regression: real sample-editor event handlers with synthetic note routing cover
 two-pointer ordering, cancellation, lost capture and disposal. Export tests cover
 case/Unicode collisions, reserved names, empty/punctuation names, authored suffix
 collisions, byte limits and idempotence. Both failed before repair and pass after.
+
+## Honest project deletion (B06)
+
+StudioService.deleteProject returns true only after storage confirms deletion,
+otherwise false with an existing retryable notification on storage failure. The
+browser removes a row only on true and admits one confirmation/deletion per row.
+closeProject returns approval and rechecks the same profile after awaiting the
+warning. Declined or superseded closes leave the editor and stored project alone;
+navigation happens only after an accepted close. Active deletion also requires
+that closing did not install another active profile before storage is called.
+
+Regression: actual StudioService methods with synthetic constructor boundaries
+cover storage rejection/retry, declined and accepted close, and replacement while
+approval is pending. Real ProjectBrowser covers retained rows, retry and duplicate
+confirmation admission. All new failure cases reproduced before repair.
+Native Chromium fixtures additionally exercise the actual Dialog components and
+filename editor, including real Enter/Escape and programmatic close events.
+
+Final source-path verification also reproduced a pre-existing comma-separated
+Uint8Array UUID in installSource. Drag sources now emit UUID.toString output and
+targets refuse malformed identities before parsing; the real source provider has
+its own failing-before/passing-after regression.
+
+## Local validation and clerk handoff
+
+Refreshed main: `017f8fe106aa53f98caf388f9523270318b10c16`; origin was checked
+as `git@github.com:ephes/openDAW.git`. A final `git fetch origin main` confirmed
+that the integration base had not moved. No slice was already repaired or needed
+an owner decision. All work stays on local branch `codex-q/r106-openDAW`.
+
+- `npm ci --ignore-scripts`: passed.
+- `npm run build`: passed, 24 tasks (production TypeScript included).
+- `npm run lint`: passed, including browser fixtures; existing warnings remain.
+- `npm test`: passed, 44 tasks; Studio has 195 passing tests. All 30 added
+  unit/DOM cases pass, with failing-before receipts for every slice.
+- New browser fixture TypeScript was checked with the Studio configuration and
+  the same global declarations/type roots; passed. Browser lint also passed.
+- `PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r106-opendaw/.cache/playwright npm run test:browser`:
+  blocked before test execution. All 11 cases fail to launch Chromium because
+  macOS denies `bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer`
+  with `Permission denied (1100)`, followed by SIGTRAP. Installation itself passed.
+  The clerk must run the full browser gate outside this sandbox, including the
+  two new native dialog tests; no browser pass or browser red/green is claimed.
+
+Logs and red/green receipts:
+`/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r106-opendaw/`.
+No Claude/review CLI, work-app writes, pushes, merges, releases or tags were used.

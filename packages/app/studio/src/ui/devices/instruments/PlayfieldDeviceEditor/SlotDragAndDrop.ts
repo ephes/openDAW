@@ -34,17 +34,10 @@ export namespace SlotDragAndDrop {
         const sourceIndex = sourceBox.index.getValue()
         if (sourceIndex === targetIndex) {return}
         const {editing} = project
-        const source = Option.wrap(sourceBox)
         const target = findSampleByIndex(device, targetIndex)
         editing.modify(() => {
-            if (source.nonEmpty() && target.isEmpty()) {
-                source.unwrap().index.setValue(targetIndex)
-            } else if (source.isEmpty() && target.nonEmpty()) {
-                target.unwrap().index.setValue(sourceIndex)
-            } else if (source.nonEmpty() && target.nonEmpty()) {
-                source.unwrap().index.setValue(targetIndex)
-                target.unwrap().index.setValue(sourceIndex)
-            }
+            sourceBox.index.setValue(targetIndex)
+            target.ifSome(box => box.index.setValue(sourceIndex))
         })
     }
 
@@ -58,7 +51,7 @@ export namespace SlotDragAndDrop {
         return DragAndDrop.installSource(element, () => ({
             type: "playfield-slot",
             index: getSlotIndex() as byte,
-            uuid: sample.address.uuid.toString()
+            uuid: UUID.toString(sample.address.uuid)
         } satisfies DragDevice))
     }
 
@@ -75,9 +68,10 @@ export namespace SlotDragAndDrop {
                 return data.type === "playfield-slot" && data.index !== getSlotIndex()
             },
             drop: (event: DragEvent, data: AnyDragData): void => {
-                if (data.type !== "playfield-slot") {return}
+                if (data.type !== "playfield-slot" || !UUID.validateString(data.uuid)) {return}
                 const source = project.boxGraph.findBox(UUID.parse(data.uuid)).unwrapOrNull()
-                if (!(source instanceof PlayfieldSampleBox) || !device.isAttached()
+                if (!(source instanceof PlayfieldSampleBox)
+                    || project.boxGraph.findBox(device.address.uuid).unwrapOrNull() !== device
                     || source.index.getValue() !== data.index
                     || source.device.targetVertex.unwrapOrNull() !== device.samples) {return}
                 const targetIndex = getSlotIndex()
