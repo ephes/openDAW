@@ -1,5 +1,5 @@
 import css from "./SoundfontDeviceEditor.sass?inline"
-import {int, Lifecycle, Option, Terminator, UUID} from "@opendaw/lib-std"
+import {Errors, int, Lifecycle, Option, RuntimeNotifier, Terminator, UUID} from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
 import {DeviceEditor} from "@/ui/devices/DeviceEditor.tsx"
 import {MenuItems} from "@/ui/devices/menu-items.ts"
@@ -25,9 +25,13 @@ type Construct = {
 }
 
 export const SoundfontDeviceEditor = ({lifecycle, service, adapter, deviceHost}: Construct) => {
-    const {} = adapter.namedParameter
     const {project} = service
     const {boxGraph, editing, liveStreamReceiver} = project
+    let active = true
+    let importGeneration = 0
+    const attached = () => active && service.optProject.unwrapOrNull() === project
+        && boxGraph.findBox(adapter.box.address.uuid).unwrapOrNull() === adapter.box
+    lifecycle.own({terminate: () => {active = false; importGeneration++}})
     const labelSoundfontName: HTMLElement = <span/>
     const labelPresetName: HTMLElement = <span data-index="1"/>
     const loaderLifecycle = lifecycle.own(new Terminator())
@@ -59,6 +63,8 @@ export const SoundfontDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
         }))
     )
     const applySoundfont = (soundfont: Soundfont): void => {
+        if (!attached()) {return}
+        importGeneration++
         const uuid = UUID.parse(soundfont.uuid)
         editing.modify(() => {
             const targetVertex = adapter.box.file.targetVertex.unwrapOrNull()
@@ -119,9 +125,17 @@ export const SoundfontDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
                                                   .addMenuItem(...populateMenu(service.soundfontService.local))),
                                               MenuItem.default({label: "Import Soundfont...", separatorBefore: true})
                                                   .setTriggerProcedure(async () => {
-                                                      const soundfonts = await service.soundfontService.browse(false)
-                                                      if (soundfonts.length > 0) {
-                                                          applySoundfont(soundfonts[0])
+                                                      const generation = ++importGeneration
+                                                      const file = adapter.box.file.targetAddress
+                                                      const current = () => attached() && generation === importGeneration
+                                                          && adapter.box.file.targetAddress.mapOr(address => file.mapOr(old => old.equals(address), false), file.isEmpty())
+                                                      try {
+                                                          const soundfonts = await service.soundfontService.browse(false)
+                                                          if (current() && soundfonts.length > 0) {applySoundfont(soundfonts[0])}
+                                                      } catch (error) {
+                                                          if (current() && !Errors.isAbort(error)) {
+                                                              await RuntimeNotifier.info({headline: "Import Failed", message: String(error)})
+                                                          }
                                                       }
                                                   })
                                           )

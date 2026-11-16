@@ -37,8 +37,8 @@ it("refuses foreign, mixed-kind, missing and duplicate effect selections atomica
         {type: "audio-effect", instrument: null, uuids})
     editing.clear()
     for (const selection of [[f.foreign], [f.first, f.midi], [f.first, f.first]]) {
-        const before = boxGraph.toArrayBuffer(); drop(selection.map(box => UUID.toString(box.address.uuid)))
-        expect(boxGraph.toArrayBuffer()).toEqual(before); expect(editing.canUndo()).toBe(false)
+        const before = new Uint8Array(boxGraph.toArrayBuffer()); drop(selection.map(box => UUID.toString(box.address.uuid)))
+        expect(new Uint8Array(boxGraph.toArrayBuffer())).toEqual(before); expect(editing.canUndo()).toBe(false)
     }
     drop([UUID.toString(f.first.address.uuid), UUID.toString(UUID.generate())])
     expect(editing.canUndo()).toBe(false)

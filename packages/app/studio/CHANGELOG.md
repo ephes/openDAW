@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire project-row filter/menu subscriptions on refresh and removal; fence Soundfont import completions by live editor, device, project and selection generation.
+
 - Settle project browsing and stem export on every dialog close; Enter exports stems while composing Enter keeps editing. Release dialog owners on setup failure.
 
 - Preflight pad-copy resources before replacing a destination; refuse whole effect selections from foreign chains, mixed kinds or retired identities.

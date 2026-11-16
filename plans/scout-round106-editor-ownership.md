@@ -39,3 +39,18 @@ without replacing Dialog's own close cleanup.
 Regression: actual ProjectDialogs functions with synthetic dialog controls cover
 all terminal paths, composing Enter and showModal refusal. The original code left
 close paths pending and leaked setup owners; the repaired functions settle once.
+
+## Retired editors and browser rows (B04)
+
+Each project-list generation owns its row filter and context-menu subscriptions.
+Refresh retires the generation before loading; row removal retires its own owner.
+Closed browsers do not install late list results. Soundfont imports require a
+live editor, the same project and device object, and unchanged file selection;
+a newer import or selection supersedes older results. Cancellation is quiet and
+current failures use the existing notifier. Imported library assets may remain
+available even when their retired editor no longer applies them.
+
+Regression: 100 synthetic rows over three refreshes, filtering retired rows,
+row deletion and teardown; delayed browse across editor/device/project retirement,
+current success and observed failure. Byte snapshots compare Uint8Array contents.
+New tests failed before each repair and pass after.
