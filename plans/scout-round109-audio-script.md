@@ -25,3 +25,11 @@ Both polling and finalization inspect it, preventing a save before a delayed
 poll observes overflow. Faults terminate capture resources and require a fresh
 ring. Unit tests cover wrapping and owner refusal; the Chromium fixture exchanges
 real SAB blocks with a worker and checks overflow before reader startup.
+
+## B08 — parameter lifetime
+
+Real field removal/readd tests check registry and notification cleanup. Compiler
+regressions use a real project skeleton, BoxEditing, automation track and MIDI
+controller to check stable addresses/values, reset metadata and undo/redo. Numeric
+domain changes retain the prior explicit recreate policy. Saved source replaces
+the mutable declaration cache as the authoritative previous domain.

@@ -33,3 +33,13 @@ Reserved DOS device names (including extension forms) receive an underscore.
 Basenames are limited to 200 UTF-8 bytes before the audio extension. Collisions
 use normalized case folding and deterministic ` 1`, ` 2`, … suffixes in stem
 order, including collisions with authored suffixes. Display labels are unchanged.
+
+### Script parameter lifetime
+
+ParameterAdapterSet.removeParameter terminates the removed adapter and returns
+that retired adapter. Registry, field and automation subscriptions end together.
+Script default and display-unit edits preserve the parameter UUID, current value
+and automation/MIDI links. Reset follows the latest declaration through undo/redo.
+Changing mapping type or numeric endpoints recreates that parameter and retires
+its old links. Reconciliation compares against saved source, so undo does not
+leave an out-of-date declaration cache.

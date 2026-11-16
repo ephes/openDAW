@@ -38,6 +38,8 @@ export class ParameterAdapterSet implements Terminable {
     }
 
     removeParameter<T extends PrimitiveValues>(address: Address): AutomatableParameterFieldAdapter<T> {
-        return this.#parameters.removeByKey(address)
+        const adapter = this.#parameters.removeByKey(address)
+        adapter.terminate()
+        return adapter
     }
 }

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire removed parameter adapters immediately; preserve script parameter UUIDs, current values, automation and MIDI links for default/display-only edits, including undo/redo. Update reset metadata in place.
+
 - Reserve an empty recording-ring slot and expose sticky dropped-frame evidence instead of overwriting unread audio.
 
 - Normalize stem basenames, replace unsupported characters, avoid reserved desktop device names and trailing dots, bound names to 200 UTF-8 bytes (falling back to `Stem` when truncation leaves no letter or digit) and suffix normalized case collisions deterministically.

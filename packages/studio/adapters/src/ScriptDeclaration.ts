@@ -125,6 +125,8 @@ const declarationFullEquals = (a: ParamDeclaration, b: ParamDeclaration): boolea
 
 export namespace ScriptDeclaration {
     export const isEqual = declarationFullEquals
+    export const hasSameDomain = (a: ParamDeclaration, b: ParamDeclaration): boolean =>
+        a.mapping === b.mapping && a.min === b.min && a.max === b.max
 
     export const parseLabel = (code: string): Option<string> => {
         const match = LABEL_LINE.exec(code)
@@ -286,6 +288,7 @@ export namespace ScriptDeclaration {
                     const newDeclaration = declarations.find(decl => decl.label === adapter.name)
                     if (!isDefined(newDeclaration)) {continue}
                     const oldDeclaration = cachedDeclarations.get(adapter.name)
+                    adapter.updateResetValue(newDeclaration.defaultValue)
                     if (isDefined(oldDeclaration) && declarationEquals(oldDeclaration, newDeclaration)) {continue}
                     const {valueMapping, stringMapping} = resolveParamMappings(newDeclaration)
                     adapter.updateMappings(valueMapping, stringMapping)

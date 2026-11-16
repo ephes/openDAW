@@ -20,11 +20,8 @@ const parseHeader = (source: string, pattern: RegExp): { userCode: string, updat
     }
 }
 
-const cachedParamDeclarations = new WeakMap<ScriptCompiler.ScriptDeviceBox, Map<string, ParamDeclaration>>()
-
-const reconcileParameters = (deviceBox: ScriptCompiler.ScriptDeviceBox, declared: ReadonlyArray<ParamDeclaration>, order: Map<string, number>): void => {
+const reconcileParameters = (deviceBox: ScriptCompiler.ScriptDeviceBox, declared: ReadonlyArray<ParamDeclaration>, order: Map<string, number>, previousDeclarations: Map<string, ParamDeclaration>): void => {
     const boxGraph = deviceBox.graph
-    const previousDeclarations = cachedParamDeclarations.get(deviceBox) ?? new Map<string, ParamDeclaration>()
     const existingPointers = deviceBox.parameters.pointerHub.filter()
     const existingByLabel = new Map<string, WerkstattParameterBox>()
     for (const pointer of existingPointers) {
@@ -39,20 +36,20 @@ const reconcileParameters = (deviceBox: ScriptCompiler.ScriptDeviceBox, declared
         }
     }
     seen.clear()
-    const newDeclarations = new Map<string, ParamDeclaration>()
     for (const declaration of declared) {
         if (seen.has(declaration.label)) {continue}
         seen.add(declaration.label)
         const unifiedIndex = order.get(declaration.label) ?? 0
         const existing = existingByLabel.get(declaration.label)
         const previous = previousDeclarations.get(declaration.label)
-        const declarationChanged = !isDefined(previous) || !ScriptDeclaration.isEqual(previous, declaration)
+        const declarationChanged = !isDefined(previous) || !ScriptDeclaration.hasSameDomain(previous, declaration)
         if (isDefined(existing) && declarationChanged) {
             existing.delete()
             existingByLabel.delete(declaration.label)
         }
         const current = existingByLabel.get(declaration.label)
         if (isDefined(current)) {
+            current.defaultValue.setValue(declaration.defaultValue)
             if (current.index.getValue() !== unifiedIndex) {
                 current.index.setValue(unifiedIndex)
             }
@@ -65,9 +62,7 @@ const reconcileParameters = (deviceBox: ScriptCompiler.ScriptDeviceBox, declared
                 paramBox.defaultValue.setValue(declaration.defaultValue)
             })
         }
-        newDeclarations.set(declaration.label, declaration)
     }
-    cachedParamDeclarations.set(deviceBox, newDeclarations)
 }
 
 const reconcileSamples = (deviceBox: ScriptCompiler.ScriptDeviceBox, declared: ReadonlyArray<SampleDeclaration>, order: Map<string, number>): void => {
@@ -158,10 +153,7 @@ export namespace ScriptCompiler {
             load: async (audioContext: BaseAudioContext, deviceBox: ScriptDeviceBox): Promise<void> => {
                 const {userCode, update} = parseHeader(deviceBox.code.getValue(), headerPattern)
                 if (update === 0) {return}
-                const params = ScriptDeclaration.parseParams(userCode)
-                const declMap = new Map<string, ParamDeclaration>()
-                for (const declaration of params) {declMap.set(declaration.label, declaration)}
-                cachedParamDeclarations.set(deviceBox, declMap)
+                ScriptDeclaration.parseParams(userCode)
                 const uuid = UUID.toString(deviceBox.address.uuid)
                 const wrappedCode = wrapCode(config, uuid, update, userCode)
                 validateCode(wrappedCode)
@@ -185,9 +177,11 @@ export namespace ScriptCompiler {
                 validateCode(wrappedCode)
                 const label = ScriptDeclaration.parseLabel(userCode)
                 const modifier = () => {
+                    const previousDeclarations = new Map(ScriptDeclaration.parseParams(deviceBox.code.getValue())
+                        .map(declaration => [declaration.label, declaration]))
                     deviceBox.code.setValue(createHeader(newUpdate) + userCode)
                     label.ifSome(name => deviceBox.label.setValue(name))
-                    reconcileParameters(deviceBox, params, order)
+                    reconcileParameters(deviceBox, params, order, previousDeclarations)
                     reconcileSamples(deviceBox, samples, order)
                 }
                 if (append) {
