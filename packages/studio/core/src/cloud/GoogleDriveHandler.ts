@@ -45,7 +45,7 @@ export class GoogleDriveHandler implements CloudHandler {
     }
 
     upload(path: string, data: ArrayBuffer, signal?: AbortSignal): Promise<void> {
-        return cloudOperation("upload", signal, signal => this.#upload(path, data, signal))
+        return cloudOperation("upload", signal, signal => this.#upload(path, data, signal), data.byteLength)
     }
 
     async #upload(path: string, data: ArrayBuffer, signal: AbortSignal): Promise<void> {
@@ -84,7 +84,7 @@ export class GoogleDriveHandler implements CloudHandler {
     }
 
     download(path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
-        return cloudOperation("download", signal, signal => this.#download(path, signal))
+        return cloudOperation("download", signal, signal => this.#download(path, signal), cloudDownloadLimit(path))
     }
 
     async #download(path: string, signal: AbortSignal): Promise<ArrayBuffer> {
@@ -103,7 +103,9 @@ export class GoogleDriveHandler implements CloudHandler {
         }
         try {return await network.readBounded(res, cloudDownloadLimit(path), signal)} catch (error) {
             signal.throwIfAborted()
-            throw new CloudError(error instanceof network.ResponseReadError ? error.message : "Cloud body read failed")
+            // Transport failures mid-body stay retryable like the same failure during headers.
+            throw new CloudError(error instanceof network.ResponseReadError ? error.message : "Cloud body read failed",
+                undefined, error instanceof TypeError)
         }
     }
 

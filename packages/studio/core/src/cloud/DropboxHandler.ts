@@ -22,7 +22,7 @@ export class DropboxHandler implements CloudHandler {
             const client = await this.#client(signal)
             signal.throwIfAborted()
             await client.filesUpload({path: this.#getFullPath(path), contents: buffer, mode: {".tag": "overwrite"}})
-        })
+        }, buffer.byteLength)
     }
 
     download(path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
@@ -40,7 +40,7 @@ export class DropboxHandler implements CloudHandler {
                 if (this.#isNotFoundError(error)) {throw new Errors.FileNotFound("Cloud object")}
                 throw error
             }
-        })
+        }, cloudDownloadLimit(path))
     }
 
     exists(path: string, signal?: AbortSignal): Promise<boolean> {
@@ -102,7 +102,9 @@ export class DropboxHandler implements CloudHandler {
             } catch (error) {
                 signal.throwIfAborted()
                 throw new CloudError(error instanceof network.ResponseReadError
-                    ? error.message : "Cloud body read failed", response.ok ? undefined : response.status)
+                    ? error.message : "Cloud body read failed", response.ok ? undefined : response.status,
+                    // Transport failures mid-body stay retryable like the same failure during headers.
+                    error instanceof TypeError)
             }
         }})
     }

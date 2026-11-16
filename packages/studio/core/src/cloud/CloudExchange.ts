@@ -8,6 +8,8 @@ export class CloudError extends Error {
 
 export const cloudDownloadLimit = (path: string): number => {
     const clean = path.replace(/^\/+/, "")
+    // Aggregate domain catalogs grow with the library; per-item metadata stays small.
+    if (clean === "index.json" || clean.endsWith("/index.json")) {return OpfsProtocol.ReadLimits.Project}
     if (clean.endsWith(".json")) {return OpfsProtocol.ReadLimits.Metadata}
     if (clean.startsWith("presets/")) {return OpfsProtocol.ReadLimits.Preset}
     if (clean.startsWith("samples/") || clean.startsWith("soundfonts/") || clean.endsWith("/image.bin")) {
@@ -25,14 +27,20 @@ export const checkCloudResponse = (response: Response, operation: string): void 
 export const cloudJson = async <T>(response: Response, signal?: AbortSignal): Promise<T> =>
     JSON.parse(new TextDecoder().decode(await network.readBounded(response, OpfsProtocol.ReadLimits.Metadata, signal))) as T
 
+// A stall bound, not a speed requirement: ten minutes plus the payload budget at 128 KiB/s.
+export const cloudDeadline = (transferBytes: number): number =>
+    600000 + Math.ceil(Math.max(0, transferBytes) / (128 * 1024)) * 1000
+
 export const cloudOperation = async <T>(operation: string, caller: AbortSignal | undefined,
-                                        run: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+                                        run: (signal: AbortSignal) => Promise<T>,
+                                        transferBytes = 0): Promise<T> => {
     const controller = new AbortController()
     const signal = controller.signal
     const forwardAbort = () => controller.abort(new DOMException("Cloud operation aborted", "AbortError"))
     caller?.addEventListener("abort", forwardAbort, {once: true})
     if (caller?.aborted) {forwardAbort()}
-    const timer = setTimeout(() => controller.abort(new CloudError(`Cloud ${operation} deadline exceeded`, undefined, true)), 600000)
+    const timer = setTimeout(() => controller.abort(new CloudError(`Cloud ${operation} deadline exceeded`, undefined, true)),
+        cloudDeadline(transferBytes))
     let onAbort: () => void = () => {}
     try {
         signal.throwIfAborted()

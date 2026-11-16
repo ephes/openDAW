@@ -464,8 +464,10 @@ and refuse duplicates or incomplete results before mutation. Repair duplicate ba
 names deliberately before retrying. Name query literals escape backslashes before
 apostrophes, independently of URL encoding.
 
-Every provider operation accepts optional cancellation and has one ten-minute
-elapsed deadline covering lookup, pagination and body consumption. Cancellation
+Every provider operation accepts optional cancellation and has one elapsed deadline
+covering lookup, pagination and body consumption: ten minutes plus one second per
+128 KiB of its transfer budget (upload size, or the download path's byte limit),
+so slow links can still move large media while a stalled exchange ends. Cancellation
 retires pending reads and folder lookup ownership; late headers are cancelled.
 Remote writes already accepted by a provider may still complete after cancellation;
 no atomic remote rollback is promised. Provider failures expose fixed operation/HTTP
@@ -474,7 +476,10 @@ Unused error bodies are cancelled; Dropbox's missing-path classifier reads at mo
 1 MiB of structured error data. No raw provider response is logged.
 
 Cloud downloads enforce existing OPFS limits while streaming: JSON metadata 1 MiB,
-presets 16 MiB, project graphs 64 MiB, sample/font/cover media 1 GiB. Declared and
+aggregate `index.json` catalogs 64 MiB, presets 16 MiB, project graphs 64 MiB,
+sample/font/cover media 1 GiB. A transport failure while reading a body stays
+retryable like the same failure before headers; byte-limit and encoding refusals
+are final. Declared and
 actual decoded bytes are checked before assembly. Fetch-decoded gzip, deflate and
 Brotli plus identity are supported; other encoding declarations are refused. SDK download responses are bounded before Blob materialization.
 

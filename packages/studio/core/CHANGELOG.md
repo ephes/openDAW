@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Scale the cloud operation deadline with its transfer budget, admit aggregate cloud catalogs up to 64 MiB and keep mid-body transport failures retryable.
+
 - Hold shared stock transfer permits through sample/preset body consumption and decoding; retain finite private cloud retry categories.
 
 - Preserve concurrent local presets during cloud restore and upload coherent locked metadata/byte snapshots with captured eligibility.
