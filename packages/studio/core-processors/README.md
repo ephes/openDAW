@@ -152,3 +152,10 @@ Selecting the playing clip cancels a queued replacement or stop; a superseded
 queued clip becomes obsolete. Launch/stop quantization uses the first boundary at
 or after the span start. Spans own `[from, to)`: a right-endpoint launch waits
 for the next nonempty span, so large and partitioned renders launch identically.
+
+One-shots end at their actual launch position plus their current duration, including
+when launch and end fall within one large span. Queued replacement quantization
+remains independent of that end. Only finite positive clip durations are admitted:
+invalid launch requests become obsolete; invalid queued or playing clips retire
+on the next nonempty iteration (obsolete or stopped respectively). Repairing the
+duration allows an explicit new launch. Empty spans perform no scheduling work.

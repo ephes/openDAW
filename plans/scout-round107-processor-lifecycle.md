@@ -15,3 +15,7 @@ all fail before the fix. Disposal occurs once; later deletion visits one live st
 
 B03: five failing cases cover replacement/stop cancellation, first-boundary
 play/stop partition parity and right-endpoint ownership. All pass after the fix.
+
+B04: twelve failing cases cover three-beat one-shots launched at beat four across
+three partitions, invalid initial/edited durations and explicit repaired relaunch.
+Natural ending also applies to the remainder of the launch span.

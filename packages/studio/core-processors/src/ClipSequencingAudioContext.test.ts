@@ -91,3 +91,42 @@ it("leaves the right endpoint launch to the next half-open span", () => {
     Array.from(context.iterate(track.uuid, PPQN.Bar, PPQN.Bar + 1))
     expect(context.changes().unwrap().started).toHaveLength(1)
 })
+
+it.each([[0.5, 9], [0.5, 4, 5, 6, 7, 9], [0.5, 4.25, 6.5, 9]])(
+    "ends a three-beat one-shot three beats after its four-beat launch (%j)", (...beats) => {
+        const {context, track, clip} = fixture()
+        const beat = PPQN.Bar / 4, a = clip(3 * beat, false)
+        context.schedulePlay(a)
+        const sections = beats.slice(1).flatMap((end, i) =>
+            Array.from(context.iterate(track.uuid, beats[i] * beat, end * beat)))
+        const active = sections.filter(section => section.optClip.nonEmpty())
+        expect(active[0].sectionFrom).toBe(4 * beat)
+        expect(active.at(-1)!.sectionTo).toBe(7 * beat)
+        expect(active.reduce((sum, section) => sum + section.sectionTo - section.sectionFrom, 0)).toBe(3 * beat)
+        expect(context.changes().unwrap()).toEqual({started: [a.uuid], stopped: [a.uuid], obsolete: []})
+    })
+
+it.each([0, -1, NaN, Infinity, -Infinity])("refuses invalid duration %s and admits a repaired clip", duration => {
+    const {context, track, clip} = fixture()
+    const a = clip(duration)
+    context.schedulePlay(a)
+    expect(context.changes().unwrap()).toEqual({started: [], stopped: [], obsolete: [a.uuid]})
+    expect(Array.from(context.iterate(track.uuid, 0, PPQN.Bar * 2)).every(s => s.optClip.isEmpty())).toBe(true)
+    Object.assign(a, {duration: PPQN.Bar})
+    context.schedulePlay(a); Array.from(context.iterate(track.uuid, 0, 1))
+    expect(context.changes().unwrap().started).toEqual([a.uuid])
+})
+
+it.each([0, -1, NaN, Infinity])("retires mutable invalid duration %s before quantization", duration => {
+    const {context, track, clip} = fixture()
+    const a = clip(), b = clip()
+    context.schedulePlay(a); Array.from(context.iterate(track.uuid, 0, 1)); context.changes()
+    context.schedulePlay(b)
+    Object.assign(a, {duration}); Object.assign(b, {duration})
+    const sections = Array.from(context.iterate(track.uuid, 1, PPQN.Bar * 2))
+    expect(sections.every(s => s.optClip.isEmpty() && Number.isFinite(s.sectionFrom) && s.sectionTo > s.sectionFrom)).toBe(true)
+    expect(context.changes().unwrap()).toEqual({started: [], stopped: [a.uuid], obsolete: [b.uuid]})
+    Object.assign(a, {duration: PPQN.Bar})
+    context.schedulePlay(a); Array.from(context.iterate(track.uuid, PPQN.Bar * 2, PPQN.Bar * 2 + 1))
+    expect(context.changes().unwrap().started).toEqual([a.uuid])
+})

@@ -16,6 +16,7 @@ type TrackKey = UUID.Bytes
 class TrackState {
     waiting: Option<Option<AnyClipBoxAdapter>> = Option.None
     playing: Option<AnyClipBoxAdapter> = Option.None
+    launchPosition: ppqn = 0
 
     constructor(readonly uuid: TrackKey) {}
 }
@@ -57,6 +58,10 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     }
 
     schedulePlay(clipAdapter: AnyClipBoxAdapter): void {
+        if (!this.#validDuration(clipAdapter)) {
+            this.#obsolete.push(clipAdapter.uuid)
+            return
+        }
         clipAdapter.trackBoxAdapter.ifSome(({uuid}) => {
             const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid))
             const optClip = trackState.waiting.flatMap(waiting => waiting)
@@ -100,54 +105,67 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     }
 
     * iterate(trackKey: TrackKey, p0: ppqn, p1: ppqn): IterableIterator<Section> {
+        if (p0 >= p1) {return}
         const state = this.#states.getOrNull(trackKey)
         if (state === null) {
             yield {optClip: Option.None, sectionFrom: p0, sectionTo: p1}
             return
         }
+        state.waiting.flatMap(identity).ifSome(clip => {
+            if (!this.#validDuration(clip)) {
+                this.#obsolete.push(clip.uuid)
+                state.waiting = Option.None
+            }
+        })
+        state.playing.ifSome(clip => {
+            if (!this.#validDuration(clip)) {
+                this.#onStop(clip.uuid)
+                state.playing = Option.None
+            }
+        })
         if (state.waiting.nonEmpty()) {
             const optNextClip = state.waiting.unwrap()
-            const scheduleDuration = state.playing.mapOr(clip => clip.duration, PPQN.Bar) // Use format values
+            // Replacement quantization is independent of a one-shot's natural end.
+            const scheduleDuration = state.playing.mapOr(clip => clip.duration, PPQN.Bar)
             const scheduleEnd = quantizeCeil(p0, scheduleDuration)
             if (scheduleEnd < p1) {
-                if (p0 < scheduleEnd) {
-                    // process to schedule time
-                    yield {optClip: state.playing, sectionFrom: p0, sectionTo: scheduleEnd}
-                }
-                state.waiting = Option.None // clear the next pointer
+                yield* this.#playingSections(state, p0, scheduleEnd)
+                state.waiting = Option.None
                 state.playing.ifSome(clip => this.#onStop(clip.uuid))
-                if (optNextClip.nonEmpty()) {
-                    state.playing = optNextClip // play next clip
-                    this.#onStart(optNextClip.unwrap().uuid)
-                } else {
-                    state.playing = Option.None // stop playing clip
-                }
-                yield {optClip: state.playing, sectionFrom: scheduleEnd, sectionTo: p1}
-            } else {
-                yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
-            }
-        } else {
-            if (state.playing.nonEmpty()) {
-                const playing = state.playing.unwrap()
-                if (playing.box.triggerMode.loop.getValue()) {
-                    yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
-                } else {
-                    const scheduleEnd = Math.floor(p0 / playing.duration) * playing.duration + playing.duration
-                    if (scheduleEnd <= p1) {
-                        yield {optClip: state.playing, sectionFrom: p0, sectionTo: scheduleEnd}
-                        state.playing = Option.None
-                        this.#onStop(playing.uuid)
-                        if (scheduleEnd < p1) {
-                            yield {optClip: Option.None, sectionFrom: scheduleEnd, sectionTo: p1}
-                        }
-                    } else {
-                        yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
-                    }
-                }
-            } else {
-                yield {optClip: Option.None, sectionFrom: p0, sectionTo: p1}
+                state.playing = optNextClip
+                state.launchPosition = scheduleEnd
+                optNextClip.ifSome(clip => this.#onStart(clip.uuid))
+                yield* this.#playingSections(state, scheduleEnd, p1)
+                return
             }
         }
+        yield* this.#playingSections(state, p0, p1)
+    }
+
+    * #playingSections(state: TrackState, p0: ppqn, p1: ppqn): IterableIterator<Section> {
+        if (p0 >= p1) {return}
+        if (state.playing.nonEmpty()) {
+            const clip = state.playing.unwrap()
+            if (!clip.box.triggerMode.loop.getValue()) {
+                const end = state.launchPosition + clip.duration
+                if (end <= p1) {
+                    if (p0 < end) {
+                        yield {optClip: state.playing, sectionFrom: p0, sectionTo: end}
+                    }
+                    state.playing = Option.None
+                    this.#onStop(clip.uuid)
+                    if (end < p1) {
+                        yield {optClip: Option.None, sectionFrom: Math.max(p0, end), sectionTo: p1}
+                    }
+                    return
+                }
+            }
+        }
+        yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
+    }
+
+    #validDuration(clip: AnyClipBoxAdapter): boolean {
+        return Number.isFinite(clip.duration) && clip.duration > 0
     }
 
     changes(): Option<ClipSequencingUpdates> {
