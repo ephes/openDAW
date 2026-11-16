@@ -1,3 +1,4 @@
+import {network, Promises} from "@opendaw/lib-runtime"
 import {afterEach, beforeEach, expect, it, vi} from "vitest"
 import {Errors, RuntimeNotifier} from "@opendaw/lib-std"
 import {CloudBackup} from "./CloudBackup"
@@ -31,7 +32,7 @@ beforeEach(() => {
         return next
     }}})
 })
-afterEach(() => {vi.restoreAllMocks(); vi.unstubAllGlobals()})
+afterEach(() => {vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers()})
 it("preserves primary backup failure and tears down even when release fails", async () => {
     const primary = new Error("backup failed")
     vi.spyOn(console, "warn").mockImplementation(() => {})
@@ -76,7 +77,7 @@ for (const stage of ["query", "create"]) {
         if (stage === "create") {fetchMock.mockResolvedValueOnce(Response.json({files: []}))}
         fetchMock.mockRejectedValueOnce(new Error("network"))
         const drive = new GoogleDriveHandler("synthetic")
-        await expect(drive.upload("folder/file", new ArrayBuffer(0))).rejects.toThrow("network")
+        await expect(drive.upload("folder/file", new ArrayBuffer(0))).rejects.toThrow("Cloud upload failed")
         fetchMock.mockResolvedValueOnce(Response.json({files: [{id: "existing"}]}))
             .mockResolvedValueOnce(Response.json({files: []})).mockResolvedValueOnce(new Response())
         await drive.upload("folder/file", new ArrayBuffer(0))
@@ -90,5 +91,30 @@ it("Dropbox collects all pages and rejects a failed continuation", async () => {
     await expect(dropbox.list("folder")).resolves.toEqual(["cover", "project.od", "meta.json"])
     expect(mocks.next).toHaveBeenCalledWith({cursor: "page2"})
     mocks.next.mockRejectedValueOnce(new Error("page failed"))
-    await expect(dropbox.list("folder")).rejects.toThrow("page failed")
+    await expect(dropbox.list("folder")).rejects.toThrow("Cloud list failed")
 })
+
+for (const kind of ["list", "download"] as const) {
+    it(`releases backup ownership after finite ${kind} retries without replaying mutations`, async () => {
+        vi.useFakeTimers()
+        const reason = new TypeError("synthetic transport")
+        const read = vi.fn().mockRejectedValue(reason)
+        if (kind === "list") {vi.mocked(cloud.list).mockImplementation(read)} else {
+            vi.mocked(cloud.download).mockImplementation(async path => {
+                if (path === "lock.json") {throw new Errors.FileNotFound("synthetic")}
+                return read()
+            })
+        }
+        vi.mocked(CloudBackupSamples.start).mockImplementationOnce(async () => {
+            await Promises.guardedRetry<ArrayBuffer | string[]>(() => kind === "list" ? cloud.list("samples") : cloud.download("samples/file"), network.defaultRetry)
+        })
+        const first = expect(CloudBackup.backupWithHandler(cloud, service)).rejects.toBe(reason)
+        const queued = CloudBackup.backupWithHandler(cloud, service)
+        await vi.advanceTimersByTimeAsync(3000)
+        await first; await queued
+        expect(read).toHaveBeenCalledTimes(3)
+        expect(terminate).toHaveBeenCalledTimes(2)
+        expect(cloud.upload).toHaveBeenCalledTimes(2) // one lock publication per explicit run
+        expect(cloud.delete).toHaveBeenCalledTimes(2)
+    })
+}

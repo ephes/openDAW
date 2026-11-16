@@ -49,8 +49,7 @@ export class CloudBackupPresets {
 
     async #upload(progress: Progress.Handler) {
         const {stock, local, cloud} = this.#presetDomains
-        const maybeUnsyncedPresets = Arrays.subtract(local, stock, CloudBackupPresets.arePresetsEqual)
-        const unsyncedPresets = maybeUnsyncedPresets
+        const unsyncedPresets = Arrays.subtract(local, stock, CloudBackupPresets.arePresetsEqual)
         if (unsyncedPresets.length === 0) {
             this.#log("No unsynced presets found.")
             progress(1.0)

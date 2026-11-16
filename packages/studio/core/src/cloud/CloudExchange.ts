@@ -3,7 +3,7 @@ import {network} from "@opendaw/lib-runtime"
 import {OpfsProtocol} from "@opendaw/lib-fusion"
 
 export class CloudError extends Error {
-    constructor(message: string, readonly status?: number) {super(message)}
+    constructor(message: string, readonly status?: number, readonly retryable = false) {super(message)}
 }
 
 export const cloudDownloadLimit = (path: string): number => {
@@ -32,7 +32,7 @@ export const cloudOperation = async <T>(operation: string, caller: AbortSignal |
     const forwardAbort = () => controller.abort(new DOMException("Cloud operation aborted", "AbortError"))
     caller?.addEventListener("abort", forwardAbort, {once: true})
     if (caller?.aborted) {forwardAbort()}
-    const timer = setTimeout(() => controller.abort(new CloudError("Cloud operation deadline exceeded")), 600000)
+    const timer = setTimeout(() => controller.abort(new CloudError(`Cloud ${operation} deadline exceeded`, undefined, true)), 600000)
     let onAbort: () => void = () => {}
     try {
         signal.throwIfAborted()
@@ -46,11 +46,14 @@ export const cloudOperation = async <T>(operation: string, caller: AbortSignal |
         if (signal.aborted) {
             throw signal.reason
         }
-        if (error instanceof CloudError || error instanceof Errors.FileNotFound) {throw error}
+        if (error instanceof Errors.FileNotFound) {throw error}
+        if (error instanceof CloudError) {
+            throw new CloudError(`Cloud ${operation} failed: ${error.message}`, error.status, error.retryable)
+        }
         const status = typeof error === "object" && error !== null && "status" in error &&
             typeof error.status === "number" && Number.isInteger(error.status) && error.status >= 100 && error.status <= 599
             ? error.status : undefined
-        throw new CloudError(`Cloud ${operation} failed${status ? ` (HTTP ${status})` : " (transport or invalid response)"}`, status)
+        throw new CloudError(`Cloud ${operation} failed${status ? ` (HTTP ${status})` : " (transport or invalid response)"}`, status, error instanceof TypeError)
     } finally {
         caller?.removeEventListener("abort", forwardAbort)
         clearTimeout(timer)
@@ -65,7 +68,10 @@ export const cloudFetch = (input: RequestInfo | URL, init: RequestInit): Promise
     return new Promise((resolve, reject) => {
         const abort = () => reject(signal?.reason)
         signal?.addEventListener("abort", abort, {once: true})
-        fetch(input, init).then(response => {
+        Promise.resolve().then(() => {
+            signal?.throwIfAborted()
+            return fetch(input, init)
+        }).then(response => {
             signal?.removeEventListener("abort", abort)
             if (signal?.aborted) {void response.body?.cancel().catch(() => {}); reject(signal.reason)}
             else {resolve(response)}

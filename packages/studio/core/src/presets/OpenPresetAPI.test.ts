@@ -21,7 +21,7 @@ for (const observed of [false, true]) {
 }
 it("refuses unsupported encoding before consuming bytes", async () => {
     const cancel = vi.fn()
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({start(c) {c.enqueue(new Uint8Array(1)); c.close()}, cancel}), {headers: {"Content-Encoding": "gzip"}})))
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new ReadableStream({start(c) {c.enqueue(new Uint8Array(1)); c.close()}, cancel}), {headers: {"Content-Encoding": "x-synthetic"}})))
     await expect(OpenPresetAPI.get().load(id)).rejects.toThrow(/encoding/)
     expect(cancel).toHaveBeenCalledOnce()
 })
@@ -54,4 +54,9 @@ it("settles a source read error and unlocks the stream", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)))
     await expect(OpenPresetAPI.get().load(id, () => {})).rejects.toBe(reason)
     expect(body.locked).toBe(false)
+})
+it("rejects abort from the EOF progress callback before publishing success", async () => {
+    const controller = new AbortController()
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Uint8Array(0))))
+    await expect(OpenPresetAPI.get().load(id, () => controller.abort(), controller.signal)).rejects.toThrow(/abort/i)
 })

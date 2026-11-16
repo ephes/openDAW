@@ -270,7 +270,10 @@ Promise concurrency limits must be finite positive integers; invalid limits fail
 before providers run. Sequential batches append results in order with linear
 accumulation and stop on the first failure. `network.defaultFetch` treats aborts
 as terminal, uses `init.signal` or the input Request's signal, and cancels backoff
-and pending offline approval when aborted. Ordinary network failures still retry.
+and pending offline approval when aborted. Ordinary network failures still retry within their fetch attempt budget.
+`defaultRetry` permits three attempts only for classified transient failures;
+stock sample/preset loads hold one of four shared permits through body consumption
+and decoding.
 
 The synthetic browser fixtures exercise real pointer events, RoomStatus copy
 outcomes and the HTML boundary. After the normal build, run locally:

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Use a finite transient-only default retry policy, preserve final failures and offer shared whole-download permits.
+
 - Add a bounded response reader with cancellation and observer-failure cleanup.
 
 - Fence retired messenger owners and channels; clear only owned port handlers and keep replacement transports receiving.

@@ -80,7 +80,7 @@ export namespace Promises {
                     await Wait.timeSpan(TimeSpan.seconds(1))
                     return attempt(count)
                 }
-                throw new Error(`Failed after ${count} retries: ${reason}`)
+                throw reason
             }
         }
         return attempt()

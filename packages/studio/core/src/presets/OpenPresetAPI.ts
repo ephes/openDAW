@@ -35,16 +35,24 @@ export class OpenPresetAPI {
     async load(uuid: UUID.Bytes,
                progress?: Procedure<unitValue>,
                signal?: AbortSignal): Promise<ArrayBuffer> {
-        const url = `${OpenPresetAPI.FileRoot}/${UUID.toString(uuid)}.odp`
-        // Cancellable fetches skip the auto-retry: a user-cancelled download
-        // must not silently retry after the dialog has already closed.
-        const response = isDefined(signal)
-            ? await network.limitFetch(url, {...OpenDAWHeaders, signal})
-            : await Promises.retry(() => network.limitFetch(url, OpenDAWHeaders))
-        if (!response.ok) {
-            return panic(`Failed to fetch preset ${UUID.toString(uuid)}: ${response.status} ${response.statusText}`)
-        }
-        return network.readBounded(response, 16 * 1024 * 1024, signal, progress)
+        return network.withDownload(async () => {
+            signal?.throwIfAborted()
+            const url = `${OpenPresetAPI.FileRoot}/${UUID.toString(uuid)}.odp`
+            // Cancellable fetches skip the auto-retry: a user-cancelled download
+            // must not silently retry after the dialog has already closed.
+            const response = isDefined(signal)
+                ? await network.limitFetch(url, {...OpenDAWHeaders, signal})
+                : await Promises.retry(() => network.limitFetch(url, OpenDAWHeaders))
+            if (signal?.aborted) {
+                void response.body?.cancel().catch(() => {})
+                signal.throwIfAborted()
+            }
+            if (!response.ok) {
+                void response.body?.cancel().catch(() => {})
+                return panic(`Failed to fetch preset ${UUID.toString(uuid)}: ${response.status} ${response.statusText}`)
+            }
+            return network.readBounded(response, 16 * 1024 * 1024, signal, progress)
+        })
     }
 
     async upload(arrayBuffer: ArrayBuffer, meta: PresetMeta): Promise<void> {

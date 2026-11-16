@@ -6,7 +6,9 @@ import {InventoryBudget} from "./InventoryBudget"
 import {checkCloudResponse, cloudDownloadLimit, cloudFetch, CloudError, cloudOperation} from "./CloudExchange"
 
 export class DropboxHandler implements CloudHandler {
-    constructor(readonly accessToken: string) {}
+    readonly #accessToken: string
+
+    constructor(accessToken: string) {this.#accessToken = accessToken}
 
     alive(signal?: AbortSignal): Promise<void> {
         return cloudOperation("alive", signal, async signal => {
@@ -84,7 +86,7 @@ export class DropboxHandler implements CloudHandler {
         signal.throwIfAborted()
         const {Dropbox} = await import("dropbox")
         signal.throwIfAborted()
-        return new Dropbox({accessToken: this.accessToken, fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        return new Dropbox({accessToken: this.#accessToken, fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
             signal.throwIfAborted()
             const response = await cloudFetch(input, {...init, signal})
             if (signal.aborted) {
@@ -99,8 +101,8 @@ export class DropboxHandler implements CloudHandler {
                 return new Response(bytes, {status: response.status, statusText: response.statusText, headers: response.headers})
             } catch (error) {
                 signal.throwIfAborted()
-                throw new CloudError(error instanceof Error && /byte limit|encoding/.test(error.message)
-                    ? error.message : "Cloud body read failed")
+                throw new CloudError(error instanceof network.ResponseReadError
+                    ? error.message : "Cloud body read failed", response.ok ? undefined : response.status)
             }
         }})
     }

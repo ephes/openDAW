@@ -16,9 +16,22 @@ export namespace network {
     export const limitFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
         limit.add(() => fetch(input, init))
 
-    export const defaultRetry = (reason: unknown, count: int) => {
-        return !isInstanceOf(reason, Errors.FileNotFound) || count <= 100
+    // This policy is for idempotent reads/imports, never automatic mutation replay.
+    export const defaultRetry = (reason: unknown, count: int): boolean => {
+        if (!Number.isInteger(count) || count < 1 || count >= 3 || Errors.isAbort(reason) ||
+            isInstanceOf(reason, Errors.FileNotFound)) {return false}
+        if (typeof reason === "object" && reason !== null && "status" in reason && typeof reason.status === "number") {
+            return reason.status === 408 || reason.status === 429 || (reason.status >= 500 && reason.status <= 599)
+        }
+        return reason instanceof TypeError || (typeof reason === "object" && reason !== null &&
+            "retryable" in reason && reason.retryable === true)
     }
+
+    const downloads = new Promises.Limit<unknown>(4)
+    /** One permit owns metadata, response consumption and decoding at stock load boundaries. */
+    export const withDownload = <T>(consume: () => Promise<T>): Promise<T> =>
+        // Limit preserves the callback's exact result; the shared queue erases only its type.
+        downloads.add(consume) as Promise<T>
 
     const abortable = <T>(promise: Promise<T>, signal?: AbortSignal | null): Promise<T> => {
         if (!signal) {return promise}
@@ -36,9 +49,16 @@ export namespace network {
         })
     }
 
+    export class ResponseReadError extends Error {
+        constructor(kind: "byte limit" | "encoding") {
+            super(kind === "byte limit" ? "Response byte limit exceeded" : "Unsupported response encoding")
+        }
+    }
+
     /** Consume once, checking decoded bytes before retaining each chunk. */
     export const readBounded = async (response: Response, maxBytes: number,
                                      signal?: AbortSignal, progress?: Progress.Handler): Promise<ArrayBuffer> => {
+        if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {throw new RangeError("Invalid response byte limit")}
         const reader = response.body?.getReader()
         if (!reader) {throw new Error("Missing response body")}
         let complete = false
@@ -52,10 +72,13 @@ export namespace network {
         try {
             signal?.throwIfAborted()
             const encoding = response.headers.get("Content-Encoding")
-            if (encoding && encoding.toLowerCase() !== "identity") {throw new Error("Unsupported response encoding")}
+            // Fetch exposes decoded bytes for these standard transport encodings.
+            if (encoding && !["identity", "gzip", "deflate", "br"].includes(encoding.toLowerCase())) {
+                throw new ResponseReadError("encoding")
+            }
             const declared = Number(response.headers.get("Content-Length") ?? "0")
             if (!Number.isSafeInteger(declared) || declared < 0 || declared > maxBytes) {
-                throw new Error("Response byte limit exceeded")
+                throw new ResponseReadError("byte limit")
             }
             let loaded = 0
             const chunks: Uint8Array[] = []
@@ -63,13 +86,14 @@ export namespace network {
                 const {done, value} = await abortable(reader.read(), signal)
                 signal?.throwIfAborted()
                 if (done) {break}
-                if (value.byteLength > maxBytes - loaded) {throw new Error("Response byte limit exceeded")}
+                if (value.byteLength > maxBytes - loaded) {throw new ResponseReadError("byte limit")}
                 loaded += value.byteLength
                 chunks.push(value)
                 progress?.(declared > 0 ? Math.min(1, loaded / declared) : 0)
             }
             signal?.throwIfAborted()
             progress?.(1)
+            signal?.throwIfAborted()
             const bytes = new Uint8Array(loaded)
             let offset = 0
             for (const chunk of chunks) {bytes.set(chunk, offset); offset += chunk.byteLength}

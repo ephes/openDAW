@@ -475,10 +475,17 @@ Unused error bodies are cancelled; Dropbox's missing-path classifier reads at mo
 
 Cloud downloads enforce existing OPFS limits while streaming: JSON metadata 1 MiB,
 presets 16 MiB, project graphs 64 MiB, sample/font/cover media 1 GiB. Declared and
-actual bytes are checked before assembly; encoded responses other than identity
-are refused. SDK download responses are bounded before Blob materialization.
+actual decoded bytes are checked before assembly. Fetch-decoded gzip, deflate and
+Brotli plus identity are supported; other encoding declarations are refused. SDK download responses are bounded before Blob materialization.
 
 Stock preset downloads use the same 16 MiB declared/actual byte ceiling with or
-without progress. Only identity encoding is accepted. Aborting after a prefix
+without progress. Identity and fetch-decoded gzip/deflate/Brotli are accepted;
+unsupported encoding declarations are refused. Aborting after a prefix
 rejects without returning partial bytes. A throwing progress observer or source
 read failure rejects the load and cancels/unlocks the reader; EOF reports completion.
+
+Stock sample and preset loads share four permits across metadata, body consumption
+and sample decoding, releasing on completion, abort or failure. Queued cancelled
+preset loads check their signal before starting requests. Cloud read retries stop
+after three transient attempts; permanent HTTP errors, missing files, aborts and
+invalid content stop immediately. Mutations retain explicit approval-based retry.

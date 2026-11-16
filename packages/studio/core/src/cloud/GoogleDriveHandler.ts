@@ -103,7 +103,7 @@ export class GoogleDriveHandler implements CloudHandler {
         }
         try {return await network.readBounded(res, cloudDownloadLimit(path), signal)} catch (error) {
             signal.throwIfAborted()
-            throw new CloudError(error instanceof Error && /byte limit|encoding/.test(error.message) ? error.message : "Cloud body read failed")
+            throw new CloudError(error instanceof network.ResponseReadError ? error.message : "Cloud body read failed")
         }
     }
 

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Hold shared stock transfer permits through sample/preset body consumption and decoding; retain finite private cloud retry categories.
+
 - Preserve concurrent local presets during cloud restore and upload coherent locked metadata/byte snapshots with captured eligibility.
 
 - Bound stock preset downloads in both progress modes; reject partial aborts and settle observer failures with reader cleanup.

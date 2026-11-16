@@ -64,7 +64,11 @@ export class OpenSampleAPI implements SampleAPI {
         return Object.freeze({...sample, uuid: UUID.toString(uuid), origin: "openDAW"})
     }
 
-    async load(uuid: UUID.Bytes, progress: Procedure<unitValue>): Promise<[AudioData, Sample]> {
+    load(uuid: UUID.Bytes, progress: Procedure<unitValue>): Promise<[AudioData, Sample]> {
+        return network.withDownload(() => this.#load(uuid, progress))
+    }
+
+    async #load(uuid: UUID.Bytes, progress: Procedure<unitValue>): Promise<[AudioData, Sample]> {
         console.debug(`load ${UUID.toString(uuid)}`)
         const controller = new AbortController()
         const expired = Promise.withResolvers<never>()
