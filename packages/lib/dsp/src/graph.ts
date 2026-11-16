@@ -22,6 +22,11 @@ export class Graph<V> {
         Arrays.remove(this.#vertices, vertex)
         const found = this.#predecessors.delete(vertex)
         assert(found, "Predecessor does not exists")
+        for (const predecessors of this.#predecessors.values()) {
+            for (let index = predecessors.length - 1; index >= 0; index--) {
+                if (predecessors[index] === vertex) {predecessors.splice(index, 1)}
+            }
+        }
     }
 
     getPredecessors(vertex: V): ReadonlyArray<V> {return this.#predecessors.get(vertex) ?? Arrays.empty()}
@@ -35,8 +40,9 @@ export class Graph<V> {
     }
 
     removeEdge([source, target]: Edge<V>): void {
-        const vertexPredecessors = asDefined(this.#predecessors.get(target),
-            `[remove] Edge has unannounced vertex. (${target})`)
+        // Vertex retirement already removes its incident edges. Late leases are harmless.
+        if (!this.#predecessors.has(source) || !this.#predecessors.has(target)) {return}
+        const vertexPredecessors = asDefined(this.#predecessors.get(target))
         assert(vertexPredecessors.includes(source), `${source} is not marked.`)
         Arrays.remove(vertexPredecessors, source)
     }
@@ -46,80 +52,72 @@ export class Graph<V> {
 
 export class TopologicalSort<V> {
     readonly #graph: Graph<V>
-    readonly #sorted: Array<V>
-    readonly #visited: Set<V>
-    readonly #withLoops: Set<V>
-    readonly #successors: Map<V, Set<V>>
+    readonly #sorted: Array<V> = []
+    readonly #withLoops: Set<V> = new Set()
 
-    constructor(graph: Graph<V>) {
-        this.#graph = graph
-
-        this.#sorted = []
-        this.#visited = new Set<V>()
-        this.#withLoops = new Set<V>()
-        this.#successors = new Map<V, Set<V>>()
-    }
+    constructor(graph: Graph<V>) {this.#graph = graph}
 
     update(): void {
-        this.#prepare()
-        this.#graph.vertices().forEach(vertex => this.#visit(vertex))
+        this.#sorted.length = 0
+        this.#withLoops.clear()
+        const vertices = this.#graph.vertices()
+        const successors = new Map<V, Array<V>>()
+        for (const vertex of vertices) {successors.set(vertex, [])}
+        for (const vertex of vertices) {
+            for (const predecessor of this.#graph.getPredecessors(vertex)) {
+                asDefined(successors.get(predecessor)).push(vertex)
+            }
+        }
+        // Kosaraju: finishing order on predecessors, then components on successors.
+        const finished: Array<V> = []
+        this.#walk(vertices, vertex => this.#graph.getPredecessors(vertex), finished)
+        const component = new Map<V, number>()
+        for (let index = finished.length - 1; index >= 0; index--) {
+            const root = finished[index]
+            if (component.has(root)) {continue}
+            const id = index
+            const members: Array<V> = []
+            const pending = [root]
+            component.set(root, id)
+            while (pending.length > 0) {
+                const vertex = pending.pop()!
+                members.push(vertex)
+                for (const next of asDefined(successors.get(vertex))) {
+                    if (component.has(next)) {continue}
+                    component.set(next, id)
+                    pending.push(next)
+                }
+            }
+            if (members.length > 1 || this.#graph.getPredecessors(root).includes(root)) {
+                for (const vertex of members) {this.#withLoops.add(vertex)}
+            }
+        }
+        // As before, omit all intra-cycle edges and visit roots/predecessors in insertion order.
+        this.#walk(vertices, vertex => this.#graph.getPredecessors(vertex)
+            .filter(previous => component.get(previous) !== component.get(vertex)), this.#sorted)
     }
 
     sorted(): ReadonlyArray<V> {return this.#sorted}
     hasLoops(): boolean {return this.#withLoops.size !== 0}
 
-    #prepare(): void {
-        this.#clear()
-        const addTo = new Map<V, Set<V>>()
-        for (const vert of this.#graph.vertices()) {
-            this.#successors.set(vert, new Set<V>())
-            addTo.set(vert, new Set<V>())
-        }
-        for (const vert2 of this.#graph.vertices()) {
-            for (const vert1 of this.#graph.getPredecessors(vert2)) {
-                asDefined(this.#successors.get(vert1), `Could not find Successor for ${vert1}`).add(vert2)
-            }
-        }
-        let change: boolean
-        do {
-            change = false
-            for (const vert of this.#graph.vertices()) {
-                asDefined(addTo.get(vert)).clear()
-                for (const vert1 of asDefined(this.#successors.get(vert))) {
-                    for (const vert2 of asDefined(this.#successors.get(vert1))) {
-                        if (!this.#successors.get(vert)?.has(vert2)) {
-                            change = true
-                            asDefined(addTo.get(vert)).add(vert2)
-                        }
-                    }
+    #walk(roots: ReadonlyArray<V>, neighbors: (vertex: V) => ReadonlyArray<V>, finished: Array<V>): void {
+        const visited = new Set<V>()
+        for (const root of roots) {
+            if (visited.has(root)) {continue}
+            visited.add(root)
+            const stack = [{vertex: root, edges: neighbors(root), index: 0}]
+            while (stack.length > 0) {
+                const frame = stack[stack.length - 1]
+                if (frame.index === frame.edges.length) {
+                    finished.push(frame.vertex)
+                    stack.pop()
+                    continue
                 }
-            }
-            for (const vert of this.#graph.vertices()) {
-                const vs = asDefined(this.#successors.get(vert))
-                asDefined(addTo.get(vert)).forEach(n1 => vs.add(n1))
+                const next = frame.edges[frame.index++]
+                if (visited.has(next)) {continue}
+                visited.add(next)
+                stack.push({vertex: next, edges: neighbors(next), index: 0})
             }
         }
-        while (change)
-    }
-
-    #visit(vert: V): void {
-        if (this.#visited.has(vert)) {return}
-        this.#visited.add(vert)
-        for (const n1 of this.#graph.getPredecessors(vert)) {
-            if (asDefined(this.#successors.get(vert)).has(n1)) {
-                this.#withLoops.add(vert)
-                this.#withLoops.add(n1)
-                continue
-            }
-            this.#visit(n1)
-        }
-        this.#sorted.push(vert)
-    }
-
-    #clear(): void {
-        Arrays.clear(this.#sorted)
-        this.#visited.clear()
-        this.#withLoops.clear()
-        this.#successors.clear()
     }
 }

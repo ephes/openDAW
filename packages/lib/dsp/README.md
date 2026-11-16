@@ -144,3 +144,11 @@ Valley search retains its backward scan, strict minimum/tie policy, 0.66 thresho
 and fixed 6 ms RMS divisor at the right edge. A running squared sum makes each
 search linear in search span plus RMS window, with constant extra storage.
 Direct RMS/valley oracles and counted 48/96 kHz reads run in the DSP tests.
+
+### Audio graph retirement and ordering
+
+Removing a vertex retires incoming and outgoing edges, including duplicates. Late
+edge releases after endpoint removal are harmless; a normal release removes one
+owned duplicate. Topological sorting uses O(V+E) state and work without recursion.
+It preserves insertion-order predecessor traversal, ignores edges within strongly
+connected components and reports cycles (including self-loops) through hasLoops.
