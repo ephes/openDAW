@@ -59,14 +59,9 @@ export namespace ClipboardUtils {
         return arrayBuffer
     }
 
-    export const deserializeBoxes = <T extends Box = Box>(data: ArrayBufferLike,
-                                                          targetGraph: BoxGraph,
-                                                          options: {
-                                                              mapPointer: SpecialDecoder["map"]
-                                                              modifyBox?: Procedure<T>
-                                                              excludeBox?: Predicate<Box>
-                                                              validateBoxes?: Procedure<ReadonlyArray<Box>>
-                                                          }): ReadonlyArray<T> => {
+    export const validate = (data: ArrayBufferLike): void => {decodeGraph(data)}
+
+    const decodeGraph = (data: ArrayBufferLike): BoxGraph<BoxIO.TypeMap> => {
         const input = new ByteArrayInput(data)
         checkEnvelopeSize(data)
         input.skip(readLength(input))
@@ -83,6 +78,18 @@ export namespace ClipboardUtils {
         input.readBytes(graphData)
         const clipboardGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
         clipboardGraph.fromArrayBuffer(graphData.buffer, false)
+        return clipboardGraph
+    }
+
+    export const deserializeBoxes = <T extends Box = Box>(data: ArrayBufferLike,
+                                                          targetGraph: BoxGraph,
+                                                          options: {
+                                                              mapPointer: SpecialDecoder["map"]
+                                                              modifyBox?: Procedure<T>
+                                                              excludeBox?: Predicate<Box>
+                                                              validateBoxes?: Procedure<ReadonlyArray<Box>>
+                                                          }): ReadonlyArray<T> => {
+        const clipboardGraph = decodeGraph(data)
         options.validateBoxes?.(clipboardGraph.boxes())
         const skippedExternalUuids = UUID.newSet<UUID.Bytes>(uuid => uuid)
         clipboardGraph.boxes().forEach(box => {

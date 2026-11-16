@@ -9,8 +9,7 @@ import {
     Option,
     Optional,
     Provider,
-    RuntimeNotifier,
-    UUID
+    RuntimeNotifier
 } from "@opendaw/lib-std"
 import {Box, BoxGraph} from "@opendaw/lib-box"
 import {Pointers} from "@opendaw/studio-enums"
@@ -86,8 +85,7 @@ export namespace DevicesClipboard {
                                   }: Context): ClipboardHandler<ClipboardDevices> => {
         const isCopyable = (adapter: DeviceBoxAdapter): boolean => adapter.box.tags.copyable !== false
         const copyableSelected = (): ReadonlyArray<DeviceBoxAdapter> => selection.selected().filter(isCopyable)
-        const copyDevices = (): Option<ClipboardDevices> => {
-            const selected = copyableSelected()
+        const copyDevices = (selected = copyableSelected()): Option<ClipboardDevices> => {
             if (selected.length === 0) {return Option.None}
             let instrument: InstrumentDeviceBoxAdapter | null = null
             const midiEffects: Array<MidiEffectDeviceAdapter> = []
@@ -172,16 +170,20 @@ export namespace DevicesClipboard {
         }
         return {
             canCopy: (): boolean => getEnabled() && copyableSelected().length > 0,
-            canCut: (): boolean => getEnabled() && copyableSelected().length > 0,
+            canCut: (): boolean => getEnabled() && getHost().nonEmpty()
+                && copyableSelected().some(adapter => adapter.type !== "instrument"),
             canPaste: (entry: ClipboardEntry): boolean => getEnabled() && entry.type === "devices",
             copy: copyDevices,
             cut: (): Option<ClipboardDevices> => {
-                const result = copyDevices()
+                if (!getEnabled() || getHost().isEmpty()) {return Option.None}
+                const admitted = copyableSelected()
+                if (!admitted.some(adapter => adapter.type !== "instrument")) {return Option.None}
+                const result = copyDevices(admitted)
                 result.ifSome(() => {
                     const optHost = getHost()
                     if (optHost.isEmpty()) {return}
                     const host = optHost.unwrap()
-                    const selected = new Set(selection.selected().filter(adapter => adapter.type !== "instrument"))
+                    const selected = new Set(admitted.filter(adapter => adapter.type !== "instrument"))
                     const remainingMidi = host.midiEffects.adapters().filter(adapter => !selected.has(adapter))
                     const remainingAudio = host.audioEffects.adapters().filter(adapter => !selected.has(adapter))
                     editing.modify(() => {

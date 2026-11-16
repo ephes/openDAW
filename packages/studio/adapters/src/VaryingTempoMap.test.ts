@@ -1,4 +1,4 @@
-import {describe, expect, it} from "vitest"
+import {describe, expect, it, vi} from "vitest"
 import {
     ConstantTempoMap,
     EventCollection,
@@ -209,4 +209,86 @@ describe("VaryingTempoMap grid helpers", () => {
             expect(cursor.advance(events,0, 0, targetSeconds, storageBpm)).toBeCloseTo(ppqn, 4)
         }
     })
+})
+
+it("integrates and advances constant exterior tails with bounded work", () => {
+    const cursor = new TempoGridCursor()
+    const events: ValueEvent[] = [{type: "value-event", position: 1001, index: 0, value: 120, interpolation: Interpolation.Linear},
+        {type: "value-event", position: 2003, index: 1, value: 150, interpolation: Interpolation.None}]
+    const conversion = vi.spyOn(PPQN, "pulsesToSeconds")
+    try {
+        for (const size of [960000, 1920000]) {
+            conversion.mockClear()
+            expect(cursor.integrate(events, -size, 0, 120)).toBeCloseTo(PPQN.pulsesToSeconds(size, 120), 8)
+            expect(cursor.integrate(events, 3000, 3000 + size, 120)).toBeCloseTo(PPQN.pulsesToSeconds(size, 150), 8)
+            expect(cursor.advance(events, 3000, 0, PPQN.pulsesToSeconds(size, 150), 120)).toBeCloseTo(3000 + size, 8)
+            expect(conversion.mock.calls.length).toBeLessThan(12)
+        }
+    } finally {conversion.mockRestore()}
+})
+
+it("refuses unsupported coordinates and invalid tempo without an unbounded grid walk", () => {
+    const cursor = new TempoGridCursor()
+    const event = (position: number, value: number): ValueEvent => ({type: "value-event", position, index: 0, value, interpolation: Interpolation.Linear})
+    const convert = PPQN.pulsesToSeconds
+    let calls = 0
+    const conversion = vi.spyOn(PPQN, "pulsesToSeconds").mockImplementation((...args) => {
+        if (++calls > 1000) {throw new Error("nonprogressing grid walk")}
+        return convert(...args)
+    })
+    try {
+        for (const position of [NaN, Infinity, -Infinity, 2 ** 60]) {
+            expect(() => cursor.integrate([event(0, 120), event(2 ** 61, 130)], position, position + 1024, 120)).toThrow(RangeError)
+            expect(() => cursor.advance([], position, 0, 1, 120)).toThrow(RangeError)
+        }
+        for (const value of [0, -1, NaN, Infinity]) {
+            expect(() => cursor.integrate([], 0, 80, value)).toThrow(RangeError)
+            expect(() => cursor.advance([event(0, value)], 0, 0, 1, 120)).toThrow(RangeError)
+        }
+        expect(() => cursor.advance([], 0, NaN, 1, 120)).toThrow(RangeError)
+        expect(() => cursor.advance([], 0, 0, Infinity, 120)).toThrow(RangeError)
+        expect(() => cursor.advance([], 1e15, 0, Number.MIN_VALUE, 120)).toThrow(RangeError)
+    } finally {conversion.mockRestore()}
+})
+
+it("matches exterior/interior grid sampling across nonaligned event boundaries", () => {
+    const events: ValueEvent[] = [
+        {type: "value-event", position: 1001, index: 0, value: 90, interpolation: Interpolation.Linear},
+        {type: "value-event", position: 2003, index: 1, value: 160, interpolation: Interpolation.None}
+    ]
+    const collection = EventCollection.create(ValueEvent.Comparator)
+    events.forEach(event => collection.add(event))
+    const cursor = new TempoGridCursor()
+    const reference = (from: number, to: number) => {
+        let elapsed = 0
+        while (from < to) {
+            const sample = quantizeFloor(from, TempoChangeGrid)
+            const end = Math.min(to, sample + TempoChangeGrid)
+            elapsed += PPQN.pulsesToSeconds(end - from, ValueEvent.valueAt(collection, sample, 120))
+            from = end
+        }
+        return elapsed
+    }
+    for (const split of [999, 1001, 1010, 2003, 2010]) {
+        const elapsed = cursor.integrate(events, -1000, 5000, 120)
+        expect(elapsed).toBeCloseTo(reference(-1000, 5000), 10)
+        expect(elapsed).toBeCloseTo(cursor.integrate(events, -1000, split, 120) + cursor.integrate(events, split, 5000, 120), 10)
+        expect(cursor.advance(events, -1000, 0, elapsed, 120)).toBeCloseTo(5000, 7)
+    }
+})
+
+it("rejects loss of seconds progress inside a changing tempo zone", () => {
+    const events: ValueEvent[] = [
+        {type: "value-event", position: 0, index: 0, value: 120, interpolation: Interpolation.Linear},
+        {type: "value-event", position: 100000, index: 1, value: 180, interpolation: Interpolation.None}
+    ]
+    const cursor = new TempoGridCursor()
+    const convert = PPQN.pulsesToSeconds
+    let calls = 0
+    const conversion = vi.spyOn(PPQN, "pulsesToSeconds").mockImplementation((...args) => {
+        if (++calls > 1000) {throw new Error("nonprogressing seconds walk")}
+        return convert(...args)
+    })
+    try {expect(() => cursor.advance(events, 0, 2 ** 60, 2 ** 60 + 1024, 120)).toThrow(RangeError)}
+    finally {conversion.mockRestore()}
 })

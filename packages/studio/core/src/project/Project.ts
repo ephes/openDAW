@@ -2,6 +2,7 @@ import {
     Arrays,
     asInstanceOf,
     Editing,
+    Errors,
     Func,
     isAbsent,
     isDefined,
@@ -123,6 +124,8 @@ export class Project implements BoxAdaptersContext, Terminable, TerminableOwner 
     }
 
     readonly #terminator = new Terminator()
+    #recordingAttempt: AbortController | null = null
+    #retired = false
     readonly #sampleRegistrations: SortedSet<UUID.Bytes, { uuid: UUID.Bytes, terminable: Terminable }>
     readonly #userCreatedSamples: SortedSet<UUID.Bytes, UUID.Bytes> = UUID.newSet(uuid => uuid)
 
@@ -274,12 +277,23 @@ export class Project implements BoxAdaptersContext, Terminable, TerminableOwner 
     }
 
     startRecording(countIn: boolean = true) {
+        if (this.#retired) {return}
         this.engine.assertWorklet()
         if (Recording.isRecording) {return}
-        Recording.start(this, countIn).finally()
+        const attempt = this.#recordingAttempt = new AbortController()
+        void Recording.start(this, countIn, attempt.signal).catch(error => {
+            if (!Errors.isAbort(error)) {
+                return RuntimeNotifier.info({headline: "Recording Error", message: "Could not start recording. Please try again."})
+            }
+        }).finally(() => {
+            if (this.#recordingAttempt === attempt) {this.#recordingAttempt = null}
+        }).catch(() => {})
     }
 
+    cancelRecordingPreparation(): void {this.#recordingAttempt?.abort()}
+
     stopRecording(): void {
+        this.cancelRecordingPreparation()
         this.engine.stopRecording()
     }
 
@@ -492,6 +506,8 @@ export class Project implements BoxAdaptersContext, Terminable, TerminableOwner 
     }
 
     terminate(): void {
+        this.#retired = true
+        this.cancelRecordingPreparation()
         this.#sampleRegistrations.forEach(({terminable}) => terminable.terminate())
         this.#sampleRegistrations.clear()
         this.#terminator.terminate()

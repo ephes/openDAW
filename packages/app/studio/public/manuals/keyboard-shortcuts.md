@@ -45,3 +45,10 @@ Most shortcuts can be listed and customized in the [Shortcut Manager](action://o
 ### Playfield Sample Pads
 
 * Hold ⌥ and drag to copy a sample to another pad
+## Device clipboard
+
+Device Cut copies the admitted selection and removes its copyable effects.
+Protected effects and instruments stay installed; Cut is unavailable for an
+instrument alone. Copy remains available for copyable instruments.
+Pasting master output content is one undoable edit. If installation fails, the
+previous master tracks and effects are restored.

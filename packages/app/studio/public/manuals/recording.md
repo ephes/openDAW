@@ -80,3 +80,18 @@ note input.
 openDAW automatically compensates for system latency when recording. The recorded audio and MIDI data is aligned to the
 correct timeline position regardless of your output device latency. However, lower latency still provides a better
 real-time playing experience.
+
+## Startup cancellation and recovery
+
+Stop also cancels recording while inputs are still being prepared. Closing the
+project cancels its pending recording. Prepared recording resources are released
+before another attempt becomes available; armed input monitoring remains active
+after a canceled or failed attempt. If startup fails, an error is shown and you
+can try recording again.
+
+If you change the monitoring output more than once while a selection is pending,
+the latest choice wins. A failed latest choice uses the default output. An older
+selection cannot overwrite a newer successful choice.
+
+Stop also cancels playback waiting for the browser to resume audio. If resuming
+audio fails, use Play again after the playback error is shown.

@@ -5,6 +5,11 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Skip constant tempo exterior spans in closed form and reject non-finite, unsupported or nonprogressing cursor input with RangeError.
+- Refuse signature moves onto occupied bars, preserving later absolute bar positions.
+
+- Bound tempo cursor work in constant exterior spans and reject invalid tempo/coordinates or nonprogressing arithmetic with RangeError.
+
 - Install attempt-owned script constructors before publishing saved code and bindings; fence registry activation across compiler instances and allow deliberate loads of older saved updates. Failed or superseded attempts preserve the previous working device.
 
 - Refuse incomplete/non-finite numeric script tokens, invalid shorthand/exponential/bool domains and duplicate parameter/sample names in new compile input before graph edits or module installation; saved code keeps the tolerant legacy reading so existing projects still load and can be recompiled. A deferred initial compile no longer appends to an unrelated history step.

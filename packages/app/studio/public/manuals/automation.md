@@ -152,3 +152,9 @@ Automation clips and regions can loop. You can adjust the content duration:
 - Watch the tooltip when hovering over events or midpoints to see the current value
 - Use the anchor value (horizontal dashed line) to align events to a specific value
 - Right-click for context menu options on events
+
+## Time signature placement
+
+Moving a time signature onto a bar that already has a signature leaves the map
+unchanged. Choose an unoccupied bar instead. Moving between or past other
+signatures preserves their absolute bar positions and remains undoable.

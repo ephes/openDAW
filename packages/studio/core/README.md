@@ -402,3 +402,49 @@ HRClock accepts only a stable even observation and consecutive response counters
 in the modular Int32 domain, including signed rollover and zero. Initialization
 is independent of counter sign. Overlapping or skipped publications return zero
 for that measurement without waiting or retrying on the audio thread.
+
+### Clipboard graph ownership
+
+Device cut captures one copyable selection. Protected effects survive cut and
+chain reindexing; instruments are copied but remain installed. Cut is available
+only when at least one copyable effect and a host exist.
+Output paste validates the complete binary graph before clearing master content.
+Deletion notifications precede installation notifications in separate transactions,
+but both form one undo step. Installation failure compensates the deletion and
+preserves earlier undo/redo history.
+
+Clip subscription catchup delivers an owned array snapshot. The subscription is
+installed before catchup, so reentrant sequencing changes are delivered in order.
+A throwing initial observer retires its subscription before the error propagates.
+
+### Engine readiness and playback intent
+
+Readiness settles once: the ready RPC resolves it, while processor errors and
+pre-ready retirement reject it. Retirement detaches fault listeners and the
+client RPC executor. An internal observer prevents unhandled readiness rejection
+when no caller awaits it. Play after AudioContext resume is bound to the current
+worklet and transport intent. Stop, replacement and release invalidate pending
+Play; a current resume refusal displays a playback error and allows retry.
+
+### Recording acquisition and monitor routing
+
+`Capture.prepareRecording()` returns an owned `Terminable` for prepared resources.
+Audio preparation owns the worklet before registration/connection; a successful
+`startRecording()` transfers that resource to the recording subscription. A
+failed start leaves it eligible for retirement. MIDI preparation returns an empty
+handle. Preparation retirement preserves intentionally armed input monitoring.
+
+Recording waits for all preparations to settle, including late successes, then
+unwinds every returned handle on failure. Each capture subscription is owned
+before the next capture or automation/transport step starts. Failure resets
+global recording ownership even when cleanup throws, and Project reports one
+startup error. Project Stop and retirement abort the pending attempt; shared worklet Stop also
+invalidates it when invoked by another transport facade; admission
+is checked again before capture/transport publication. A new recording can begin
+after canceled preparations finish retiring. Retired audio captures stop owned
+streams and discard/stop streams that arrive after retirement.
+
+Monitor sink changes keep candidate elements/destinations local until the latest
+selection succeeds. Superseded candidates pause and disconnect without changing
+current routing. Only a failed current selection falls back to the default output;
+retirement prevents any pending selection from installing.

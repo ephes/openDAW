@@ -5,6 +5,11 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve protected effects on Cut and restore master content after a failed output paste.
+- Refuse time-signature moves onto occupied bars and bound constant-tail tempo calculations.
+- Keep Stop effective during audio resume and recording preparation; failed recording startup releases prepared resources and permits retry.
+- Preserve the latest monitor output choice during overlapping device selections.
+
 - Restore the system default audio sink, surface switch refusals and ignore obsolete output-device queries.
 
 - Keep failed or declined project deletions visible and retryable; close approval belongs to the same active profile, and duplicate delete confirmations are ignored.

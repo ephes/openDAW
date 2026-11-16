@@ -6,6 +6,7 @@ import {
     Observer,
     Option,
     Procedure,
+    RuntimeNotifier,
     Subscription,
     Terminator,
     UUID
@@ -40,12 +41,14 @@ export class EngineFacade implements Engine {
     readonly #preferencesFacade: PreferencesFacade<EngineSettings>
 
     #worklet: Option<EngineWorklet> = Option.None
+    #playIntent: number = 0
 
     constructor() {
         this.#preferencesFacade = Preferences.facade("engine-preferences", EngineSettingsSchema)
     }
 
     setWorklet(worklet: EngineWorklet) {
+        this.#playIntent++
         this.#worklet = Option.wrap(worklet)
         this.#preferencesFacade.setHost(worklet.preferences)
         this.#lifecycle.terminate()
@@ -65,6 +68,7 @@ export class EngineFacade implements Engine {
     assertWorklet(): void {this.#worklet.unwrap("No worklet available")}
 
     releaseWorklet(): void {
+        this.#playIntent++
         this.#worklet.ifSome(worklet => worklet.terminate())
         this.#preferencesFacade.releaseHost()
         this.#lifecycle.terminate()
@@ -72,16 +76,29 @@ export class EngineFacade implements Engine {
     }
 
     play(): void {
+        const intent = ++this.#playIntent
         this.#worklet.ifSome(worklet => {
+            const current = (): boolean => intent === this.#playIntent
+                && this.#worklet.unwrapOrNull() === worklet
             const context = worklet.context as AudioContext
             if (context.state === "suspended") {
-                context.resume().then(() => worklet.play())
+                void (async () => {
+                    await context.resume()
+                    if (current()) {worklet.play()}
+                })().catch(() => {
+                    if (current()) {
+                        return RuntimeNotifier.info({headline: "Playback Error", message: "Could not resume audio playback. Please try Play again."})
+                    }
+                }).catch(() => {})
             } else {
                 worklet.play()
             }
         })
     }
-    stop(reset: boolean = false): void {this.#worklet.ifSome(worklet => worklet.stop(reset))}
+    stop(reset: boolean = false): void {
+        this.#playIntent++
+        this.#worklet.ifSome(worklet => worklet.stop(reset))
+    }
     setPosition(position: ppqn): void {this.#worklet.ifSome(worklet => worklet.setPosition(position))}
     prepareRecordingState(countIn: boolean): void {this.#worklet.ifSome(worklet => worklet.prepareRecordingState(countIn))}
     stopRecording(): void {this.#worklet.ifSome(worklet => worklet.stopRecording())}
