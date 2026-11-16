@@ -90,3 +90,24 @@ Lookahead restarts with ceil(sampleRate × 0.005) silent latency frames. Its lin
 stereo gain targets -0.001 dBFS headroom and clamps output to full scale. The
 zero-latency mode keeps the detector attack and can overshoot during transients.
 Both modes preserve channel ratios and processing across partial spans.
+
+### Instrument restart and playback
+
+Vaporisateur refuses note starts while disabled. Reset (including disable) retires
+voices, output and limiter history while preserving controls. Re-enabling requires
+a new note start.
+
+Playfield treats equal endpoints and sources shorter than two frames as empty
+playback intervals in every gate mode; they retire without audio. Nonfinite or
+out-of-source endpoints/rates retire too. Nonempty loops preserve fractional
+overshoot in either direction with constant work per frame, even for adjacent
+representable endpoints.
+
+Playfield one-shots contribute their current interpolated frame before retiring at
+source boundaries, including position zero in reverse. Gate.On tapers by remaining
+source distance in either direction. Zero attack/release controls use one sample.
+Each sample owns at most 16 live voices, including release tails. A new start at
+the ceiling discards the oldest voice immediately (a possible discontinuity).
+Note-offs still match the surviving event IDs; mono retriggers and choke-group
+release dispatch remain intact. Position broadcasts include a terminator after
+all 16 voices.

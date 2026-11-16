@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep Playfield one-shot boundary contributions in both directions; bound live sample polyphony and release tails to 16 with oldest-first stealing and event-owned stops.
+
+- Retire empty/invalid Playfield sample intervals and wrap forward/reverse loops in constant work, preserving fractional overshoot.
+
+- Refuse disabled Vaporisateur note starts and clear its limiter envelope on reset. Tests cover note-source delivery and quiet restart after loud playback.
+
 - Retire Maximizer delay/detector/reduction history when lookahead changes; verify static gain, stereo linking, exact latency, headroom and automated partial-span rendering.
 
 - Quarantine NAM processing faults with complete dry bypass and explicit model-reload recovery; cover real Dattorro routing, partitions and restart at three sample rates.
