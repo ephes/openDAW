@@ -1,4 +1,4 @@
-import {int, Observer, Option, Subscription, Terminable, UUID} from "@opendaw/lib-std"
+import {int, Observer, Option, Provider, Subscription, Terminable, UUID} from "@opendaw/lib-std"
 import {Processor, ProcessPhase} from "./processing"
 import {LiveStreamBroadcaster} from "@opendaw/lib-fusion"
 import {UpdateClock} from "./UpdateClock"
@@ -21,6 +21,8 @@ export interface EngineContext extends BoxAdaptersContext, Terminable {
     getAudioUnit(uuid: UUID.Bytes): AudioUnit
     registerProcessor(processor: Processor): Terminable
     registerEdge(source: Processor, target: Processor): Terminable
+    // Releases processors and edges registered by `create` if it throws.
+    constructAtomically<T>(create: Provider<T>): T
     subscribeProcessPhase(observer: Observer<ProcessPhase>): Subscription
     awaitResource(promise: Promise<unknown>): void
     ignoresRegion(uuid: UUID.Bytes): boolean

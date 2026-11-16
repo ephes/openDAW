@@ -393,3 +393,12 @@ probe and accepted insert costs O(log N), with at most O(N L) probes. Sparse pre
 maxima avoid repeatedly sorting or scanning target-lane prefixes. Clips and
 automation tracks are preserved; the caller wraps compaction in an editing
 transaction so moves and empty-lane deletion form one undo step.
+
+### Clock publication
+
+The timestamp worker brackets each response-counter/timestamp write with an
+odd/even Int32 publication sequence in word 3 of the existing 32-byte buffer.
+HRClock accepts only a stable even observation and consecutive response counters
+in the modular Int32 domain, including signed rollover and zero. Initialization
+is independent of counter sign. Overlapping or skipped publications return zero
+for that measurement without waiting or retrying on the audio thread.

@@ -41,11 +41,13 @@ export class AudioUnit implements Terminable {
 
         this.#terminator.ownAll(
             this.#adapter.input.catchupAndSubscribe(owner => {
+                const next = context.constructAtomically(() => owner.flatMap((input: AudioUnitInputAdapter) =>
+                    Option.wrap(InstrumentDeviceProcessorFactory.create(context, input.box.box))))
                 this.#midiDeviceChain.invalidateWiring()
                 this.#audioDeviceChain.invalidateWiring()
-                this.#input.ifSome(input => input.terminate())
-                this.#input = owner.flatMap((input: AudioUnitInputAdapter) =>
-                    Option.wrap(InstrumentDeviceProcessorFactory.create(context, input.box.box)))
+                const previous = this.#input
+                this.#input = next
+                previous.ifSome(input => input.terminate())
             })
         )
     }
@@ -62,13 +64,15 @@ export class AudioUnit implements Terminable {
     get frozen(): Option<{data: AudioData, processor: FrozenPlaybackProcessor}> {return this.#frozen}
     get skipChannelStrip(): boolean {return this.#skipChannelStrip}
     setFrozenAudio(data: Option<AudioData>): void {
-        this.#frozen.ifSome(frozen => frozen.processor.terminate())
-        this.#frozen = data.map(audioData => ({
+        const next = this.#context.constructAtomically(() => data.map(audioData => ({
             data: audioData,
             processor: new FrozenPlaybackProcessor(this.#context, audioData)
-        }))
+        })))
         this.#midiDeviceChain.invalidateWiring()
         this.invalidateWiring()
+        const previous = this.#frozen
+        this.#frozen = next
+        previous.ifSome(frozen => frozen.processor.terminate())
     }
     setPreChannelStripSource(source: Option<AudioBuffer>): void {this.#preChannelStripSource = source}
 

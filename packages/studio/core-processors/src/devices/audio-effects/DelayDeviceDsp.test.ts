@@ -56,3 +56,25 @@ it("resets modulation history to a fresh configured device across split spans", 
         }
     }
 })
+
+it.each([false, true])("empty spans preserve untouched delay and pre-delay state (reset=%s)", reset => {
+    const empty = new DelayDsp(512), fresh = new DelayDsp(512)
+    const input = stereo(), a = stereo(), b = stereo()
+    for (const dsp of [empty, fresh]) {
+        dsp.offset = 3; dsp.filter = 0; dsp.feedback = 0.3; dsp.wet = 1; dsp.dry = 0
+        dsp.preDelayLeftOffset = 2; dsp.preDelayRightOffset = 4
+        if (reset) {dsp.process(input, a, 0, 128); dsp.reset()}
+    }
+    a.forEach(ch => ch.fill(77))
+    empty.process(input, a, 31, 31)
+    expect(a.every(ch => ch.every(value => value === 77))).toBe(true)
+    for (const dsp of [empty, fresh]) {
+        dsp.offset = 17; dsp.preDelayLeftOffset = 7; dsp.preDelayRightOffset = 9
+    }
+    input[0][0] = 1; input[1][0] = -0.5
+    for (let block = 0; block < 4; block++) {
+        empty.process(input, a, 0, 128); fresh.process(input, b, 0, 128)
+        expect(a).toEqual(b)
+        input.forEach(ch => ch.fill(0))
+    }
+})

@@ -9,6 +9,7 @@ import {
     Observer,
     Option,
     panic,
+    Provider,
     SortedSet,
     Subscription,
     SyncStream,
@@ -19,6 +20,7 @@ import {
 import {BoxGraph, createSyncTarget, DeleteUpdate, NewUpdate} from "@opendaw/lib-box"
 import {AudioFileBox, BoxIO, BoxVisitor, SoundfontFileBox} from "@opendaw/studio-boxes"
 import {EngineContext} from "./EngineContext"
+import {RegistrationScopes} from "./RegistrationScopes"
 import {TimeInfo} from "./TimeInfo"
 import {
     AnyClipBoxAdapter,
@@ -86,6 +88,7 @@ export class EngineProcessor extends AudioWorkletProcessor implements EngineCont
     readonly #tempoMap: TempoMap
     readonly #parameterFieldAdapters: ParameterFieldAdapters
     readonly #audioGraph: Graph<Processor>
+    readonly #registrationScopes: RegistrationScopes = new RegistrationScopes()
     readonly #audioGraphSorting: TopologicalSort<Processor>
     readonly #notifier: Notifier<ProcessPhase>
     readonly #mixer: Mixer
@@ -381,6 +384,7 @@ export class EngineProcessor extends AudioWorkletProcessor implements EngineCont
         }
         const processors = this.#processQueue.unwrap()
         this.#renderer.process(processInfo => {
+            this.#clipSequencing.followTransport(processInfo.blocks)
             processors.forEach(processor => processor.process(processInfo))
             if (metronomeEnabled) {this.#metronome.process(processInfo)}
         })
@@ -425,24 +429,26 @@ export class EngineProcessor extends AudioWorkletProcessor implements EngineCont
     registerProcessor(processor: Processor): Terminable {
         this.#audioGraph.addVertex(processor)
         this.#processQueue = Option.None
-        return {
+        return this.#registrationScopes.processor(processor, {
             terminate: () => {
                 this.#audioGraph.removeVertex(processor)
                 this.#processQueue = Option.None
             }
-        }
+        })
     }
 
     registerEdge(source: Processor, target: Processor): Terminable {
         this.#audioGraph.addEdge([source, target])
         this.#processQueue = Option.None
-        return {
+        return this.#registrationScopes.edge({
             terminate: () => {
                 this.#audioGraph.removeEdge([source, target])
                 this.#processQueue = Option.None
             }
-        }
+        })
     }
+
+    constructAtomically<T>(create: Provider<T>): T {return this.#registrationScopes.run(create)}
 
     awaitResource(promise: Promise<unknown>): void {
         this.#pendingResources.add(promise)

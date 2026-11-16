@@ -5,6 +5,18 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve Delay and pre-delay state on empty spans; prepare input/frozen replacements before retiring the last working source and unwind failed processor/edge registrations through `EngineContext.constructAtomically`.
+
+- Publish clock timestamp/counter samples coherently and preserve consecutive measurements across signed Int32 counter rollover.
+
+- End one-shot clips relative to their actual launch (re-based across loop wraps and seeks), and retire invalid mutable clip durations before scheduling or quantization.
+
+- Cancel pending replacement/stop when selecting the playing clip, and launch at the first crossed half-open quantization boundary.
+
+- Release clip graph observers and deleted track states, notifying both playing and queued clip owners.
+
+- Retire MIDI/insert-return effects and enabled subscriptions with their chain; disconnect wiring before processor cleanup.
+
 - Distinguish continuous and until-note-off Soundfont loops, validate sample-relative loop bounds with nonlooping fallback, and wrap arbitrary finite overshoot in constant work.
 
 - Bind Tape pitch voices to audio-data generations and quantize shared cycle boundaries before deriving spans, aligning pitch/stretch fade gains with output frames.

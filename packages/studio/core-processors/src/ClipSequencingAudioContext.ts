@@ -5,9 +5,10 @@ import {
     Section,
     TrackBoxAdapter
 } from "@opendaw/studio-adapters"
-import {Arrays, identity, Option, quantizeFloor, SortedSet, UUID} from "@opendaw/lib-std"
+import {Arrays, Bits, identity, isDefined, Option, Optional, quantizeCeil, SortedSet, Terminator, UUID} from "@opendaw/lib-std"
 import {ppqn, PPQN} from "@opendaw/lib-dsp"
 import {BoxGraph, Update} from "@opendaw/lib-box"
+import {Block, BlockFlag} from "./processing"
 
 // Just convenient to identify which UUID is for which type
 type ClipKey = UUID.Bytes
@@ -16,29 +17,35 @@ type TrackKey = UUID.Bytes
 class TrackState {
     waiting: Option<Option<AnyClipBoxAdapter>> = Option.None
     playing: Option<AnyClipBoxAdapter> = Option.None
+    launchPosition: ppqn = 0
 
-    constructor(readonly uuid: TrackKey) {}
+    constructor(readonly uuid: TrackKey, public transportOffset: ppqn) {}
 }
 
 export class ClipSequencingAudioContext implements ClipSequencing {
-    readonly #boxGraph: BoxGraph
+    readonly #terminator = new Terminator()
     readonly #states: SortedSet<TrackKey, TrackState>
 
     readonly #started: Array<ClipKey> = []
     readonly #stopped: Array<ClipKey> = []
     readonly #obsolete: Array<ClipKey> = []
 
+    readonly #transportBlocks: Array<Block> = []
+    readonly #transportOffsets: Array<ppqn> = []
+    #transportPosition: Optional<ppqn> = undefined
+    #transportOffset: ppqn = 0
+
     constructor(boxGraph: BoxGraph) {
-        this.#boxGraph = boxGraph
-        this.#boxGraph.subscribeToAllUpdatesImmediate({
+        this.#states = UUID.newSet<TrackState>(state => state.uuid)
+        this.#terminator.own(boxGraph.subscribeToAllUpdatesImmediate({
             onUpdate: (update: Update) => {
                 if (update.type === "delete") {
                     const uuid = update.uuid
                     // handle track deletion
                     this.#states.opt(uuid).ifSome(state => {
                         state.playing.ifSome(playing => this.#onStop(playing.uuid))
-                        state.playing = Option.None
-                        state.waiting = Option.None
+                        state.waiting.flatMap(identity).ifSome(clip => this.#obsolete.push(clip.uuid))
+                        this.#states.removeByKey(uuid)
                     })
                     // handle clip deletion
                     this.#states.forEach(state => {
@@ -53,22 +60,25 @@ export class ClipSequencingAudioContext implements ClipSequencing {
                     })
                 }
             }
-        })
-        this.#states = UUID.newSet<TrackState>(state => state.uuid)
+        }))
     }
 
     schedulePlay(clipAdapter: AnyClipBoxAdapter): void {
+        if (!this.#validDuration(clipAdapter)) {
+            this.#obsolete.push(clipAdapter.uuid)
+            return
+        }
         clipAdapter.trackBoxAdapter.ifSome(({uuid}) => {
-            const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid))
-            if (trackState.playing.nonEmpty() && trackState.playing.unwrap() === clipAdapter) {
-                console.debug(`${clipAdapter} is already playing (ignore)`)
-                return
-            }
+            const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid, this.#transportOffset))
             const optClip = trackState.waiting.flatMap(waiting => waiting)
             if (optClip.nonEmpty()) {
                 console.debug("obsolete", optClip.unwrap())
                 this.#obsolete.push(optClip.unwrap().uuid)
-                trackState.waiting = Option.None
+            }
+            trackState.waiting = Option.None
+            if (trackState.playing.nonEmpty() && trackState.playing.unwrap() === clipAdapter) {
+                console.debug(`${clipAdapter} is already playing (ignore)`)
+                return
             }
             console.debug(`schedulePlay(${UUID.toString(trackState.uuid)} > ${clipAdapter})`)
             Arrays.removeOpt(this.#obsolete, clipAdapter.uuid)
@@ -77,7 +87,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     }
 
     scheduleStop({uuid}: TrackBoxAdapter): void {
-        const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid))
+        const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid, this.#transportOffset))
         const optClip = trackState.waiting.flatMap(waiting => waiting)
         if (optClip.nonEmpty()) {
             console.debug("obsolete", optClip.unwrap())
@@ -98,57 +108,101 @@ export class ClipSequencingAudioContext implements ClipSequencing {
             state.playing = Option.None
         })
         this.#states.clear()
+        this.#transportBlocks.length = 0
+        this.#transportOffsets.length = 0
+        this.#transportPosition = undefined
+    }
+
+    // Loop wraps, marker jumps and seeks move the transport. Each playing block carries the
+    // cumulative offset; a track applies it when its iteration reaches that block.
+    followTransport(blocks: ReadonlyArray<Block>): void {
+        this.#transportBlocks.length = 0
+        this.#transportOffsets.length = 0
+        for (const block of blocks) {
+            if (!Bits.every(block.flags, BlockFlag.transporting | BlockFlag.playing)) {continue}
+            const position = this.#transportPosition
+            if (isDefined(position) && position !== block.p0) {this.#transportOffset += block.p0 - position}
+            this.#transportBlocks.push(block)
+            this.#transportOffsets.push(this.#transportOffset)
+            this.#transportPosition = block.p1
+        }
     }
 
     * iterate(trackKey: TrackKey, p0: ppqn, p1: ppqn): IterableIterator<Section> {
+        if (p0 >= p1) {return}
         const state = this.#states.getOrNull(trackKey)
         if (state === null) {
             yield {optClip: Option.None, sectionFrom: p0, sectionTo: p1}
             return
         }
+        this.#followTransportAt(state, p0)
+        state.waiting.flatMap(identity).ifSome(clip => {
+            if (!this.#validDuration(clip)) {
+                this.#obsolete.push(clip.uuid)
+                state.waiting = Option.None
+            }
+        })
+        state.playing.ifSome(clip => {
+            if (!this.#validDuration(clip)) {
+                this.#onStop(clip.uuid)
+                state.playing = Option.None
+            }
+        })
         if (state.waiting.nonEmpty()) {
             const optNextClip = state.waiting.unwrap()
-            const scheduleDuration = state.playing.mapOr(clip => clip.duration, PPQN.Bar) // Use format values
-            const scheduleEnd = quantizeFloor(p1, scheduleDuration)
-            if (scheduleEnd >= p0) {
-                if (p0 < scheduleEnd) {
-                    // process to schedule time
-                    yield {optClip: state.playing, sectionFrom: p0, sectionTo: scheduleEnd}
-                }
-                state.waiting = Option.None // clear the next pointer
+            // Replacement quantization is independent of a one-shot's natural end.
+            const scheduleDuration = state.playing.mapOr(clip => clip.duration, PPQN.Bar)
+            const scheduleEnd = quantizeCeil(p0, scheduleDuration)
+            if (scheduleEnd < p1) {
+                yield* this.#playingSections(state, p0, scheduleEnd)
+                state.waiting = Option.None
                 state.playing.ifSome(clip => this.#onStop(clip.uuid))
-                if (optNextClip.nonEmpty()) {
-                    state.playing = optNextClip // play next clip
-                    this.#onStart(optNextClip.unwrap().uuid)
-                } else {
-                    state.playing = Option.None // stop playing clip
-                }
-                yield {optClip: state.playing, sectionFrom: scheduleEnd, sectionTo: p1}
-            } else {
-                yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
-            }
-        } else {
-            if (state.playing.nonEmpty()) {
-                const playing = state.playing.unwrap()
-                if (playing.box.triggerMode.loop.getValue()) {
-                    yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
-                } else {
-                    const scheduleEnd = quantizeFloor(p0, playing.duration) + playing.duration
-                    if (scheduleEnd <= p1) {
-                        yield {optClip: state.playing, sectionFrom: p0, sectionTo: scheduleEnd}
-                        state.playing = Option.None
-                        this.#onStop(playing.uuid)
-                        if (scheduleEnd < p1) {
-                            yield {optClip: Option.None, sectionFrom: scheduleEnd, sectionTo: p1}
-                        }
-                    } else {
-                        yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
-                    }
-                }
-            } else {
-                yield {optClip: Option.None, sectionFrom: p0, sectionTo: p1}
+                state.playing = optNextClip
+                state.launchPosition = scheduleEnd
+                optNextClip.ifSome(clip => this.#onStart(clip.uuid))
+                yield* this.#playingSections(state, scheduleEnd, p1)
+                return
             }
         }
+        yield* this.#playingSections(state, p0, p1)
+    }
+
+    * #playingSections(state: TrackState, p0: ppqn, p1: ppqn): IterableIterator<Section> {
+        if (p0 >= p1) {return}
+        if (state.playing.nonEmpty()) {
+            const clip = state.playing.unwrap()
+            if (!clip.box.triggerMode.loop.getValue()) {
+                const end = state.launchPosition + clip.duration
+                if (end <= p1) {
+                    if (p0 < end) {
+                        yield {optClip: state.playing, sectionFrom: p0, sectionTo: end}
+                    }
+                    state.playing = Option.None
+                    this.#onStop(clip.uuid)
+                    if (end < p1) {
+                        yield {optClip: Option.None, sectionFrom: Math.max(p0, end), sectionTo: p1}
+                    }
+                    return
+                }
+            }
+        }
+        yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
+    }
+
+    #followTransportAt(state: TrackState, position: ppqn): void {
+        for (let index = 0; index < this.#transportBlocks.length; index++) {
+            const {p0, p1} = this.#transportBlocks[index]
+            if (p0 <= position && position < p1) {
+                const offset = this.#transportOffsets[index]
+                state.launchPosition += offset - state.transportOffset
+                state.transportOffset = offset
+                return
+            }
+        }
+    }
+
+    #validDuration(clip: AnyClipBoxAdapter): boolean {
+        return Number.isFinite(clip.duration) && clip.duration > 0
     }
 
     changes(): Option<ClipSequencingUpdates> {
@@ -167,6 +221,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     }
 
     terminate(): void {
+        this.#terminator.terminate()
         this.#states.clear()
         this.#started.length = 0
         this.#stopped.length = 0

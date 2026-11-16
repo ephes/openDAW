@@ -135,3 +135,53 @@ length`. Invalid bounds and unsupported modes fall back to nonlooping playback;
 empty samples and nonfinite/nonpositive playback rates retire silently without
 reading PCM. Other voices continue. Valid loops wrap arbitrary finite overshoot
 with modulo arithmetic, including one-frame loops and high pitches.
+
+### MIDI and insert-return chain retirement
+
+Chain termination disconnects all wiring, releases collection/phase observers and
+retires every owned effect together with its enabled-field subscription. Repeated
+termination is harmless; edits to former effects cannot rewire the retired chain.
+
+### Clip graph ownership
+
+Clip contexts release graph observation before clearing their state. Track deletion
+stops its playing clip, marks its queued clip obsolete and removes the track state;
+subsequent clip deletions visit only retained live tracks.
+
+Selecting the playing clip cancels a queued replacement or stop; a superseded
+queued clip becomes obsolete. Launch/stop quantization uses the first boundary at
+or after the span start. Spans own `[from, to)`: a right-endpoint launch waits
+for the next nonempty span, so large and partitioned renders launch identically.
+
+One-shots end at their actual launch position plus their current duration, including
+when launch and end fall within one large span. The engine reports each render's
+transport blocks (`followTransport`) with their cumulative jump offset; when a track's
+iteration reaches a block after a loop wrap, marker jump or seek, the launch is re-based so
+the one-shot keeps its already played span and still ends after one duration. Point queries
+such as automation `valueAt` never move the launch. Queued replacement quantization
+remains independent of that end. Only finite positive clip durations are admitted:
+invalid launch requests become obsolete; invalid queued or playing clips retire
+on the next nonempty iteration (obsolete or stopped respectively). Repairing the
+duration allows an explicit new launch. Empty spans perform no scheduling work.
+
+### Clock publication
+
+The timestamp worker brackets each response-counter/timestamp write with an
+odd/even Int32 publication sequence in word 3 of the existing 32-byte buffer.
+HRClock accepts only a stable even observation and consecutive response counters
+in the modular Int32 domain, including signed rollover and zero. Initialization
+is independent of counter sign. Overlapping or skipped publications return zero
+for that measurement without waiting or retrying on the audio thread.
+
+### Source replacement and empty delay spans
+
+Input and frozen-source replacement constructs the next owner before disconnecting
+or retiring the current source. Construction failure preserves the current source
+and wiring. `EngineContext.constructAtomically` scopes processor/edge registrations
+made during construction: they unwind on failure, completed sources own their leases
+(the source keeps the real context, no wrapper), and successful replacement retires
+the previous source once.
+
+An empty Delay span touches neither output nor DSP/pre-delay history. Changing
+controls after an empty first call initializes the delay just like a fresh network,
+including after reset; smoothing begins only after actual frames were processed.

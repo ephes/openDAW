@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Publish clock timestamp/counter samples coherently and preserve consecutive measurements across signed Int32 counter rollover.
+
 - Compact audio lanes using tempo-aware region endpoints, including seconds-based recordings across tempo changes.
 - Index occupied intervals once per compaction operation, avoiding repeated scans and sorting of growing target lanes while preserving greedy placement and undo behavior.
 

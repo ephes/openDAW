@@ -103,6 +103,7 @@ export class DelayDeviceDsp {
     setLfoDepth(value: number): void {this.lfoDepth = value}
 
     process(input: StereoMatrix.Channels, output: StereoMatrix.Channels, fromIndex: int, toIndex: int): void {
+        if (fromIndex >= toIndex) {return}
         const iL = input[0]
         const iR = input[1]
         const oL = output[0]
