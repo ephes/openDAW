@@ -168,3 +168,14 @@ HRClock accepts only a stable even observation and consecutive response counters
 in the modular Int32 domain, including signed rollover and zero. Initialization
 is independent of counter sign. Overlapping or skipped publications return zero
 for that measurement without waiting or retrying on the audio thread.
+
+### Source replacement and empty delay spans
+
+Input and frozen-source replacement constructs the next owner before disconnecting
+or retiring the current source. Construction failure preserves the current source
+and wiring. Temporary processor/edge leases unwind on failure; completed sources
+own their leases, and successful replacement retires the previous source once.
+
+An empty Delay span touches neither output nor DSP/pre-delay history. Changing
+controls after an empty first call initializes the delay just like a fresh network,
+including after reset; smoothing begins only after actual frames were processed.

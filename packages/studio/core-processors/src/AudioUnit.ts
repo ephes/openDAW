@@ -9,6 +9,7 @@ import {MidiDeviceChain} from "./MidiDeviceChain"
 import {AudioUnitOptions} from "./AudioUnitOptions"
 import {InstrumentDeviceProcessor} from "./InstrumentDeviceProcessor"
 import {FrozenPlaybackProcessor} from "./FrozenPlaybackProcessor"
+import {Processor} from "./processing"
 
 export class AudioUnit implements Terminable {
     static ID: int = 0 | 0
@@ -41,11 +42,13 @@ export class AudioUnit implements Terminable {
 
         this.#terminator.ownAll(
             this.#adapter.input.catchupAndSubscribe(owner => {
+                const next = this.#prepareSource(context => owner.flatMap((input: AudioUnitInputAdapter) =>
+                    Option.wrap(InstrumentDeviceProcessorFactory.create(context, input.box.box))))
                 this.#midiDeviceChain.invalidateWiring()
                 this.#audioDeviceChain.invalidateWiring()
-                this.#input.ifSome(input => input.terminate())
-                this.#input = owner.flatMap((input: AudioUnitInputAdapter) =>
-                    Option.wrap(InstrumentDeviceProcessorFactory.create(context, input.box.box)))
+                const previous = this.#input
+                this.#input = next
+                previous.ifSome(input => input.terminate())
             })
         )
     }
@@ -62,13 +65,15 @@ export class AudioUnit implements Terminable {
     get frozen(): Option<{data: AudioData, processor: FrozenPlaybackProcessor}> {return this.#frozen}
     get skipChannelStrip(): boolean {return this.#skipChannelStrip}
     setFrozenAudio(data: Option<AudioData>): void {
-        this.#frozen.ifSome(frozen => frozen.processor.terminate())
-        this.#frozen = data.map(audioData => ({
+        const next = this.#prepareSource(context => data.map(audioData => ({
             data: audioData,
-            processor: new FrozenPlaybackProcessor(this.#context, audioData)
-        }))
+            processor: new FrozenPlaybackProcessor(context, audioData)
+        })))
         this.#midiDeviceChain.invalidateWiring()
         this.invalidateWiring()
+        const previous = this.#frozen
+        this.#frozen = next
+        previous.ifSome(frozen => frozen.processor.terminate())
     }
     setPreChannelStripSource(source: Option<AudioBuffer>): void {this.#preChannelStripSource = source}
 
@@ -86,6 +91,49 @@ export class AudioUnit implements Terminable {
         this.#terminator.terminate()
         this.#input.ifSome(input => input.terminate())
         this.#input = Option.None
+    }
+
+    // Construction can register processors/edges before throwing. Keep temporary
+    // ownership of those public leases until a complete replacement is available.
+    #prepareSource<T>(create: (context: EngineContext) => T): T {
+        let pending: Terminator | undefined = new Terminator()
+        const own = (lease: Terminable): Terminable => {
+            if (pending === undefined) {return lease}
+            let attached = true
+            const once = {terminate: () => {
+                if (!attached) {return}
+                attached = false
+                lease.terminate()
+            }}
+            return pending.own(once)
+        }
+        const context = new Proxy(this.#context, {get: (target, key) => {
+            if (key === "registerProcessor") {
+                return (processor: Processor) => {
+                    const registration = own(target.registerProcessor(processor))
+                    const terminable = processor as Processor & Partial<Terminable>
+                    if (typeof terminable.terminate === "function") {
+                        pending?.own({terminate: () => terminable.terminate!()})
+                    }
+                    return registration
+                }
+            }
+            if (key === "registerEdge") {
+                return (source: Processor, destination: Processor) => own(target.registerEdge(source, destination))
+            }
+            const value = Reflect.get(target, key, target)
+            return typeof value === "function" ? value.bind(target) : value
+        }})
+        try {
+            const result = create(context)
+            pending = undefined // The completed source now owns its leases.
+            return result
+        } catch (error) {
+            try {pending?.terminate()} catch (cleanupError) {
+                throw new AggregateError([error, cleanupError], "Source construction and cleanup failed", {cause: error})
+            }
+            throw error
+        }
     }
 
     toString(): string {return `{${this.constructor.name}(${this.#id})}`}

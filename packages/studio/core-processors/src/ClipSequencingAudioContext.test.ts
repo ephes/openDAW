@@ -46,7 +46,7 @@ it("retains and visits only live tracks after deletion churn", () => {
     context.scheduleStop(track) // one live track
     let visits = 0
     const original = SortedSet.prototype.forEach
-    const spy = vi.spyOn(SortedSet.prototype, "forEach").mockImplementation(function (callback) {
+    const spy = vi.spyOn(SortedSet.prototype, "forEach").mockImplementation(function (this: SortedSet<unknown, unknown>, callback) {
         return original.call(this, value => {visits++; callback(value)})
     })
     try {remove(UUID.generate())} finally {spy.mockRestore()}

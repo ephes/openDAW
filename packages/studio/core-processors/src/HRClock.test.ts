@@ -1,7 +1,7 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {HRClock} from "./HRClock"
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {vi.restoreAllMocks()})
 function fixture(start = 1, end = 2) {
     const sab = new SharedArrayBuffer(32), ints = new Int32Array(sab), times = new Float64Array(sab)
     const publish = (start: number, end: number, from: number, to: number) => {
