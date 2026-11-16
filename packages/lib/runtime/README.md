@@ -61,3 +61,20 @@ without sending, so late callers holding a stale protocol object stay harmless.
 Failed protocol binding releases the new sender while preserving the binding
 error. Engine worklet and offline renderer senders use their existing terminators,
 so shutdown settles outstanding engine requests.
+
+`network.readBounded` consumes one response with a declared/actual decoded byte
+ceiling and optional signal/progress callback. It accepts identity and standard
+fetch-decoded gzip/deflate/Brotli, refuses other encoding declarations, checks abort before success, and cancels/unlocks the reader on failures (including
+observer exceptions). Unknown lengths report zero until EOF. It does not own an
+elapsed deadline; callers supply their operation's signal.
+
+`network.defaultRetry` permits at most two retries (three attempts) for transport
+TypeErrors, explicit retryable failures and HTTP 408/429/5xx. Not-found, abort,
+permanent HTTP and unclassified content/validation failures are terminal.
+`Promises.guardedRetry` preserves the original final rejection. Apply automatic
+retry only to idempotent reads/imports; mutations require explicit user approval.
+`network.withDownload` holds one of four shared FIFO permits through a complete
+stock sample/preset load, including metadata, body consumption and decoding. EOF,
+abort and failure release it. With an optional signal, a queued entry rejects
+as soon as the signal aborts and never starts its work. `limitFetch` remains a separate headers-only helper;
+do not use it alone to claim bounded concurrent body materialization.

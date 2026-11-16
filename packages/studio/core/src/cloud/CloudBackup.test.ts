@@ -14,7 +14,7 @@ import {PresetStorage, OpenPresetAPI} from "../presets"
 import {SoundfontStorage, OpenSoundfontAPI} from "../soundfont"
 import {Workers} from "../Workers"
 
-vi.mock("../Workers", () => ({Workers: {Opfs: {read: vi.fn(), write: vi.fn(), delete: vi.fn(), list: vi.fn()}}}))
+vi.mock("../Workers", () => ({Workers: {Opfs: {read: vi.fn(), write: vi.fn(), delete: vi.fn(), list: vi.fn(), exists: vi.fn()}}}))
 const a = "00000000-0000-4000-8000-000000000001" as UUID.String
 const b = "00000000-0000-4000-8000-000000000002" as UUID.String
 const json = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).buffer
@@ -44,6 +44,7 @@ beforeEach(() => {
     vi.spyOn(ProjectStorage, "loadProject").mockResolvedValue(bytes)
     vi.spyOn(ProjectStorage, "loadCover").mockResolvedValue(Option.None)
     vi.spyOn(ProjectSkeleton, "decode").mockReturnValue({} as ProjectSkeleton)
+    vi.mocked(Workers.Opfs.exists).mockImplementation(async path => local.has(path))
     vi.mocked(Workers.Opfs.write).mockImplementation(async (path, data) => {local.set(path, data)})
     vi.mocked(Workers.Opfs.read).mockImplementation(async path => {
         if (!local.has(path)) {throw new DOMException("missing", "NotFoundError")}
@@ -79,7 +80,7 @@ for (const domain of ["Projects", "Samples", "Presets", "Soundfonts"] as const) 
                 vi.spyOn(OpenPresetAPI, "get").mockReturnValue({list: async () => []} as unknown as ReturnType<typeof OpenPresetAPI.get>)
                 vi.spyOn(PresetStorage, "readIndex").mockResolvedValue([fresh] as unknown as Awaited<ReturnType<typeof PresetStorage.readIndex>>)
                 vi.spyOn(PresetStorage, "loadTrashedIds").mockResolvedValue([b])
-                vi.spyOn(PresetStorage, "load").mockResolvedValue(bytes)
+                vi.spyOn(PresetStorage, "readSnapshot").mockResolvedValue({meta: fresh, data: bytes} as unknown as Awaited<ReturnType<typeof PresetStorage.readSnapshot>>)
             } else if (domain === "Samples") {
                 vi.spyOn(OpenSampleAPI, "get").mockReturnValue({all: async () => []} as unknown as ReturnType<typeof OpenSampleAPI.get>)
                 vi.spyOn(SampleStorage, "get").mockReturnValue({list: async () => [fresh], loadTrashedIds: async () => [b], load: async () => [{frames: [new Float32Array(new SharedArrayBuffer(8))], sampleRate: 44100, numberOfFrames: 2, numberOfChannels: 1}]} as unknown as SampleStorage)

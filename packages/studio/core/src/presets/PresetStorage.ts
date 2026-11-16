@@ -101,6 +101,32 @@ export namespace PresetStorage {
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     }
 
+    /** Capture one local generation; never hold the storage lock over network work. */
+    export const readSnapshot = async (uuid: UUID.Bytes): Promise<{meta: PresetMeta, data: ArrayBuffer} | undefined> =>
+        navigator.locks.request(lock, async () => {
+            const id = UUID.toString(uuid)
+            const current = await readIndexOwned()
+            const entry = current.find(meta => meta.uuid === id)
+            if (!entry) {return undefined}
+            const meta = PresetMetaSchema.parse(entry) as PresetMeta
+            const data = await load(uuid)
+            return {meta, data}
+        })
+
+    /** Restore only while still absent, including physical files and deletion intent. */
+    export const restoreIfAbsent = async (meta: PresetMeta, data: ArrayBuffer): Promise<boolean> =>
+        navigator.locks.request(lock, async () => {
+            const checked = PresetMetaSchema.parse(meta) as PresetMeta
+            const current = await readIndexOwned()
+            const trashed = await loadTrashedIds()
+            const path = fileFor(UUID.parse(checked.uuid))
+            if (current.some(entry => entry.uuid === checked.uuid) || trashed.includes(checked.uuid) ||
+                await Workers.Opfs.exists(path)) {return false}
+            await Workers.Opfs.write(path, new Uint8Array(data))
+            await writeAndCache([...current, checked])
+            return true
+        })
+
     export const updateMeta = async (uuid: UUID.Bytes,
                                      update: {name: string, description: string}): Promise<void> => navigator.locks.request(lock, async () => {
         const uuidStr = UUID.toString(uuid)

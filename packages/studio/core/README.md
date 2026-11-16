@@ -197,10 +197,16 @@ remain excluded; this adds no bidirectional conflict merging.
 Preset files are updated in place and the batch catalog is published afterward.
 If a later preset or catalog upload fails, some bytes can be newer than their catalog
 metadata; another device can restore that mismatched pair until retry succeeds. Keep
-the local edited presets and retry backup before restoring them elsewhere. A concurrent
-local save can also change bytes after the initial index scan; this slice does not
-capture a coherent preset pair or provide transactional preset generations. Successful
-project generation preservation does not extend to presets.
+the local edited presets and retry backup before restoring them elsewhere. Backup
+captures validated preset metadata and bytes together under the storage Web Lock,
+then checks upload eligibility from that captured timestamp and releases the lock
+before network work. Later local edits remain eligible on the next run. This does
+not provide transactional remote preset generations across files/catalogs.
+
+Restore reacquires the preset storage lock after downloading and creates only if
+metadata, physical bytes and deletion intent are still absent. A concurrent local
+save or delete causes an explicit skipped-restore log; local bytes/metadata survive.
+Successful new restores retain the remote metadata timestamp.
 
 Soundfont saves share the asset-domain Web Lock with inventory and deletion. New
 media and metadata must validate; SF2 bytes finish before metadata makes the asset
@@ -448,3 +454,47 @@ Monitor sink changes keep candidate elements/destinations local until the latest
 selection succeeds. Superseded candidates pause and disconnect without changing
 current routing. Only a failed current selection falls back to the default output;
 retirement prevents any pending selection from installing.
+
+### Provider inventory admission
+
+Drive and Dropbox inventories admit at most 1,000 pages and 100,000 names. Repeated
+or empty continuation cursors and overflow reject the entire inventory; partial
+results never authorize backup cleanup. Drive exact-name lookups request two matches
+and refuse duplicates or incomplete results before mutation. Backups live in Drive's
+hidden `appDataFolder`, and there is no in-app repair yet: a duplicated folder or file
+keeps that path's operations refused (nothing is changed) until a deterministic
+resolution or repair step exists. This deliberately trades backup availability for
+never mutating an arbitrary duplicate. Name query literals escape backslashes before
+apostrophes, independently of URL encoding.
+
+Every provider operation accepts optional cancellation and has one elapsed deadline
+covering lookup, pagination and body consumption: ten minutes plus one second per
+128 KiB of its transfer budget (upload size, or the download path's byte limit),
+so slow links can still move large media while a stalled exchange ends. Cancellation
+retires pending reads and folder lookup ownership; late headers are cancelled.
+Remote writes already accepted by a provider may still complete after cancellation;
+no atomic remote rollback is promised. Provider failures expose fixed operation/HTTP
+status categories without raw response text, SDK objects, account paths or causes.
+Unused error bodies are cancelled; Dropbox's missing-path classifier reads at most
+1 MiB of structured error data. No raw provider response is logged.
+
+Cloud downloads enforce existing OPFS limits while streaming: JSON metadata 1 MiB,
+aggregate `index.json` catalogs 64 MiB, presets 16 MiB, project graphs 64 MiB,
+sample/font/cover media 1 GiB. A transport failure while reading a body stays
+retryable like the same failure before headers; byte-limit and encoding refusals
+are final. Declared and
+actual decoded bytes are checked before assembly. Fetch-decoded gzip, deflate and
+Brotli plus identity are supported; other encoding declarations are refused. SDK download responses are bounded before Blob materialization.
+
+Stock preset downloads use the same 16 MiB declared/actual byte ceiling with or
+without progress. Identity and fetch-decoded gzip/deflate/Brotli are accepted;
+unsupported encoding declarations are refused. Aborting after a prefix
+rejects without returning partial bytes. A throwing progress observer or source
+read failure rejects the load and cancels/unlocks the reader; EOF reports completion.
+
+Stock sample and preset loads share four permits across metadata, body consumption
+and sample decoding, releasing on completion, abort or failure. Queued cancelled
+preset loads settle as soon as their signal aborts, without waiting for a permit or
+starting requests. Cloud read retries stop
+after three transient attempts; permanent HTTP errors, missing files, aborts and
+invalid content stop immediately. Mutations retain explicit approval-based retry.

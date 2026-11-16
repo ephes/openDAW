@@ -35,39 +35,24 @@ export class OpenPresetAPI {
     async load(uuid: UUID.Bytes,
                progress?: Procedure<unitValue>,
                signal?: AbortSignal): Promise<ArrayBuffer> {
-        const url = `${OpenPresetAPI.FileRoot}/${UUID.toString(uuid)}.odp`
-        // Cancellable fetches skip the auto-retry: a user-cancelled download
-        // must not silently retry after the dialog has already closed.
-        const response = isDefined(signal)
-            ? await network.limitFetch(url, {...OpenDAWHeaders, signal})
-            : await Promises.retry(() => network.limitFetch(url, OpenDAWHeaders))
-        if (!response.ok) {
-            return panic(`Failed to fetch preset ${UUID.toString(uuid)}: ${response.status} ${response.statusText}`)
-        }
-        if (!isDefined(progress)) {return response.arrayBuffer()}
-        const total = parseInt(response.headers.get("Content-Length") ?? "0")
-        let loaded = 0
-        return new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = asDefined(response.body, "No body in response").getReader()
-            const chunks: Array<Uint8Array> = []
-            const onAbort = () => reader.cancel().catch(() => {})
-            if (isDefined(signal)) {signal.addEventListener("abort", onAbort, {once: true})}
-            const cleanup = () => {
-                if (isDefined(signal)) {signal.removeEventListener("abort", onAbort)}
+        return network.withDownload(async () => {
+            signal?.throwIfAborted()
+            const url = `${OpenPresetAPI.FileRoot}/${UUID.toString(uuid)}.odp`
+            // Cancellable fetches skip the auto-retry: a user-cancelled download
+            // must not silently retry after the dialog has already closed.
+            const response = isDefined(signal)
+                ? await network.limitFetch(url, {...OpenDAWHeaders, signal})
+                : await Promises.retry(() => network.limitFetch(url, OpenDAWHeaders))
+            if (signal?.aborted) {
+                void response.body?.cancel().catch(() => {})
+                signal.throwIfAborted()
             }
-            const nextChunk = ({done, value}: ReadableStreamReadResult<Uint8Array>) => {
-                if (done) {
-                    cleanup()
-                    resolve(new Blob(chunks as Array<BlobPart>).arrayBuffer())
-                } else {
-                    chunks.push(value)
-                    loaded += value.length
-                    progress(total > 0.0 ? loaded / total : 0.5)
-                    reader.read().then(nextChunk, reason => {cleanup(); reject(reason)})
-                }
+            if (!response.ok) {
+                void response.body?.cancel().catch(() => {})
+                return panic(`Failed to fetch preset ${UUID.toString(uuid)}: ${response.status} ${response.statusText}`)
             }
-            reader.read().then(nextChunk, reason => {cleanup(); reject(reason)})
-        })
+            return network.readBounded(response, 16 * 1024 * 1024, signal, progress)
+        }, signal)
     }
 
     async upload(arrayBuffer: ArrayBuffer, meta: PresetMeta): Promise<void> {

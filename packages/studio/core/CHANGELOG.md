@@ -5,6 +5,18 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Scale the cloud operation deadline with its transfer budget, admit aggregate cloud catalogs up to 64 MiB and keep mid-body transport failures retryable. Cancelled queued stock preset loads settle immediately.
+
+- Hold shared stock transfer permits through sample/preset body consumption and decoding; retain finite private cloud retry categories.
+
+- Preserve concurrent local presets during cloud restore and upload coherent locked metadata/byte snapshots with captured eligibility.
+
+- Bound stock preset downloads in both progress modes; reject partial aborts and settle observer failures with reader cleanup.
+
+- Bound cloud transfers and entire provider operations; cancel late responses and expose private fixed error categories.
+
+- Bound provider inventory pages/names, refuse ambiguous Drive targets and escape exact-name query literals.
+
 - Settle worklet readiness on faults/retirement and fence resumed playback against Stop, release and replacement.
 - Retire all prepared captures on recording acquisition/startup failures, own each startup resource immediately and report failures through Project.
 - Cancel pending recording acquisition on Project Stop/retirement and keep only the latest monitor sink selection.

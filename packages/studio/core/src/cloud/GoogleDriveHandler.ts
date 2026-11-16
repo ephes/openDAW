@@ -1,5 +1,8 @@
 import {CloudHandler} from "./CloudHandler"
-import {assert, Errors, isDefined, Option, panic} from "@opendaw/lib-std"
+import {network} from "@opendaw/lib-runtime"
+import {checkCloudResponse, cloudDownloadLimit, cloudFetch, CloudError, cloudJson, cloudOperation} from "./CloudExchange"
+import {InventoryBudget} from "./InventoryBudget"
+import {assert, Errors, isDefined, Option} from "@opendaw/lib-std"
 
 type DriveFile = {
     id: string
@@ -16,6 +19,7 @@ const DRIVE_FILES_API = "https://www.googleapis.com/drive/v3/files"
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
 const FOLDER_MIME = "application/vnd.google-apps.folder"
 const ROOT_ID = "appDataFolder"
+const escapeLiteral = (value: string): string => value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
 
 export class GoogleDriveHandler implements CloudHandler {
     readonly #accessToken: string
@@ -24,21 +28,27 @@ export class GoogleDriveHandler implements CloudHandler {
 
     constructor(accessToken: string) {this.#accessToken = accessToken}
 
-    async alive(): Promise<void> {
+    alive(signal?: AbortSignal): Promise<void> {
+        return cloudOperation("alive", signal, signal => this.#alive(signal))
+    }
+
+    async #alive(signal: AbortSignal): Promise<void> {
         const params = new URLSearchParams({
             q: `'${ROOT_ID}' in parents and trashed = false`,
             fields: "files(id)",
             pageSize: "1",
             spaces: "appDataFolder"
         })
-        const res = await fetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders()})
-        if (!res.ok) {
-            const text = await res.text()
-            return panic(`Google Drive ping failed: ${res.status} ${text}`)
-        }
+        const res = await cloudFetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders(), signal})
+        checkCloudResponse(res, "ping")
+        void res.body?.cancel().catch(() => {})
     }
 
-    async upload(path: string, data: ArrayBuffer, signal?: AbortSignal): Promise<void> {
+    upload(path: string, data: ArrayBuffer, signal?: AbortSignal): Promise<void> {
+        return cloudOperation("upload", signal, signal => this.#upload(path, data, signal), data.byteLength)
+    }
+
+    async #upload(path: string, data: ArrayBuffer, signal: AbortSignal): Promise<void> {
         signal?.throwIfAborted()
         const {dir, base} = this.#splitPath(path)
         const parentId = await this.#ensureFolderPath(dir, signal)
@@ -47,7 +57,7 @@ export class GoogleDriveHandler implements CloudHandler {
         signal?.throwIfAborted()
         if (existing.nonEmpty()) {
             const fileId = existing.unwrap().id
-            const res = await fetch(`${DRIVE_UPLOAD_API}/${fileId}?uploadType=media`, {
+            const res = await cloudFetch(`${DRIVE_UPLOAD_API}/${fileId}?uploadType=media`, {
                 method: "PATCH", signal,
                 headers: {
                     Authorization: `Bearer ${this.#accessToken}`,
@@ -55,11 +65,12 @@ export class GoogleDriveHandler implements CloudHandler {
                 },
                 body: data
             })
-            if (!res.ok) return panic(`Google Drive update failed: ${res.status} ${await res.text()}`)
+            checkCloudResponse(res, "update")
+            void res.body?.cancel().catch(() => {})
         } else {
             const meta = {name: base, parents: [parentId]}
             const {boundary, body} = this.#buildMultipartBody(meta, data)
-            const res = await fetch(`${DRIVE_UPLOAD_API}?uploadType=multipart`, {
+            const res = await cloudFetch(`${DRIVE_UPLOAD_API}?uploadType=multipart`, {
                 method: "POST", signal,
                 headers: {
                     Authorization: `Bearer ${this.#accessToken}`,
@@ -67,36 +78,57 @@ export class GoogleDriveHandler implements CloudHandler {
                 },
                 body
             })
-            if (!res.ok) return panic(`Google Drive upload failed: ${res.status} ${await res.text()}`)
+            checkCloudResponse(res, "upload")
+            void res.body?.cancel().catch(() => {})
         }
     }
 
-    async download(path: string): Promise<ArrayBuffer> {
-        const fileId = await this.#resolveFileIdByPath(path)
-        if (fileId.isEmpty()) {throw new Errors.FileNotFound(path)}
-        const res = await fetch(`${DRIVE_FILES_API}/${fileId.unwrap()}?alt=media`, {
-            method: "GET",
+    download(path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+        return cloudOperation("download", signal, signal => this.#download(path, signal), cloudDownloadLimit(path))
+    }
+
+    async #download(path: string, signal: AbortSignal): Promise<ArrayBuffer> {
+        const fileId = await this.#resolveFileIdByPath(path, false, signal)
+        if (fileId.isEmpty()) {throw new Errors.FileNotFound("Cloud object")}
+        const res = await cloudFetch(`${DRIVE_FILES_API}/${fileId.unwrap()}?alt=media`, {
+            method: "GET", signal,
             headers: {"Authorization": `Bearer ${this.#accessToken}`}
         })
         if (!res.ok) {
-            if (res.status === 404) throw new Errors.FileNotFound(path)
-            const text = await res.text()
-            return panic(`Google Drive download failed: ${res.status} ${text}`)
+            if (res.status === 404) {
+                void res.body?.cancel().catch(() => {})
+                throw new Errors.FileNotFound("Cloud object")
+            }
+            checkCloudResponse(res, "download")
         }
-        return await res.arrayBuffer()
+        try {return await network.readBounded(res, cloudDownloadLimit(path), signal)} catch (error) {
+            signal.throwIfAborted()
+            // Transport failures mid-body stay retryable like the same failure during headers.
+            throw new CloudError(error instanceof network.ResponseReadError ? error.message : "Cloud body read failed",
+                undefined, error instanceof TypeError)
+        }
     }
 
-    async exists(path: string): Promise<boolean> {
-        const fileId = await this.#resolveFileIdByPath(path)
+    exists(path: string, signal?: AbortSignal): Promise<boolean> {
+        return cloudOperation("exists", signal, signal => this.#exists(path, signal))
+    }
+
+    async #exists(path: string, signal: AbortSignal): Promise<boolean> {
+        const fileId = await this.#resolveFileIdByPath(path, false, signal)
         return fileId.nonEmpty()
     }
 
-    async list(path?: string): Promise<string[]> {
-        const folderId = await this.#resolveFolderId(path ?? "/")
+    list(path?: string, signal?: AbortSignal): Promise<string[]> {
+        return cloudOperation("list", signal, signal => this.#list(path, signal))
+    }
+
+    async #list(path: string | undefined, signal: AbortSignal): Promise<string[]> {
+        const folderId = await this.#resolveFolderId(path ?? "/", signal)
         if (folderId.isEmpty()) return []
         const q = `'${folderId.unwrap()}' in parents and trashed = false`
         const names: string[] = []
         let pageToken: string | undefined = undefined
+        const budget = new InventoryBudget()
         do {
             const params = new URLSearchParams({
                 q,
@@ -105,34 +137,36 @@ export class GoogleDriveHandler implements CloudHandler {
                 spaces: "appDataFolder"
             })
             if (pageToken) params.set("pageToken", pageToken)
-            const res = await fetch(`${DRIVE_FILES_API}?${params.toString()}`, {
-                headers: {"Authorization": `Bearer ${this.#accessToken}`}
+            const res = await cloudFetch(`${DRIVE_FILES_API}?${params.toString()}`, {
+                headers: {"Authorization": `Bearer ${this.#accessToken}`}, signal
             })
             if (!res.ok) {
-                const text = await res.text()
-                return panic(`Google Drive list failed: ${res.status} ${text}`)
+                checkCloudResponse(res, "list")
             }
-            const json: DriveListResponse = await res.json()
+            const json: DriveListResponse = await cloudJson<DriveListResponse>(res, signal)
+            budget.admit(json.files.length, json.nextPageToken)
             json.files.forEach(f => names.push(f.name))
             pageToken = json.nextPageToken
         } while (isDefined(pageToken))
         return names
     }
 
-    async delete(path: string): Promise<void> {
-        const fileId = await this.#resolveFileIdByPath(path, true)
+    delete(path: string, signal?: AbortSignal): Promise<void> {
+        return cloudOperation("delete", signal, signal => this.#delete(path, signal))
+    }
+
+    async #delete(path: string, signal: AbortSignal): Promise<void> {
+        const fileId = await this.#resolveFileIdByPath(path, true, signal)
         if (fileId.isEmpty()) {
             // deleting a non-existent file should be a no-op
             return
         }
-        const res = await fetch(`${DRIVE_FILES_API}/${fileId.unwrap()}`, {
-            method: "DELETE",
+        const res = await cloudFetch(`${DRIVE_FILES_API}/${fileId.unwrap()}`, {
+            method: "DELETE", signal,
             headers: {"Authorization": `Bearer ${this.#accessToken}`}
         })
-        if (!res.ok && res.status !== 404) {
-            const text = await res.text()
-            return panic(`Google Drive delete failed: ${res.status} ${text}`)
-        }
+        if (!res.ok && res.status !== 404) {checkCloudResponse(res, "delete")}
+        void res.body?.cancel().catch(() => {})
     }
 
     // ---------- Helpers ----------
@@ -149,25 +183,25 @@ export class GoogleDriveHandler implements CloudHandler {
         return {dir: parts, base}
     }
 
-    async #resolveFileIdByPath(path: string, includeFolders = false): Promise<Option<string>> {
+    async #resolveFileIdByPath(path: string, includeFolders = false, signal?: AbortSignal): Promise<Option<string>> {
         const {dir, base} = this.#splitPath(path)
-        const parentId = await this.#resolveFolderPath(dir)
+        const parentId = await this.#resolveFolderPath(dir, signal)
         if (parentId.isEmpty() || base.length === 0) return Option.None
-        const existing = await this.#findFileInFolder(base, parentId.unwrap(), includeFolders)
+        const existing = await this.#findFileInFolder(base, parentId.unwrap(), includeFolders, signal)
         return existing.map(f => f.id)
     }
 
-    async #resolveFolderId(path: string): Promise<Option<string>> {
+    async #resolveFolderId(path: string, signal?: AbortSignal): Promise<Option<string>> {
         if (path === "/" || path.trim() === "") return Option.wrap(ROOT_ID)
         const parts = path.replace(/^\/*/, "").split("/").filter(Boolean)
-        return this.#resolveFolderPath(parts)
+        return this.#resolveFolderPath(parts, signal)
     }
 
     // Resolve a folder path without creating anything
-    async #resolveFolderPath(parts: string[]): Promise<Option<string>> {
+    async #resolveFolderPath(parts: string[], signal?: AbortSignal): Promise<Option<string>> {
         let currentId: string = ROOT_ID
         for (const part of parts) {
-            const next = await this.#findFolderInFolder(part, currentId)
+            const next = await this.#findFolderInFolder(part, currentId, signal)
             if (next.isEmpty()) return Option.None
             currentId = next.unwrap().id
         }
@@ -200,45 +234,45 @@ export class GoogleDriveHandler implements CloudHandler {
 
     async #findFolderInFolder(name: string, parentId: string, signal?: AbortSignal): Promise<Option<DriveFile>> {
         const q = [
-            `name = '${name.replace(/'/g, "\\'")}'`,
+            `name = '${escapeLiteral(name)}'`,
             `'${parentId}' in parents`,
             `mimeType = '${FOLDER_MIME}'`,
             `trashed = false`
         ].join(" and ")
         const params = new URLSearchParams({
             q,
-            fields: "files(id,name,mimeType)",
-            pageSize: "1",
+            fields: "files(id,name,mimeType),nextPageToken",
+            pageSize: "2",
             spaces: "appDataFolder"
         })
-        const res = await fetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders(), signal})
-        if (!res.ok) {
-            const text = await res.text()
-            return panic(`Google Drive query failed: ${res.status} ${text}`)
+        const res = await cloudFetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders(), signal})
+        checkCloudResponse(res, "query")
+        const json: DriveListResponse = await cloudJson<DriveListResponse>(res, signal)
+        if (json.files.length > 1 || json.nextPageToken) {
+            throw new CloudError("Ambiguous Google Drive name; repair duplicate backup entries before retrying.")
         }
-        const json: DriveListResponse = await res.json()
         return Option.wrap(json.files[0])
     }
 
     async #findFileInFolder(name: string, parentId: string, includeFolders = false, signal?: AbortSignal): Promise<Option<DriveFile>> {
         const q = [
-            `name = '${name.replace(/'/g, "\\'")}'`,
+            `name = '${escapeLiteral(name)}'`,
             `'${parentId}' in parents`,
             ...(includeFolders ? [] : [`mimeType != '${FOLDER_MIME}'`]),
             `trashed = false`
         ].join(" and ")
         const params = new URLSearchParams({
             q,
-            fields: "files(id,name,mimeType)",
-            pageSize: "1",
+            fields: "files(id,name,mimeType),nextPageToken",
+            pageSize: "2",
             spaces: "appDataFolder"
         })
-        const res = await fetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders(), signal})
-        if (!res.ok) {
-            const text = await res.text()
-            return panic(`Google Drive query failed: ${res.status} ${text}`)
+        const res = await cloudFetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders(), signal})
+        checkCloudResponse(res, "query")
+        const json: DriveListResponse = await cloudJson<DriveListResponse>(res, signal)
+        if (json.files.length > 1 || json.nextPageToken) {
+            throw new CloudError("Ambiguous Google Drive name; repair duplicate backup entries before retrying.")
         }
-        const json: DriveListResponse = await res.json()
         return Option.wrap(json.files[0])
     }
 
@@ -248,7 +282,7 @@ export class GoogleDriveHandler implements CloudHandler {
             mimeType: FOLDER_MIME,
             parents: [parentId]
         }
-        const res = await fetch(DRIVE_FILES_API, {
+        const res = await cloudFetch(DRIVE_FILES_API, {
             method: "POST", signal,
             headers: {
                 ...this.#authHeaders(),
@@ -256,11 +290,8 @@ export class GoogleDriveHandler implements CloudHandler {
             },
             body: JSON.stringify(metadata)
         })
-        if (!res.ok) {
-            const text = await res.text()
-            return panic(`Google Drive create folder failed: ${res.status} ${text}`)
-        }
-        return await res.json() as DriveFile
+        checkCloudResponse(res, "create folder")
+        return await cloudJson<DriveFile>(res, signal)
     }
 
     #buildMultipartBody(metadata: unknown, content: ArrayBuffer): { boundary: string; body: Blob } {

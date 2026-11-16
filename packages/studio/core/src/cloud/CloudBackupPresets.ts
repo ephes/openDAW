@@ -49,11 +49,7 @@ export class CloudBackupPresets {
 
     async #upload(progress: Progress.Handler) {
         const {stock, local, cloud} = this.#presetDomains
-        const maybeUnsyncedPresets = Arrays.subtract(local, stock, CloudBackupPresets.arePresetsEqual)
-        const unsyncedPresets = maybeUnsyncedPresets.filter(preset => {
-            const remote = cloud.find(entry => entry.uuid === preset.uuid)
-            return remote === undefined || preset.modified > remote.modified
-        })
+        const unsyncedPresets = Arrays.subtract(local, stock, CloudBackupPresets.arePresetsEqual)
         if (unsyncedPresets.length === 0) {
             this.#log("No unsynced presets found.")
             progress(1.0)
@@ -62,18 +58,25 @@ export class CloudBackupPresets {
         const uploadedPresets = await Promises.sequentialAll(unsyncedPresets.map((preset, index, {length}) =>
             async () => {
                 progress((index + 1) / length)
-                this.#log(`Uploading preset '${preset.name}'`)
-                const arrayBuffer = await PresetStorage.load(UUID.parse(preset.uuid))
-                const path = CloudBackupPresets.pathFor(preset.uuid)
+                const snapshot = await PresetStorage.readSnapshot(UUID.parse(preset.uuid))
+                if (!snapshot) {return null}
+                const {meta, data: arrayBuffer} = snapshot
+                validatePresetsCatalog([meta])
+                const remote = cloud.find(entry => entry.uuid === meta.uuid)
+                if (remote && meta.modified <= remote.modified) {return null}
+                this.#log(`Uploading preset '${meta.name}'`)
+                const path = CloudBackupPresets.pathFor(meta.uuid)
                 await Promises.approvedRetry(() => this.#cloudHandler.upload(path, arrayBuffer), error => ({
                     headline: "Upload failed",
-                    message: `Failed to upload preset '${preset.name}'. '${error}'`,
+                    message: `Failed to upload preset '${meta.name}'. '${error}'`,
                     approveText: "Retry",
                     cancelText: "Cancel"
                 }))
-                return preset
+                return meta
             }))
-        const catalog: Array<PresetMeta> = Arrays.merge(cloud, uploadedPresets, CloudBackupPresets.arePresetsEqual)
+        const uploaded = uploadedPresets.filter((meta): meta is PresetMeta => meta !== null)
+        if (uploaded.length === 0) {progress(1); return}
+        const catalog: Array<PresetMeta> = Arrays.merge(cloud, uploaded, CloudBackupPresets.arePresetsEqual)
         await this.#uploadCatalog(catalog)
         progress(1.0)
     }
@@ -128,7 +131,10 @@ export class CloudBackupPresets {
                 this.#log(`Downloading preset '${preset.name}'`)
                 const path = CloudBackupPresets.pathFor(preset.uuid)
                 const buffer = await Promises.guardedRetry(() => this.#cloudHandler.download(path), network.defaultRetry)
-                await PresetStorage.save(preset, buffer)
+                if (!await PresetStorage.restoreIfAbsent(preset, buffer)) {
+                    this.#log("Skipping restore: local preset or deletion intent appeared during backup.")
+                    return null
+                }
                 return preset
             }))
         this.#log("Download presets complete.")
