@@ -47,9 +47,11 @@ export class NanoDeviceProcessor extends AudioProcessor implements InstrumentDev
             }),
             context.registerProcessor(this),
             context.audioOutputBufferRegistry.register(adapter.address, this.#audioOutput, this.outgoing),
-            adapter.box.file.catchupAndSubscribe((pointer) =>
+            adapter.box.file.catchupAndSubscribe((pointer) => {
+                this.reset()
                 this.loader = pointer.targetVertex.map(({box}) =>
-                    context.sampleManager.getOrCreate(box.address.uuid)))
+                    context.sampleManager.getOrCreate(box.address.uuid))
+            })
         )
         this.readAllParameters()
     }
@@ -76,6 +78,7 @@ export class NanoDeviceProcessor extends AudioProcessor implements InstrumentDev
 
     handleEvent(event: Event): void {
         if (NoteLifecycleEvent.isStart(event)) {
+            if (!this.#enabled) {return}
             this.#voices.push(new Voice(this, event))
         } else if (NoteLifecycleEvent.isStop(event)) {
             this.#voices.find(voice => voice.event().id === event.id)?.stop()
@@ -154,12 +157,13 @@ class Voice {
         const releaseInverse = 1.0 / release
         for (let i = fromIndex; i < toIndex; i++) {
             const intPosition = this.#position | 0
-            if (intPosition >= numberOfFrames - 1) {return true}
+            if (intPosition >= numberOfFrames) {return true}
+            const nextPosition = Math.min(intPosition + 1, numberOfFrames - 1)
             const frac = this.#position - intPosition
             const att = this.#envPosition < this.#attack ? this.#envPosition / this.#attack : 1.0
             const env = (Math.min(1.0 - (this.#envPosition - this.#decayPosition) * releaseInverse, 1.0) * att) ** 2.0
-            const l = inpL[intPosition] * (1.0 - frac) + inpL[intPosition + 1] * frac
-            const r = inpR[intPosition] * (1.0 - frac) + inpR[intPosition + 1] * frac
+            const l = inpL[intPosition] * (1.0 - frac) + inpL[nextPosition] * frac
+            const r = inpR[intPosition] * (1.0 - frac) + inpR[nextPosition] * frac
             outL[i] += l * gain * env
             outR[i] += r * gain * env
             this.#position += this.#speed * rateRatio

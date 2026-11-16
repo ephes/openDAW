@@ -70,3 +70,6 @@ Shows the wavefolding transfer function—how input amplitude (horizontal) maps 
 - Upsample → process → downsample pipeline for alias reduction
 - Smooth parameter ramping prevents clicks during automation
 - Stereo processing with matched left/right channels
+
+Reset clears oversampling filter history and settles Drive and Volume at their
+current values. The selected oversampling quality is preserved.

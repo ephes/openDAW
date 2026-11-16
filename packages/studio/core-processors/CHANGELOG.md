@@ -5,6 +5,18 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire Maximizer delay/detector/reduction history when lookahead changes; verify static gain, stereo linking, exact latency, headroom and automated partial-span rendering.
+
+- Quarantine NAM processing faults with complete dry bypass and explicit model-reload recovery; cover real Dattorro routing, partitions and restart at three sample rates.
+
+- Keep Tidal phase and metering aligned across event splits; clear Fold resampler history and settle gain ramps on reset.
+
+- Clear Revamp spectrum generations on reset and retire filter history across band bypass transitions.
+
+- Render Nano sample endpoints safely and give duplicate Playfield mix attachments independent idempotent leases.
+
+- Refuse disabled Nano note starts and retire held voices on sample retargeting.
+
 - Retire expired Spielwerk source indexes and balance every active note once on script faults before loading replacement code.
 
 - Keep source ownership through scheduled Spielwerk notes; cancel queued descendants on source stop and clear pending-only transport generations with guarded reset hooks.

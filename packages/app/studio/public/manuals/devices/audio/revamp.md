@@ -36,7 +36,9 @@ The seven bands are processed in series, left to right:
 | 6 | High Shelf | Frequency, Gain |
 | 7 | Low-Pass | Frequency, Q, Order |
 
-Click a band's icon to enable or disable it. Disabled bands are bypassed with zero CPU cost.
+Click a band's icon to enable or disable it. Disabled bands skip filtering.
+Each enable transition clears that band's ringing history while preserving its
+settings, so re-enabling begins from a fresh filter state.
 
 ---
 
@@ -104,6 +106,7 @@ The main display shows the combined frequency response of all enabled bands. The
 ### 4.2 Spectrum Analyzer
 
 A real-time spectrum analyzer overlays the frequency response, showing the actual frequency content of the output signal.
+A processor reset clears the previous spectrum immediately; new audio repopulates it.
 
 ### 4.3 Output Meter
 

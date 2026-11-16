@@ -45,3 +45,48 @@ Scheduled descendants retain their source and transport generation. See the
 [Spielwerk manual](../../app/studio/public/manuals/devices/midi/spielwerk.md) and
 [Werkstatt manual](../../app/studio/public/manuals/devices/audio/werkstatt.md) for
 finite note admission and owned output-buffer contracts.
+
+### Nano and Playfield ownership
+
+Nano refuses note starts while disabled. Changing its file pointer retires held
+voices and the note display immediately; only new notes use the new sample.
+
+Nano interpolates up to the final frame, holding that endpoint until the source
+position reaches its frame count. Mono duplicates into stereo. Playfield mix
+attachments are independent, idempotent leases, including duplicate buffers;
+teardown retires all remaining attachments.
+
+### Revamp transient state
+
+Reset clears the analyser window, retained bins and published spectrum immediately.
+Subscriptions remain active. Each band enable transition clears that band's
+filter history, including stacked HP/LP filters; coefficients and order stay set.
+Re-enabling starts from silence rather than resuming pre-bypass ringing.
+
+### Render partitions and restart
+
+Tidal derives phase from each chunk's pulse origin and relative sample offset;
+metering consumes only that span. Fold reset retires all anti-alias resampler
+history and snaps drive/output ramps to current controls, preserving oversampling.
+
+### Native DSP outcomes
+
+A NAM process exception retires both native instances and reports one fixed
+diagnostic. The complete requested span uses dry bypass, including when a native
+channel already wrote partial output. Later blocks stay bypassed; reset and mono
+edits do not retry that generation. Selecting a different valid model (or
+recreating the processor, e.g. by reopening the project) creates new instances
+and permits recovery; re-selecting the same model sends no model change and
+stays bypassed. Cleanup attempts both channels even
+if unloading one fails. Dattorro restart/partition tests exercise the real network
+at 44.1, 48 and 96 kHz, including nonzero pre-delay and unity dry stereo routing.
+
+### Maximizer latency modes
+
+Changing lookahead mode clears queued stereo audio, detector envelope/peak hold
+and reduction publication. Controls and any threshold ramp keep their values;
+the transition deliberately drops the old tail and can create a discontinuity.
+Lookahead restarts with ceil(sampleRate × 0.005) silent latency frames. Its linked
+stereo gain targets -0.001 dBFS headroom and clamps output to full scale. The
+zero-latency mode keeps the detector attack and can overshoot during transients.
+Both modes preserve channel ratios and processing across partial spans.

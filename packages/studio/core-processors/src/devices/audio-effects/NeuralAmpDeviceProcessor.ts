@@ -69,6 +69,7 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
     #mono: boolean = true
     #mix: number = 1.0
     #terminated: boolean = false
+    #processFailed: boolean = false
 
     constructor(context: EngineContext, adapter: NeuralAmpDeviceBoxAdapter) {
         super(context)
@@ -173,27 +174,42 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
         const outputGain = this.#outputGain
         const wet = this.#mix
         const dry = 1.0 - wet
-        if (this.#mono) {
-            for (let i = 0; i < numFrames; i++) {
-                bufInL[i] = (inL[s0 + i] + inR[s0 + i]) * 0.5 * inputGain
+        try {
+            if (this.#mono) {
+                for (let i = 0; i < numFrames; i++) {
+                    bufInL[i] = (inL[s0 + i] + inR[s0 + i]) * 0.5 * inputGain
+                }
+                wasm.process(instanceL, bufInL.subarray(0, numFrames), bufOutL.subarray(0, numFrames))
+                for (let i = 0; i < numFrames; i++) {
+                    const wetSample = bufOutL[i] * outputGain
+                    outL[s0 + i] = inL[s0 + i] * dry + wetSample * wet
+                    outR[s0 + i] = inR[s0 + i] * dry + wetSample * wet
+                }
+            } else {
+                for (let i = 0; i < numFrames; i++) {
+                    bufInL[i] = inL[s0 + i] * inputGain
+                    bufInR[i] = inR[s0 + i] * inputGain
+                }
+                wasm.process(instanceL, bufInL.subarray(0, numFrames), bufOutL.subarray(0, numFrames))
+                wasm.process(instanceR, bufInR.subarray(0, numFrames), bufOutR.subarray(0, numFrames))
+                for (let i = 0; i < numFrames; i++) {
+                    outL[s0 + i] = inL[s0 + i] * dry + bufOutL[i] * outputGain * wet
+                    outR[s0 + i] = inR[s0 + i] * dry + bufOutR[i] * outputGain * wet
+                }
             }
-            wasm.process(instanceL, bufInL.subarray(0, numFrames), bufOutL.subarray(0, numFrames))
-            for (let i = 0; i < numFrames; i++) {
-                const wetSample = bufOutL[i] * outputGain
-                outL[s0 + i] = inL[s0 + i] * dry + wetSample * wet
-                outR[s0 + i] = inR[s0 + i] * dry + wetSample * wet
+        } catch {
+            this.#processFailed = true
+            this.#modelApplyFailed = false
+            try {this.#destroyInstances()} catch {
+                // Cleanup attempts both channels and invalidates their handles first.
             }
-        } else {
-            for (let i = 0; i < numFrames; i++) {
-                bufInL[i] = inL[s0 + i] * inputGain
-                bufInR[i] = inR[s0 + i] * inputGain
+            this.#audioAnalyser.clear()
+            this.#spectrum.fill(0.0)
+            for (let i = s0; i < s1; i++) {
+                outL[i] = inL[i]
+                outR[i] = inR[i]
             }
-            wasm.process(instanceL, bufInL.subarray(0, numFrames), bufOutL.subarray(0, numFrames))
-            wasm.process(instanceR, bufInR.subarray(0, numFrames), bufOutR.subarray(0, numFrames))
-            for (let i = 0; i < numFrames; i++) {
-                outL[s0 + i] = inL[s0 + i] * dry + bufOutL[i] * outputGain * wet
-                outR[s0 + i] = inR[s0 + i] * dry + bufOutR[i] * outputGain * wet
-            }
+            console.error("NAM processing failed; select a different model or reopen the project to recover.")
         }
         this.#peaks.process(outL, outR, s0, s1)
         if (this.#needsSpectrum) {
@@ -258,6 +274,10 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
 
     #onMonoChanged(mono: boolean): void {
         if (this.#terminated) {return}
+        if (this.#processFailed) {
+            this.#mono = mono
+            return
+        }
         const module = NeuralAmpDeviceProcessor.#wasmModule
         if (module.isEmpty()) {
             this.#mono = mono
@@ -306,6 +326,7 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
 
     #onModelJsonChanged(modelJson: string): void {
         if (this.#terminated) {return}
+        this.#processFailed = false
         this.#pendingModelJson = modelJson
         if (this.#modelApplyPending) {return}
         this.#modelApplyFailed = false

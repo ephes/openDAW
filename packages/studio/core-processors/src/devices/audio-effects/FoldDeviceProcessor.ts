@@ -67,8 +67,10 @@ export class FoldDeviceProcessor extends AudioProcessor implements AudioEffectDe
     get outgoing(): Processor {return this}
 
     reset(): void {
-        console.debug("reset")
         this.#processed = false
+        this.#resampler.reset()
+        this.#smoothInputGain.set(dbToGain(this.parameterDrive.getValue()), false)
+        this.#smoothOutputGain.set(dbToGain(this.parameterVolume.getValue()), false)
         this.#peaks.clear()
         this.#output.clear()
         this.eventInput.clear()

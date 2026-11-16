@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Clarify Nano sample/disable ownership, Revamp and Fold restart behavior, NAM fault recovery and Maximizer latency-mode transitions in device manuals.
+
 - Preserve devices, parameters, undo history and pager position when a preset is refused; only the newest selection for a destination can install, and closed projects or removed targets discard pending loads.
 - Refuse preset save/replace confirmations whose source changed while the dialog was open, with a request to start a fresh save.
 - Close temporary demux decoders on every exit; retain shared audio suspension until the last separation finishes and keep results bound to the initiating project.

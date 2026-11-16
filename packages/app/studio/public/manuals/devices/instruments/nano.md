@@ -40,3 +40,8 @@ The bottom area displays the loaded sample name and a {icon:Waveform} icon.
 - **Click**: Browse for a sample
 - **Drag & drop**: Drop an audio file directly onto the zone
 - **Right-click**: Context menu for sample options
+
+Disabling Nano stops its voices and ignores new note starts until enabled again.
+Changing the loaded sample stops held notes immediately; play a new note to hear
+the replacement. Playback includes the sample's final frame, with interpolation
+held at that endpoint until the playback position reaches the end.

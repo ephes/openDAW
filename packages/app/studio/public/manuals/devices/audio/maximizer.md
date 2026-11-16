@@ -32,7 +32,11 @@ Lower threshold = more limiting = louder output. Maximizer automatically applies
 
 ## 3. Lookahead
 
-Enables 5ms lookahead for the envelope detector.
+Enables 5ms lookahead for the envelope detector (rounded up to a whole sample).
+
+Changing this mode drops queued audio and clears detector/reduction history.
+Lookahead starts with a fresh silent delay; the transition can create a
+discontinuity. Threshold settings and ongoing threshold ramps are preserved.
 
 - **Enabled** (default): Gain reduction begins before peaks arrive. No overshoots. Introduces 5ms latency (automatically compensated).
 - **Disabled**: Zero latency. Fast transients may briefly exceed the ceiling.

@@ -27,6 +27,10 @@ beforeEach(async () => {
     Object.assign(globalThis, {sampleRate: 48000})
     nextId = 0; loaded = new Set()
     bridge.create.mockResolvedValue({}); bridge.from.mockReturnValue(wasm)
+    wasm.process.mockImplementation((id, input, output) => {
+        if (!loaded.has(id)) throw new Error("processing unloaded instance")
+        output.set(input)
+    })
     wasm.unloadModel.mockImplementation((id: number) => {loaded.delete(id)})
     wasm.destroyInstance.mockImplementation(() => {})
     wasm.loadModel.mockImplementation((id: number) => {loaded.add(id); return true})
@@ -186,5 +190,36 @@ it("applies a model whose module load failed once another load succeeds", async 
     expect(wasm.process).toHaveBeenCalled()
     f.processor.processAudio(block)
     expect(wasm.loadModel).toHaveBeenCalledTimes(1)
+    f.processor.terminate(); error.mockRestore()
+})
+it.each(["mono", "left", "right"])("quarantines a partial %s process fault, bypasses the full span and recovers on model replacement", async side => {
+    const f = fixture("model", side === "mono"); await ready(f.context)
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    const failedId = side === "right" ? 1 : 0
+    if (side === "right") wasm.unloadModel.mockImplementationOnce(() => {throw new Error("cleanup fault")})
+    wasm.process.mockImplementation((id, input, output) => {
+        output.fill(Number.NaN, 0, 3)
+        if (id === failedId) throw new Error("synthetic process fault")
+        output.set(input)
+    })
+    f.processor.audioOutput.channels().forEach(ch => ch.fill(-9))
+    const span = {...block, s0: 7, s1: 31}
+    expect(() => f.processor.processAudio(span)).not.toThrow()
+    f.processor.audioOutput.channels().forEach((ch, c) => {
+        expect(ch[6]).toBe(-9); expect(ch[31]).toBe(-9)
+        expect(ch.slice(7, 31)).toEqual(f.input.getChannel(c).slice(7, 31))
+    })
+    const calls = wasm.process.mock.calls.length
+    // Reset and mono edits do not implicitly retry a poisoned native generation.
+    f.processor.reset(); f.mono(false)
+    for (let q = 0; q < 4; q++) f.processor.processAudio(block)
+    expect(wasm.process).toHaveBeenCalledTimes(calls)
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(wasm.destroyInstance.mock.calls.map(x => x[0])).toEqual(side === "mono" ? [0] : [0, 1])
+    expect(f.processor.audioOutput.channels()).toEqual(f.input.channels())
+    wasm.process.mockImplementation((_id, input, output) => output.set(Float32Array.from(input, x => x / 2)))
+    f.model("replacement"); f.processor.processAudio(block)
+    expect(f.processor.audioOutput.getChannel(0)[10]).toBeCloseTo(0.4)
+    expect(f.processor.audioOutput.getChannel(1)[10]).toBeCloseTo(0.1)
     f.processor.terminate(); error.mockRestore()
 })
