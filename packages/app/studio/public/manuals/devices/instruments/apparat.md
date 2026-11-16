@@ -152,7 +152,7 @@ Organize parameters and samples visually using `// @group` comments:
 ```javascript
 // @group Envelope green
 // @param attack  0.01  0.001  1.0  exp  s
-// @param release 0.5   0      5.0  exp  s
+// @param release 0.5   0.001  5.0  exp  s
 // @group Samples orange
 // @sample wavetable
 // @sample grain
@@ -176,7 +176,7 @@ When a parameter's name starts with the group's name (case-insensitive) followed
 ```javascript
 // @group Envelope green
 // @param envelopeAttack  0.01  0.001  1.0  exp  s   // shown as "Attack"
-// @param envelopeRelease 0.5   0      5.0  exp  s   // shown as "Release"
+// @param envelopeRelease 0.5   0.001  5.0  exp  s   // shown as "Release"
 ```
 
 If the next character is lowercase or the parameter name does not start with the group name, the label is shown unchanged.

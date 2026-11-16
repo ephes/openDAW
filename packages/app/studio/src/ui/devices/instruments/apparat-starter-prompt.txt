@@ -96,7 +96,7 @@ Color defaults to "dark" if omitted.
 Example:
 // @group Envelope green
 // @param attack 0.01 0.001 1.0 exp s
-// @param release 0.5 0 5 exp s
+// @param release 0.5 0.001 5 exp s
 // @group Samples orange
 // @sample wavetable
 // @param volume 0.8

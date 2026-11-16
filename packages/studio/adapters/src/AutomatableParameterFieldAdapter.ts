@@ -39,7 +39,7 @@ export class AutomatableParameterFieldAdapter<T extends PrimitiveValues = any> i
     readonly #field: PrimitiveField<T, Pointers.Automation>
     readonly #name: string
     readonly #anchor: unitValue
-    readonly #resetValue: Option<T>
+    #resetValue: Option<T>
 
     readonly #terminator: Terminator = new Terminator()
     readonly #valueChangeNotifier: Notifier<this>
@@ -202,6 +202,8 @@ export class AutomatableParameterFieldAdapter<T extends PrimitiveValues = any> i
             console.debug(`Unknown text input: '${result.value}'`)
         }
     }
+
+    updateResetValue(value: T): void {this.#resetValue = Option.wrap(value)}
 
     reset(): void {this.setValue(this.#resetValue.unwrapOrElse(this.#field.initValue))}
 

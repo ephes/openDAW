@@ -10,6 +10,10 @@ export namespace RingBuffer {
         bufferSize: int
     }
 
+    // Write cursor, read cursor, sticky dropped-frame count, then planar audio.
+    export const HEADER_BYTES = 3 * Int32Array.BYTES_PER_ELEMENT
+    export const droppedFrames = ({sab}: Config): int => Atomics.load(new Int32Array(sab, 0, 3), 2)
+
     export interface Writer {write(channels: ReadonlyArray<Float32Array>): void}
 
     export interface Reader {stop(): void}
@@ -19,48 +23,52 @@ export namespace RingBuffer {
                                numChunks,
                                numberOfChannels,
                                bufferSize
-                           }: Config, append: Procedure<Array<Float32Array>>): Reader => {
+                           }: Config, append: Procedure<Array<Float32Array>>, overflow: Procedure<int> = () => {}): Reader => {
         let running = true
-        const pointers = new Int32Array(sab, 0, 2)
-        const audio = new Float32Array(sab, 8)
+        const pointers = new Int32Array(sab, 0, 3)
+        const audio = new Float32Array(sab, HEADER_BYTES)
         const planarChunk = new Float32Array(numberOfChannels * bufferSize)
         const canBlock = typeof document === "undefined" // for usage in workers
         const step = () => {
-            if (!running) {return}
-            let readPtr = Atomics.load(pointers, 1)
-            let writePtr = Atomics.load(pointers, 0)
-            if (readPtr === writePtr) {
-                if (canBlock) {
-                    Atomics.wait(pointers, 0, writePtr)
-                } else {
-                    setTimeout(step, 1)   // non‑blocking poll fallback
+            while (running) {
+                const lost = Atomics.load(pointers, 2)
+                if (lost !== 0) {
+                    running = false
+                    overflow(lost)
                     return
                 }
-                writePtr = Atomics.load(pointers, 0)
-            }
-            while (readPtr !== writePtr) {
-                const offset = readPtr * numberOfChannels * bufferSize
-                planarChunk.set(audio.subarray(offset, offset + numberOfChannels * bufferSize))
-                const channels: Array<Float32Array> = []
-                for (let channel = 0; channel < numberOfChannels; channel++) {
-                    const start = channel * bufferSize
-                    const end = start + bufferSize
-                    channels.push(planarChunk.slice(start, end))
+                let readPtr = Atomics.load(pointers, 1)
+                const writePtr = Atomics.load(pointers, 0)
+                if (readPtr === writePtr) {
+                    if (canBlock) {
+                        Atomics.wait(pointers, 0, writePtr)
+                        continue
+                    }
+                    setTimeout(step, 1)
+                    return
                 }
-                readPtr = (readPtr + 1) % numChunks
-                Atomics.store(pointers, 1, readPtr)
-                if (!running) {return}
-                append(channels)
+                while (readPtr !== writePtr) {
+                    const offset = readPtr * numberOfChannels * bufferSize
+                    planarChunk.set(audio.subarray(offset, offset + numberOfChannels * bufferSize))
+                    const channels: Array<Float32Array> = []
+                    for (let channel = 0; channel < numberOfChannels; channel++) {
+                        const start = channel * bufferSize
+                        channels.push(planarChunk.slice(start, start + bufferSize))
+                    }
+                    readPtr = (readPtr + 1) % numChunks
+                    Atomics.store(pointers, 1, readPtr)
+                    if (!running) {return}
+                    append(channels)
+                }
             }
-            step()
         }
         step()
         return {stop: () => running = false}
     }
 
     export const writer = ({sab, numChunks, numberOfChannels, bufferSize}: Config): Writer => {
-        const pointers = new Int32Array(sab, 0, 2)
-        const audio = new Float32Array(sab, 8)
+        const pointers = new Int32Array(sab, 0, 3)
+        const audio = new Float32Array(sab, HEADER_BYTES)
         return Object.freeze({
             write: (channels: ReadonlyArray<Float32Array>): void => {
                 if (channels.length !== numberOfChannels) {
@@ -73,9 +81,17 @@ export namespace RingBuffer {
                     }
                 }
                 const writePtr = Atomics.load(pointers, 0)
+                const next = (writePtr + 1) % numChunks
+                if (Atomics.load(pointers, 2) !== 0) {return}
+                if (next === Atomics.load(pointers, 1)) {
+                    // Reserve one empty slot. A fault is sticky for this recording generation.
+                    Atomics.store(pointers, 2, bufferSize)
+                    Atomics.notify(pointers, 0)
+                    return
+                }
                 const offset = writePtr * numberOfChannels * bufferSize
                 channels.forEach((channel, index) => audio.set(channel, offset + index * bufferSize))
-                Atomics.store(pointers, 0, (writePtr + 1) % numChunks)
+                Atomics.store(pointers, 0, next)
                 Atomics.notify(pointers, 0)
             }
         })

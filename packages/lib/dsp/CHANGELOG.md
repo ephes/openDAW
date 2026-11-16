@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire all incident graph edges before late edge leases; sort processors with iterative linear graph traversal and explicit cycle detection.
+
 - Validate sample-rate conversion geometry before early returns and allocation.
 - Correct clipped centered transient RMS energy and use a running sum for linear-work valley refinement.
 

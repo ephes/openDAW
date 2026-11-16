@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire all incident graph edges before late edge leases; sort processors with iterative linear graph traversal and explicit cycle detection.
+
 - Preserve Delay and pre-delay state on empty spans; prepare input/frozen replacements before retiring the last working source and unwind failed processor/edge registrations through `EngineContext.constructAtomically`.
 
 - Publish clock timestamp/counter samples coherently and preserve consecutive measurements across signed Int32 counter rollover.

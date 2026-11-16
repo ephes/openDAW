@@ -47,7 +47,7 @@ describe("ScriptDeclaration", () => {
             expect(params[0].max).toBe(16)
         })
         it("parses multiple params", () => {
-            const code = "// @param attack 0.01 0 1 exp s\n// @param decay 0.2 0 2 exp s"
+            const code = "// @param attack 0.01 0.001 1 exp s\n// @param decay 0.2 0.001 2 exp s"
             const params = ScriptDeclaration.parseParams(code)
             expect(params.length).toBe(2)
             expect(params[0].label).toBe("attack")
@@ -87,7 +87,7 @@ describe("ScriptDeclaration", () => {
             expect(order.get("kick")).toBe(1)
             expect(order.get("decay")).toBe(2)
         })
-        it("keeps first index for duplicate labels", () => {
+        it("keeps first index for duplicate labels in saved code", () => {
             const code = "// @param gain\n// @param gain"
             const order = ScriptDeclaration.parseDeclarationOrder(code)
             expect(order.get("gain")).toBe(0)
@@ -111,7 +111,7 @@ describe("ScriptDeclaration", () => {
             expect(ScriptDeclaration.parseGroups("const x = 1")).toEqual([])
         })
         it("parses a single group", () => {
-            const code = "// @group Envelope green\n// @param attack 0.01 0 1 exp s\n// @param decay 0.2 0 2 exp s"
+            const code = "// @group Envelope green\n// @param attack 0.01 0.001 1 exp s\n// @param decay 0.2 0.001 2 exp s"
             const sections = ScriptDeclaration.parseGroups(code)
             expect(sections.length).toBe(1)
             expect(sections[0].group).toEqual({label: "Envelope", color: "green"})
@@ -122,8 +122,8 @@ describe("ScriptDeclaration", () => {
         it("parses multiple groups", () => {
             const code = [
                 "// @group Envelope green",
-                "// @param attack 0.01 0 1 exp s",
-                "// @param release 0.5 0 5 exp s",
+                "// @param attack 0.01 0.001 1 exp s",
+                "// @param release 0.5 0.001 5 exp s",
                 "// @group Filter blue",
                 "// @param cutoff 1000 20 20000 exp Hz"
             ].join("\n")
@@ -138,7 +138,7 @@ describe("ScriptDeclaration", () => {
             const code = [
                 "// @param gain",
                 "// @group Envelope green",
-                "// @param attack 0.01 0 1 exp s"
+                "// @param attack 0.01 0.001 1 exp s"
             ].join("\n")
             const sections = ScriptDeclaration.parseGroups(code)
             expect(sections.length).toBe(2)
@@ -212,8 +212,8 @@ describe("ScriptDeclaration", () => {
         it("is idempotent (global regex lastIndex reset)", () => {
             const code = [
                 "// @group Envelope green",
-                "// @param attack 0.01 0 1 exp s",
-                "// @param decay 0.2 0 2 exp s",
+                "// @param attack 0.01 0.001 1 exp s",
+                "// @param decay 0.2 0.001 2 exp s",
                 "// @group Filter blue",
                 "// @param cutoff 1000 20 20000 exp Hz"
             ].join("\n")
@@ -234,10 +234,10 @@ describe("ScriptDeclaration", () => {
                 "// @param spread 0.5",
                 "// @param pitch 0 -24 24 int st",
                 "// @group Envelope blue",
-                "// @param attack 0.01 0 1 exp s",
-                "// @param decay 0.2 0 2 exp s",
+                "// @param attack 0.01 0.001 1 exp s",
+                "// @param decay 0.2 0.001 2 exp s",
                 "// @param sustain 0.7",
-                "// @param release 0.5 0 5 exp s",
+                "// @param release 0.5 0.001 5 exp s",
                 "// @group Output orange",
                 "// @param volume 0.8",
                 "// @param pan 0 -1 1 linear",
@@ -276,6 +276,7 @@ describe("ScriptDeclaration", () => {
 
 it.each(["// @param x 1.2 1.1 1.4 int", "// @param x 3.5e20 3e20 4e20 int"])(
     "rejects collapsed integer mappings while parsing: %s", code => {
+        expect(() => ScriptDeclaration.validate(code)).toThrow(/Malformed @param/)
         expect(() => ScriptDeclaration.parseParams(code)).toThrow(/Malformed @param/)
         expect(() => ScriptDeclaration.parseGroups(code)).toThrow(/Malformed @param/)
     })
@@ -286,3 +287,37 @@ it("resolves valid fractional integer bounds after parsing", () => {
     expect(mapping.y(1)).toBe(4)
     expect(mapping.y(0.5)).toBe(1)
 })
+
+describe("numeric declaration admission", () => {
+    it.each(["Infinity", "1junk", "1e309", "5", "-0.1", "NaN", "0x1", "0.5 0 Infinity linear",
+        "0.5 0junk 1 linear", "0.5 -1 10 exp", "0.5 0 10 exp", "5 bool", "1 2 3 bool",
+        "0 -1e308 1e308 linear", "1 1e-300 1e300 exp"])("refuses %s", text => {
+        expect(() => ScriptDeclaration.validate(`// @param gain ${text}`)).toThrow(/Malformed @param/)
+    })
+    it.each(["5e-1", "+.5", "1. 0 1 linear", "1000 20 2e4 exp Hz", "-2 -2 4 int", "1 0 1 bool"])("admits finite mapping %s", text => {
+        const code = `// @param value ${text}`
+        expect(() => ScriptDeclaration.validate(code)).not.toThrow()
+        const declaration = ScriptDeclaration.parseParams(code)[0]
+        const mapping = ScriptDeclaration.resolveValueMapping(declaration)
+        for (const unit of [0, 0.25, 0.5, 0.75, 1]) {
+            expect(Number.isFinite(mapping.y(unit))).toBe(true)
+        }
+    })
+})
+
+it.each(["// @param gain\n// @param gain", "// @sample hit\n// @sample hit", "// @sample gain\n// @param gain"])(
+    "compile admission rejects ambiguous names while saved views keep reading them: %s", code => {
+        expect(() => ScriptDeclaration.validate(code)).toThrow(/Duplicate.*line 2/)
+        for (const parse of [ScriptDeclaration.parseParams, ScriptDeclaration.parseSamples,
+            ScriptDeclaration.parseGroups, ScriptDeclaration.parseDeclarationOrder]) {
+            expect(() => parse(code)).not.toThrow()
+        }
+    })
+
+it.each(["// @param release 0.5 0 5 exp s", "// @param decay 0.2 0 2.0 exp s", "// @param gain 1.5",
+    "// @param x 1.0000001 0 1 linear", "// @param on 1 0 2 bool", "// @param gain\n// @param gain"])(
+    "saved legacy declarations still parse for loads, bindings and the editor: %s", code => {
+        expect(() => ScriptDeclaration.validate(code)).toThrow()
+        expect(ScriptDeclaration.parseParams(code).length).toBeGreaterThan(0)
+        expect(ScriptDeclaration.parseGroups(code)[0].items.length).toBeGreaterThan(0)
+    })

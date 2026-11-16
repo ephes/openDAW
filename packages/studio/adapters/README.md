@@ -33,3 +33,41 @@ Reserved DOS device names (including extension forms) receive an underscore.
 Basenames are limited to 200 UTF-8 bytes before the audio extension. Collisions
 use normalized case folding and deterministic ` 1`, ` 2`, … suffixes in stem
 order, including collisions with authored suffixes. Display labels are unchanged.
+
+### Script parameter lifetime
+
+ParameterAdapterSet.removeParameter terminates the removed adapter and returns
+that retired adapter. Registry, field and automation subscriptions end together.
+Script default and display-unit edits preserve the parameter UUID, current value
+and automation/MIDI links. Reset follows the latest declaration through undo/redo.
+Changing mapping type or numeric endpoints recreates that parameter and retires
+its old links. Reconciliation compares against saved source, so undo does not
+leave an out-of-date declaration cache.
+
+Script declarations require complete finite decimal/scientific numbers representable
+as finite float32 values. Shorthand defaults are in [0,1]; explicit defaults are
+within their bounds. Exponential endpoints must be positive with a finite ratio.
+Boolean endpoints are 0 and 1. Integer mappings use ValueMapping's rounded/clamped
+bounds and must remain increasing. Parameter and sample labels share one unique,
+case-sensitive namespace; duplicates report the declaration line and preserve the
+previous device. ScriptDeclaration.validate applies these admission rules to new
+compile input only. Saved code, loads, parameter bindings and the device editor keep
+the legacy tolerant reading, so projects saved with earlier declarations (for example
+an exponential range starting at 0) still open, and a corrected script can be compiled
+over them.
+
+### Script installation publication
+
+Compilation validates declarations and syntax, installs a private attempt-specific
+constructor, then activates it and publishes one graph transaction. Installation
+failure leaves saved code, labels, parameters and samples unchanged. A newer
+compile/load request, source edit or removed device retires pending publication.
+Request ownership is shared across compiler instances for each context/device and
+is separate from saved update numbers, so undo may deliberately reload an older
+saved update. Worklet staging fences late modules; retirement restores only the
+same attempt's activation and frees its candidate. Script top-level code runs
+during preparation, so external/global side effects authored by a script are not
+rolled back. Successful graph publication remains successful if candidate cleanup
+is refused; that cleanup fault is logged. The first compile of a new device appends
+to the creation history step only if no other history change happened while the
+module installed; otherwise it publishes as its own step.

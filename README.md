@@ -476,3 +476,18 @@ The [MIDI contributor notes](packages/lib/midi/README.md) describe supported
 messages, musical metadata, deterministic export ordering and import admission.
 File picker lifecycle and WAV source geometry are documented in the
 [DOM](packages/lib/dom/README.md) and [DSP](packages/lib/dsp/README.md) notes.
+
+Audio output selection switches the context back to the system default when selected.
+Switch refusals reach the selector; delayed device lookups cannot replace a newer sink.
+
+Audio recording rings reserve one slot, so usable capacity is numChunks - 1. If
+the reader falls behind, capture reports lost frames and requires a new recording;
+a discontinuous capture is never imported as a clean sample. The shared header
+contains two cursors and a sticky dropped-frame count; producers and consumers
+must use the same build. Boundary MIDI notes 31, 63, 95 and 127 light note displays.
+
+Script compilation installs the new worklet generation before publishing saved
+code and resource changes. Failed or superseded installations preserve the prior
+device; default/unit edits preserve parameter identity. See the
+[adapter script contracts](packages/studio/adapters/README.md) for numeric admission,
+resource naming, domain changes and intentional undo/load semantics.

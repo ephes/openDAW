@@ -123,3 +123,12 @@ describe("Bits", () => {
         })
     })
 })
+it.each([31, 63, 95, 127])("finds a signed bit word at %s", note => {
+    const bits = new Bits(128)
+    bits.setBit(note, true)
+    expect(bits.getBit(note)).toBe(true)
+    expect(bits.nonEmpty()).toBe(true)
+    expect(Bits.some(-2147483648, 1 << 31)).toBe(true)
+    bits.setBit(note, false)
+    expect(bits.nonEmpty()).toBe(false)
+})

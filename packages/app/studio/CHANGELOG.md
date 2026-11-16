@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Restore the system default audio sink, surface switch refusals and ignore obsolete output-device queries.
+
 - Keep failed or declined project deletions visible and retryable; close approval belongs to the same active profile, and duplicate delete confirmations are ignored.
 
 - Balance pad audition notes across pointer replacement, cancellation, capture loss and editor disposal; export portable, distinct stem basenames.

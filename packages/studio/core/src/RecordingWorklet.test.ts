@@ -8,15 +8,16 @@ vi.hoisted(() => {vi.stubGlobal("AudioWorkletNode", class {
     constructor(readonly context: BaseAudioContext, _name: string, options: AudioWorkletNodeOptions) {this.channelCount = options.channelCount!}
 })})
 let append: (frames: Float32Array[]) => void
+let overflow: (lost: number) => void
 let stop: ReturnType<typeof vi.fn>
 const uuid = "00000000-0000-4000-8000-000000000001"
 beforeEach(() => {
     stop = vi.fn()
-    vi.spyOn(RingBuffer, "reader").mockImplementation((_config, callback) => {append = callback; return {stop}})
+    vi.spyOn(RingBuffer, "reader").mockImplementation((_config, callback, fault) => {append = callback; overflow = fault!; return {stop}})
 })
 afterEach(() => vi.restoreAllMocks())
 const create = () => {
-    const worklet = new RecordingWorklet({sampleRate: 44100} as BaseAudioContext, {numberOfChannels: 1} as RingBuffer.Config)
+    const worklet = new RecordingWorklet({sampleRate: 44100} as BaseAudioContext, {numberOfChannels: 1, sab: new SharedArrayBuffer(12)} as RingBuffer.Config)
     append([new Float32Array(128).fill(0.25)])
     return worklet
 }
@@ -77,3 +78,24 @@ for (const failure of ["saved callback", "loaded subscriber"]) {
         expect(late).toHaveBeenCalledWith({type: "loaded"})
     })
 }
+
+it("refuses persistence after shared-ring loss even before the poll reports it", async () => {
+    const config = {numberOfChannels: 1, sab: new SharedArrayBuffer(12)} as RingBuffer.Config
+    const worklet = new RecordingWorklet({sampleRate: 44100} as BaseAudioContext, config)
+    append([new Float32Array(128)])
+    const importRecording = vi.fn().mockResolvedValue({uuid})
+    worklet.sampleService = {importRecording} as unknown as SampleService
+    Atomics.store(new Int32Array(config.sab), 2, 128)
+    worklet.limit(128)
+    await vi.waitFor(() => expect(worklet.state.type).toBe("error"))
+    expect(importRecording).not.toHaveBeenCalled()
+})
+it("publishes a visible terminal ring fault and refuses later save attempts", () => {
+    const worklet = create()
+    const importRecording = vi.fn()
+    worklet.sampleService = {importRecording} as unknown as SampleService
+    overflow(128)
+    worklet.limit(128)
+    expect(worklet.state).toEqual({type: "error", reason: "Recording lost at least 128 frames; restart recording"})
+    expect(importRecording).not.toHaveBeenCalled()
+})

@@ -58,7 +58,7 @@ export class AudioWorklets {
         return new EngineWorklet(this.#context, project, exportConfiguration, options)
     }
 
-    /** Admission budget excludes the two 32-bit ring pointers. */
+    /** Admission budget excludes the ring header (two cursors and a dropped-frame count). */
     static readonly MAX_RECORDING_AUDIO_BYTES = 64 * 1024 * 1024
 
     createRecording(numberOfChannels: int, numChunks: int): RecordingWorklet {
@@ -70,7 +70,7 @@ export class AudioWorklets {
         if (!Number.isSafeInteger(audioBytes) || audioBytes > AudioWorklets.MAX_RECORDING_AUDIO_BYTES) {
             throw new RangeError("Recording ring exceeds 64 MiB audio budget")
         }
-        const pointerBytes = Int32Array.BYTES_PER_ELEMENT * 2
+        const pointerBytes = RingBuffer.HEADER_BYTES
         const sab = new SharedArrayBuffer(audioBytes + pointerBytes)
         const buffer: RingBuffer.Config = {sab, numChunks, numberOfChannels, bufferSize: RenderQuantum}
         return new RecordingWorklet(this.#context, buffer)

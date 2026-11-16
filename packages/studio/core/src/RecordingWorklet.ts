@@ -24,6 +24,7 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
     readonly #output: Array<ReadonlyArray<Float32Array>>
     readonly #notifier: Notifier<SampleLoaderState>
     readonly #reader: RingBuffer.Reader
+    readonly #ringConfig: RingBuffer.Config
     readonly #peakWriter: PeaksWriter
 
     #data: Option<AudioData> = Option.None
@@ -44,6 +45,7 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
             processorOptions: config
         })
 
+        this.#ringConfig = config
         this.#peakWriter = new PeaksWriter(config.numberOfChannels)
         this.#peaks = Option.wrap(this.#peakWriter)
         this.#output = []
@@ -56,7 +58,13 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
                     this.#finalize().catch(error => console.warn(error))
                 }
             }
-        })
+        }, lost => this.#recordingOverflow(lost))
+    }
+
+    #recordingOverflow(lost: int): void {
+        this.#isRecording = false
+        this.#setState({type: "error", reason: `Recording lost at least ${lost} frames; restart recording`})
+        this.#terminator.terminate()
     }
 
     own<T extends Terminable>(terminable: T): T {return this.#terminator.own(terminable)}
@@ -100,6 +108,7 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
     toString(): string {return `{RecordingWorklet}`}
 
     #finalize(): Promise<void> {
+        if (this.#state.type === "error") {return Promise.resolve()}
         return this.#finalization ??= this.#saveRecording()
     }
 
@@ -107,6 +116,8 @@ export class RecordingWorklet extends AudioWorkletNode implements Terminable, Sa
         this.#isRecording = false
         this.#reader.stop()
         try {
+            const lost = RingBuffer.droppedFrames(this.#ringConfig)
+            if (lost !== 0) {this.#recordingOverflow(lost); return}
             let sampleId: UUID.Bytes
             try {
                 if (this.#output.length === 0) {throw new Error("No recording data available")}
