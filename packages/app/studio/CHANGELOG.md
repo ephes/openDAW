@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bind drum-pad moves to their source device and preserve authored sample fields when copying a pad, with shared audio-file identity.
+
 - Clarify Nano sample/disable ownership, Revamp and Fold restart behavior, NAM fault recovery and Maximizer latency-mode transitions in device manuals.
 
 - Preserve devices, parameters, undo history and pager position when a preset is refused; only the newest selection for a destination can install, and closed projects or removed targets discard pending loads.

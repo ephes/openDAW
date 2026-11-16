@@ -48,7 +48,7 @@ export const Slot = (
             sampleLifecycle.terminate()
             replaceChildren(group, owner.getValue().match({
                 none: () => (
-                    <EmptySlot lifecycle={sampleLifecycle}
+                    <EmptySlot adapter={adapter} lifecycle={sampleLifecycle}
                                service={service}
                                noteReceiver={noteReceiver}
                                sampleSelector={sampleSelector}

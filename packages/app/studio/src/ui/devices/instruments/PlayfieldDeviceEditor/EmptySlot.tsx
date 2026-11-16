@@ -7,13 +7,14 @@ import {SampleSelector} from "@/ui/devices/SampleSelector"
 import {SlotDragAndDrop} from "@/ui/devices/instruments/PlayfieldDeviceEditor/SlotDragAndDrop"
 import {NoteLabel} from "@/ui/devices/instruments/PlayfieldDeviceEditor/NoteLabel"
 import {Icon} from "@/ui/components/Icon"
-import {NoteStreamReceiver} from "@opendaw/studio-adapters"
+import {NoteStreamReceiver, PlayfieldDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {IconSymbol} from "@opendaw/studio-enums"
 import {ContextMenu} from "@opendaw/studio-core"
 
 const className = Html.adoptStyleSheet(css, "EmptySlot")
 
 type Construct = {
+    adapter: PlayfieldDeviceBoxAdapter
     lifecycle: Lifecycle
     service: StudioService
     noteReceiver: NoteStreamReceiver
@@ -23,7 +24,7 @@ type Construct = {
 }
 
 export const EmptySlot = (
-    {lifecycle, service: {project}, noteReceiver, sampleSelector, octave, semitone}: Construct) => {
+    {lifecycle, adapter, service: {project}, noteReceiver, sampleSelector, octave, semitone}: Construct) => {
     const browseButton: HTMLElement = (
         <div className="audio-file">
             <Icon symbol={IconSymbol.AudioFile}/>
@@ -46,6 +47,7 @@ export const EmptySlot = (
         SlotDragAndDrop.installTarget({
             element,
             project,
+            device: adapter.box,
             getSlotIndex: () => octave.getValue() * 12 + semitone
         }),
         sampleSelector.configureDrop(element),
