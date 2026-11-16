@@ -50,3 +50,11 @@ Soundfont files can be large (some exceed 1GB). The entire file is loaded into m
 - **Large files** (>200MB): Can cause memory pressure, especially on devices with limited RAM
 
 If you experience performance issues or crashes, consider using smaller soundfonts or reducing the number of simultaneous Soundfont instruments in your project.
+
+## 4. Sample Loops
+
+The font defines each sample's playback mode: one-shot (0), continuous loop (1),
+or loop until note-off (3). Continuous loops keep wrapping during the release
+envelope. Mode 3 leaves the loop on release and plays the sample's natural tail.
+Invalid loop bounds fall back to one-shot playback for that zone; other voices
+continue normally.

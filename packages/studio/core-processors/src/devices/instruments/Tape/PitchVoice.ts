@@ -38,6 +38,7 @@ export class PitchVoice {
         }
     }
 
+    get data(): AudioData {return this.#data}
     get readPosition(): number {return this.#readPosition}
 
     done(): boolean {return this.#state === VoiceState.Done}

@@ -178,6 +178,7 @@ export class VaporisateurDeviceProcessor extends AudioProcessor
         this.#noteEventInstrument.clear()
         this.#peakBroadcaster.clear()
         this.#voicing.reset()
+        this.#limiter.clear()
         this.#audioOutput.clear()
         this.eventInput.clear()
     }
@@ -188,6 +189,7 @@ export class VaporisateurDeviceProcessor extends AudioProcessor
 
     handleEvent(event: Event): void {
         if (NoteLifecycleEvent.isStart(event)) {
+            if (!this.#enabled) {return}
             this.#voicing.start(event)
         } else if (NoteLifecycleEvent.isStop(event)) {
             this.#voicing.stop(event.id)

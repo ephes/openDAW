@@ -15,6 +15,7 @@ import {MixProcessor} from "./MixProcessor"
 import {DeviceProcessor} from "../../../DeviceProcessor"
 
 export class SampleProcessor extends AudioProcessor implements DeviceProcessor, AudioGenerator {
+    static readonly MAX_VOICES = 16
     readonly #device: PlayfieldDeviceProcessor
     readonly #adapter: PlayfieldSampleBoxAdapter
 
@@ -47,7 +48,7 @@ export class SampleProcessor extends AudioProcessor implements DeviceProcessor, 
             pitch: this.own(this.bindParameter(pitch))
         })
 
-        const positions = new Float32Array(16) // we just assume that 16 voices per channels are enough to visualize
+        const positions = new Float32Array(SampleProcessor.MAX_VOICES + 1)
         this.ownAll(
             InsertReturnAudioChain.create(context, adapter.audioEffects, this, mixProcessor),
             context.broadcaster.broadcastFloats(adapter.address, positions, (hasSubscribers) => {
@@ -80,6 +81,7 @@ export class SampleProcessor extends AudioProcessor implements DeviceProcessor, 
             if (silent) {return}
             if (!polyphone.getValue()) {this.#voices.forEach(voice => voice.release(true))}
             if (exclude.getValue()) {this.#device.stopExcludeOthers(this.#adapter)}
+            if (this.#voices.length >= SampleProcessor.MAX_VOICES) {this.#voices.shift()}
             this.#voices.push(new SampleVoice(this.#adapter, this.#parameters, optData.unwrap(), event))
         } else if (NoteLifecycleEvent.isStop(event)) {
             this.#voices.find(voice => voice.event.id === event.id)?.release()

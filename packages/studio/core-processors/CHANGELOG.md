@@ -5,6 +5,18 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Distinguish continuous and until-note-off Soundfont loops, validate sample-relative loop bounds with nonlooping fallback, and wrap arbitrary finite overshoot in constant work.
+
+- Bind Tape pitch voices to audio-data generations and quantize shared cycle boundaries before deriving spans, aligning pitch/stretch fade gains with output frames.
+
+- Isolate unavailable Tape timeline regions and discard disabled-lane pitch/stretch tails instead of freezing them across re-enable.
+
+- Keep Playfield one-shot boundary contributions in both directions; bound live sample polyphony and release tails to 16 with oldest-first stealing and event-owned stops.
+
+- Retire empty/invalid Playfield sample intervals and wrap forward/reverse loops in constant work, preserving fractional overshoot.
+
+- Refuse disabled Vaporisateur note starts and clear its limiter envelope on reset. Tests cover note-source delivery and quiet restart after loud playback.
+
 - Retire Maximizer delay/detector/reduction history when lookahead changes; verify static gain, stereo linking, exact latency, headroom and automated partial-span rendering.
 
 - Quarantine NAM processing faults with complete dry bypass and explicit model-reload recovery; cover real Dattorro routing, partitions and restart at three sample rates.

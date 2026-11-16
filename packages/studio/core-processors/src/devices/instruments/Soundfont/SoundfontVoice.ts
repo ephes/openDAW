@@ -31,7 +31,7 @@ export class SoundfontVoice {
     readonly loopStart: number
     readonly loopEnd: number
     readonly pan: number
-    readonly shouldLoop: boolean
+    readonly sampleMode: number
 
     playbackPosition: number = 0
     isReleasing: boolean = false
@@ -52,7 +52,9 @@ export class SoundfontVoice {
 
         // SampleModes: 0 = no loop, 1 = loop continuously, 3 = loop until note off
         const sampleModes = getCombinedGenerator(presetGens, instGens, GeneratorType.SampleModes) ?? 0
-        this.shouldLoop = sampleModes === 1 || sampleModes === 3
+        const validLoop = Number.isInteger(this.loopStart) && Number.isInteger(this.loopEnd)
+            && this.loopStart >= 0 && this.loopStart < this.loopEnd && this.loopEnd <= this.sampleData.length
+        this.sampleMode = validLoop && (sampleModes === 1 || sampleModes === 3) ? sampleModes : 0
         this.pan = (getCombinedGenerator(presetGens, instGens, GeneratorType.Pan) ?? 0) / 1000
 
         const attack = getCombinedGenerator(presetGens, instGens, GeneratorType.AttackVolEnv)
@@ -70,6 +72,8 @@ export class SoundfontVoice {
         this.#gainSmooth = new Smooth(0.003, sampleRate)
     }
 
+    get shouldLoop(): boolean {return this.sampleMode === 1 || (this.sampleMode === 3 && !this.isReleasing)}
+
     release(): void {
         this.isReleasing = true
         this.envelope.gateOff()
@@ -78,6 +82,9 @@ export class SoundfontVoice {
     processAdd(output: AudioBuffer, fromIndex: int, toIndex: int): boolean {
         const pitchRatio = midiToHz(this.event.pitch + this.event.cent / 100, 440) / midiToHz(this.rootKey, 440)
         const playbackRate = pitchRatio * (this.sampleRate / sampleRate)
+        if (this.sampleData.length === 0 || !Number.isFinite(playbackRate) || playbackRate <= 0
+            || !Number.isFinite(this.playbackPosition) || this.playbackPosition < 0
+            || this.playbackPosition >= this.sampleData.length) {return true}
         const gain = velocityToGain(this.event.velocity)
         const panLeft = Math.cos((this.pan + 1) * Math.PI / 4)
         const panRight = Math.sin((this.pan + 1) * Math.PI / 4)
@@ -92,11 +99,11 @@ export class SoundfontVoice {
             r[i] += amp * panRight
             this.playbackPosition += playbackRate
             if (this.shouldLoop) {
-                if (this.playbackPosition >= this.loopEnd && this.loopEnd > this.loopStart) {
-                    this.playbackPosition = this.loopStart + (this.playbackPosition - this.loopEnd)
+                if (this.playbackPosition >= this.loopEnd) {
+                    this.playbackPosition = this.loopStart + (this.playbackPosition - this.loopStart) % (this.loopEnd - this.loopStart)
                 }
             } else {
-                if (this.playbackPosition >= this.sampleData.length - 1) {
+                if (this.playbackPosition >= this.sampleData.length) {
                     return true
                 }
             }

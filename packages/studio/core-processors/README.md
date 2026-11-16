@@ -90,3 +90,48 @@ Lookahead restarts with ceil(sampleRate × 0.005) silent latency frames. Its lin
 stereo gain targets -0.001 dBFS headroom and clamps output to full scale. The
 zero-latency mode keeps the detector attack and can overshoot during transients.
 Both modes preserve channel ratios and processing across partial spans.
+
+### Instrument restart and playback
+
+Vaporisateur refuses note starts while disabled. Reset (including disable) retires
+voices, output and limiter history while preserving controls. Re-enabling requires
+a new note start.
+
+Playfield treats equal endpoints and sources shorter than two frames as empty
+playback intervals in every gate mode; they retire without audio. Nonfinite or
+out-of-source endpoints/rates retire too. Nonempty loops preserve fractional
+overshoot in either direction with constant work per frame, even for adjacent
+representable endpoints.
+
+Playfield one-shots contribute their current interpolated frame before retiring at
+source boundaries, including position zero in reverse. Gate.On tapers by remaining
+source distance in either direction. Zero attack/release controls use one sample.
+Each sample owns at most 16 live voices, including release tails. A new start at
+the ceiling discards the oldest voice immediately (a possible discontinuity).
+Note-offs still match the surviving event IDs; mono retriggers and choke-group
+release dispatch remain intact. Position broadcasts include a terminator after
+all 16 voices.
+
+Tape skips an unavailable timeline region (including a stretch region with fewer
+than two transients) while continuing independent regions on the same lane.
+Disabling an audio lane or changing it to another track type immediately discards
+all its pitch, fade and stretch voices. Device reset discards them too. This hard
+retirement can create a mute discontinuity, but no old tail returns on re-enable.
+Transport stops/seeks retain their existing fade policy.
+
+Tape pitch voices bind both the source UUID and the admitted AudioData object.
+Replacing that data discards the previous generation and its pending fade tails;
+the replacement uses the ordinary new-voice fade policy. In-place PCM mutation
+is not a generation change: loaders must publish a new AudioData object.
+Cycle start/end boundaries are each floored to output frames, then their difference
+defines the span. Empty quantized spans do no work. Pitch and stretch gain buffers
+use those same boundaries and evaluate region fades on the output frame grid,
+so adjacent fractional cycles cover each frame once across block partitions.
+
+Soundfont sample mode 0 plays once, mode 1 loops through its release envelope,
+and mode 3 stops wrapping on note-off and plays the natural sample tail. Loop
+admission requires integral sample-relative bounds with `0 <= start < end <=
+length`. Invalid bounds and unsupported modes fall back to nonlooping playback;
+empty samples and nonfinite/nonpositive playback rates retire silently without
+reading PCM. Other voices continue. Valid loops wrap arbitrary finite overshoot
+with modulo arithmetic, including one-frame loops and high pitches.

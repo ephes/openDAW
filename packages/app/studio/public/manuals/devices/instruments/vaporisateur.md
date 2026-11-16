@@ -28,6 +28,9 @@ Example uses:
 
 Controls for voice allocation and behavior.
 
+Disabling the instrument clears held voices and limiter history. Notes received
+while disabled are ignored; play a new note after re-enabling.
+
 ### 1.1 Play-Mode
 
 Switches between **MONO** and **POLY** voice modes.
