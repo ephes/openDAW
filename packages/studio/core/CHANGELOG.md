@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound stock preset downloads in both progress modes; reject partial aborts and settle observer failures with reader cleanup.
+
 - Bound cloud transfers and entire provider operations; cancel late responses and expose private fixed error categories.
 
 - Bound provider inventory pages/names, refuse ambiguous Drive targets and escape exact-name query literals.

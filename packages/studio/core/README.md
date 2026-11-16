@@ -471,3 +471,8 @@ Cloud downloads enforce existing OPFS limits while streaming: JSON metadata 1 Mi
 presets 16 MiB, project graphs 64 MiB, sample/font/cover media 1 GiB. Declared and
 actual bytes are checked before assembly; encoded responses other than identity
 are refused. SDK download responses are bounded before Blob materialization.
+
+Stock preset downloads use the same 16 MiB declared/actual byte ceiling with or
+without progress. Only identity encoding is accepted. Aborting after a prefix
+rejects without returning partial bytes. A throwing progress observer or source
+read failure rejects the load and cancels/unlocks the reader; EOF reports completion.

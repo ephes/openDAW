@@ -44,30 +44,7 @@ export class OpenPresetAPI {
         if (!response.ok) {
             return panic(`Failed to fetch preset ${UUID.toString(uuid)}: ${response.status} ${response.statusText}`)
         }
-        if (!isDefined(progress)) {return response.arrayBuffer()}
-        const total = parseInt(response.headers.get("Content-Length") ?? "0")
-        let loaded = 0
-        return new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = asDefined(response.body, "No body in response").getReader()
-            const chunks: Array<Uint8Array> = []
-            const onAbort = () => reader.cancel().catch(() => {})
-            if (isDefined(signal)) {signal.addEventListener("abort", onAbort, {once: true})}
-            const cleanup = () => {
-                if (isDefined(signal)) {signal.removeEventListener("abort", onAbort)}
-            }
-            const nextChunk = ({done, value}: ReadableStreamReadResult<Uint8Array>) => {
-                if (done) {
-                    cleanup()
-                    resolve(new Blob(chunks as Array<BlobPart>).arrayBuffer())
-                } else {
-                    chunks.push(value)
-                    loaded += value.length
-                    progress(total > 0.0 ? loaded / total : 0.5)
-                    reader.read().then(nextChunk, reason => {cleanup(); reject(reason)})
-                }
-            }
-            reader.read().then(nextChunk, reason => {cleanup(); reject(reason)})
-        })
+        return network.readBounded(response, 16 * 1024 * 1024, signal, progress)
     }
 
     async upload(arrayBuffer: ArrayBuffer, meta: PresetMeta): Promise<void> {
