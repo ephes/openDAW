@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Move and copy the original surviving note selection, preserve chord intervals at MIDI edges and keep audition aligned with preview.
+
 - Refuse invalid warp mappings and retired transient analysis during hover and insertion.
 
 - Preview warp drags transactionally; recheck current neighbors and preserve external edits on approval or cancellation.

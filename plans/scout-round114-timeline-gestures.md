@@ -27,6 +27,19 @@ marker. Mapping accounts for the waveform offset. A cached hovered transient is
 usable only while its box remains attached and its identity is present in the
 current audio file's transient collection; replacing analysis requires a new hit.
 
+## Selected note movement
+
+A move/copy captures note identities and collection owners at pointer-down. Both
+selected and unselected paint paths apply the preview only to surviving owned
+notes, so a later selection change cannot add another note to the gesture or
+remove an original note from its preview. Detached/reparented notes are skipped;
+copying uses the original attached destination even if the reference note retires.
+
+The shared pitch translation is bounded by the surviving selection's minimum and
+maximum pitches. Chords retain their intervals at MIDI 0 and 127, including
+copies and repeat-copies. Audition publishes the same preview pitch, only when
+the effective translation changes; repeated motion beyond a boundary is silent.
+
 ## Implementation and validation
 
 Round 114 was implemented with Codex from a fresh checkout. Each bundle adds
