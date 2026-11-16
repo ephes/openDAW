@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cancel pending replacement/stop when selecting the playing clip, and launch at the first crossed half-open quantization boundary.
+
 - Release clip graph observers and deleted track states, notifying both playing and queued clip owners.
 
 - Retire MIDI/insert-return effects and enabled subscriptions with their chain; disconnect wiring before processor cleanup.

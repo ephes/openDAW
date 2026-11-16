@@ -12,3 +12,6 @@ afterwards, including repeated termination, zero edges and zero connections.
 
 B02: graph disposal, queued deletion notifications and a 2000-track churn probe
 all fail before the fix. Disposal occurs once; later deletion visits one live state.
+
+B03: five failing cases cover replacement/stop cancellation, first-boundary
+play/stop partition parity and right-endpoint ownership. All pass after the fix.

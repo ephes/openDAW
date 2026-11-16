@@ -52,3 +52,42 @@ it("retains and visits only live tracks after deletion churn", () => {
     try {remove(UUID.generate())} finally {spy.mockRestore()}
     expect(visits).toBe(1)
 })
+
+it.each(["replacement", "stop"])("selecting the playing clip cancels a pending %s", intent => {
+    const {context, track, clip} = fixture()
+    const a = clip(), b = clip()
+    context.schedulePlay(a); Array.from(context.iterate(track.uuid, 0, 1)); context.changes()
+    if (intent === "replacement") context.schedulePlay(b)
+    else context.scheduleStop(track)
+    context.schedulePlay(a)
+    const sections = Array.from(context.iterate(track.uuid, 1, PPQN.Bar + 1))
+    expect(sections.every(section => section.optClip.contains(a))).toBe(true)
+    if (intent === "replacement") {
+        expect(context.changes().unwrap()).toEqual({started: [], stopped: [], obsolete: [b.uuid]})
+    } else expect(context.changes().isEmpty()).toBe(true)
+})
+
+it.each(["play", "stop"])("owns the first crossed %s boundary independent of partition size", intent => {
+    const render = (bounds: number[]) => {
+        const {context, track, clip} = fixture()
+        const a = clip()
+        if (intent === "stop") {
+            context.schedulePlay(a); Array.from(context.iterate(track.uuid, 0, 0.25)); context.changes()
+            context.scheduleStop(track)
+        } else context.schedulePlay(a)
+        const sections = bounds.slice(1).flatMap((p1, i) => Array.from(context.iterate(track.uuid, bounds[i], p1)))
+        return sections.filter(section => intent === "play" ? section.optClip.nonEmpty() : section.optClip.isEmpty())[0].sectionFrom
+    }
+    expect(render([0.5, PPQN.Bar * 2 + 1])).toBe(PPQN.Bar)
+    expect(render([0.5, PPQN.Bar, PPQN.Bar + 1, PPQN.Bar * 2 + 1])).toBe(PPQN.Bar)
+})
+
+it("leaves the right endpoint launch to the next half-open span", () => {
+    const {context, track, clip} = fixture()
+    context.schedulePlay(clip())
+    const sections = Array.from(context.iterate(track.uuid, 1, PPQN.Bar))
+    expect(sections.every(section => section.optClip.isEmpty())).toBe(true)
+    expect(context.changes().isEmpty()).toBe(true)
+    Array.from(context.iterate(track.uuid, PPQN.Bar, PPQN.Bar + 1))
+    expect(context.changes().unwrap().started).toHaveLength(1)
+})

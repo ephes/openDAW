@@ -5,7 +5,7 @@ import {
     Section,
     TrackBoxAdapter
 } from "@opendaw/studio-adapters"
-import {Arrays, identity, Option, quantizeFloor, SortedSet, Terminator, UUID} from "@opendaw/lib-std"
+import {Arrays, identity, Option, quantizeCeil, SortedSet, Terminator, UUID} from "@opendaw/lib-std"
 import {ppqn, PPQN} from "@opendaw/lib-dsp"
 import {BoxGraph, Update} from "@opendaw/lib-box"
 
@@ -59,15 +59,15 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     schedulePlay(clipAdapter: AnyClipBoxAdapter): void {
         clipAdapter.trackBoxAdapter.ifSome(({uuid}) => {
             const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid))
-            if (trackState.playing.nonEmpty() && trackState.playing.unwrap() === clipAdapter) {
-                console.debug(`${clipAdapter} is already playing (ignore)`)
-                return
-            }
             const optClip = trackState.waiting.flatMap(waiting => waiting)
             if (optClip.nonEmpty()) {
                 console.debug("obsolete", optClip.unwrap())
                 this.#obsolete.push(optClip.unwrap().uuid)
-                trackState.waiting = Option.None
+            }
+            trackState.waiting = Option.None
+            if (trackState.playing.nonEmpty() && trackState.playing.unwrap() === clipAdapter) {
+                console.debug(`${clipAdapter} is already playing (ignore)`)
+                return
             }
             console.debug(`schedulePlay(${UUID.toString(trackState.uuid)} > ${clipAdapter})`)
             Arrays.removeOpt(this.#obsolete, clipAdapter.uuid)
@@ -108,8 +108,8 @@ export class ClipSequencingAudioContext implements ClipSequencing {
         if (state.waiting.nonEmpty()) {
             const optNextClip = state.waiting.unwrap()
             const scheduleDuration = state.playing.mapOr(clip => clip.duration, PPQN.Bar) // Use format values
-            const scheduleEnd = quantizeFloor(p1, scheduleDuration)
-            if (scheduleEnd >= p0) {
+            const scheduleEnd = quantizeCeil(p0, scheduleDuration)
+            if (scheduleEnd < p1) {
                 if (p0 < scheduleEnd) {
                     // process to schedule time
                     yield {optClip: state.playing, sectionFrom: p0, sectionTo: scheduleEnd}
@@ -132,7 +132,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
                 if (playing.box.triggerMode.loop.getValue()) {
                     yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
                 } else {
-                    const scheduleEnd = quantizeFloor(p0, playing.duration) + playing.duration
+                    const scheduleEnd = Math.floor(p0 / playing.duration) * playing.duration + playing.duration
                     if (scheduleEnd <= p1) {
                         yield {optClip: state.playing, sectionFrom: p0, sectionTo: scheduleEnd}
                         state.playing = Option.None

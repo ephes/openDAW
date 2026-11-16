@@ -147,3 +147,8 @@ termination is harmless; edits to former effects cannot rewire the retired chain
 Clip contexts release graph observation before clearing their state. Track deletion
 stops its playing clip, marks its queued clip obsolete and removes the track state;
 subsequent clip deletions visit only retained live tracks.
+
+Selecting the playing clip cancels a queued replacement or stop; a superseded
+queued clip becomes obsolete. Launch/stop quantization uses the first boundary at
+or after the span start. Spans own `[from, to)`: a right-endpoint launch waits
+for the next nonempty span, so large and partitioned renders launch identically.
