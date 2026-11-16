@@ -333,7 +333,6 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
                             fadingConfig: FadingEnvelope.Config | null,
                             regionPosition: number,
                             regionDuration: number): void {
-        this.#fadeOutAllPitchVoices(lane)
         const {p0, p1, s0, s1} = block
         const sn = s1 - s0
         const pn = p1 - p0
@@ -343,6 +342,7 @@ export class TapeDeviceProcessor extends AbstractProcessor implements DeviceProc
         const bp1 = Math.floor(s0 + sn * r1)
         const bpn = bp1 - bp0
         if (bpn <= 0) {return}
+        this.#fadeOutAllPitchVoices(lane)
         if (fadingConfig !== null && FadingEnvelope.hasFading(fadingConfig)) {
             const startPpqn = p0 + (bp0 - s0) / sn * pn - regionPosition
             const endPpqn = p0 + (bp1 - s0) / sn * pn - regionPosition

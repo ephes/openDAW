@@ -134,3 +134,12 @@ it.each([false, true])("initializes every stretch gain frame for fractional cycl
     expect(p.audioOutput.channels().every(ch => ch.every(Number.isFinite))).toBe(true)
     p.terminate()
 })
+it("does not retire a pitch voice for a stretch interval quantized to zero frames", () => {
+    const good = region(), tiny = region(Option.wrap(audio()), true)
+    for (const [key, value] of Object.entries({position: pulses(17.2), complete: pulses(17.4),
+        duration: pulses(0.2), loopDuration: pulses(0.2)})) Object.defineProperty(tiny.r, key, {value})
+    const {p} = fixture([good.r, tiny.r])
+    p.process({blocks: [block()]})
+    expect(Array.from(p.audioOutput.getChannel(0))).toEqual(Array(128).fill(0.25))
+    p.terminate()
+})

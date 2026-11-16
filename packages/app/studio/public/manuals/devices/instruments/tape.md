@@ -41,3 +41,8 @@ The small horizontal bar between the reels. Lights up when an audio region is cu
 1. Add audio regions to the Tape track in the timeline
 2. Press play to watch the tape machine animate
 3. The reels rotate in sync with the transport position
+
+Unavailable regions are skipped while other ready regions on the lane continue.
+Disabling a lane immediately discards its sound, including release tails; enabling
+it again starts playback from the current timeline position. In pitch-based
+playback, replacing a region's loaded audio retires its old playback generation.
