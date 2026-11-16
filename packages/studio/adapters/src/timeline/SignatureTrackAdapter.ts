@@ -205,9 +205,6 @@ export class SignatureTrackAdapter implements Terminable {
         const originalBars = allEvents.map(e => e.accumulatedBars)
         const targetBar = this.#ppqnToBar(targetPpqn, movedEvent.index)
         if (targetBar === movedEvent.accumulatedBars) {return}
-        // Occupied bars cannot contain a second signature; refuse the move.
-        if (originalBars.some((bar, index) => index !== movedIdx && bar === targetBar)) {return}
-        // An occupied bar has no unambiguous destination. Refuse before any edits.
         if (originalBars.some((bar, index) => index !== movedIdx && bar === targetBar)) {return}
         const newBars = [...originalBars]
         newBars[movedIdx] = targetBar

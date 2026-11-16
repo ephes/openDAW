@@ -292,3 +292,24 @@ it("rejects loss of seconds progress inside a changing tempo zone", () => {
     try {expect(() => cursor.advance(events, 0, 2 ** 60, 2 ** 60 + 1024, 120)).toThrow(RangeError)}
     finally {conversion.mockRestore()}
 })
+
+it("accepts a same-position tempo step pair and samples the later index", () => {
+    const events: ValueEvent[] = [
+        {type: "value-event", position: 0, index: 0, value: 100, interpolation: Interpolation.Linear},
+        {type: "value-event", position: 1920, index: 0, value: 140, interpolation: Interpolation.None},
+        {type: "value-event", position: 1920, index: 1, value: 80, interpolation: Interpolation.Linear},
+        {type: "value-event", position: 3840, index: 0, value: 120, interpolation: Interpolation.None}
+    ]
+    const collection = EventCollection.create(ValueEvent.Comparator)
+    events.forEach(event => collection.add(event))
+    const sorted = collection.asArray()
+    const cursor = new TempoGridCursor()
+    let reference = 0
+    for (let from = 0; from < 5000; from += TempoChangeGrid) {
+        const end = Math.min(5000, from + TempoChangeGrid)
+        reference += PPQN.pulsesToSeconds(end - from, ValueEvent.valueAt(collection, from, 120))
+    }
+    const elapsed = cursor.integrate(sorted, 0, 5000, 120)
+    expect(elapsed).toBeCloseTo(reference, 10)
+    expect(cursor.advance(sorted, 0, 0, elapsed, 120)).toBeCloseTo(5000, 7)
+})

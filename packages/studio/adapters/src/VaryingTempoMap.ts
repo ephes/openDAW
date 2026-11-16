@@ -118,12 +118,9 @@ export class TempoGridCursor {
 
     #reset(events: ReadonlyArray<ValueEvent>, storageBpm: bpm): void {
         this.#validateBpm(storageBpm)
-        let previous = -Infinity
-        for (const event of events) {
-            this.#validateCoordinate(event.position)
-            this.#validateBpm(event.value)
-            if (event.position <= previous) {throw new RangeError("Tempo events must have increasing positions")}
-            previous = event.position
+        if (events.length > 0) {
+            this.#validateCoordinate(events[0].position)
+            this.#validateCoordinate(events[events.length - 1].position)
         }
         this.#events = events
         this.#storageBpm = storageBpm

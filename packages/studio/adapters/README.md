@@ -80,6 +80,9 @@ retain grid-origin sampling, including nonaligned event boundaries. Inputs must
 be finite, tempo must be positive, and pulse coordinates must fit within
 `Number.MAX_SAFE_INTEGER - TempoChangeGrid`. An unrepresentable position or
 nonprogressing step throws `RangeError`; positions are never silently clamped.
+Events must be sorted by `ValueEvent.Comparator`; a same-position pair (a tempo
+step) is valid. Only the first and last event positions and each sampled tempo
+are checked per call, so validation adds constant work on the audio thread.
 
 Signature moves to occupied bars are refused without graph edits. Other moves
 retain the absolute bar positions of every untouched signature event; undo/redo
