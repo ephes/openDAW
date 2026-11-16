@@ -5,9 +5,10 @@ import {
     Section,
     TrackBoxAdapter
 } from "@opendaw/studio-adapters"
-import {Arrays, identity, Option, quantizeCeil, SortedSet, Terminator, UUID} from "@opendaw/lib-std"
+import {Arrays, Bits, identity, isDefined, Option, Optional, quantizeCeil, SortedSet, Terminator, UUID} from "@opendaw/lib-std"
 import {ppqn, PPQN} from "@opendaw/lib-dsp"
 import {BoxGraph, Update} from "@opendaw/lib-box"
+import {Block, BlockFlag} from "./processing"
 
 // Just convenient to identify which UUID is for which type
 type ClipKey = UUID.Bytes
@@ -18,7 +19,7 @@ class TrackState {
     playing: Option<AnyClipBoxAdapter> = Option.None
     launchPosition: ppqn = 0
 
-    constructor(readonly uuid: TrackKey) {}
+    constructor(readonly uuid: TrackKey, public transportOffset: ppqn) {}
 }
 
 export class ClipSequencingAudioContext implements ClipSequencing {
@@ -28,6 +29,11 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     readonly #started: Array<ClipKey> = []
     readonly #stopped: Array<ClipKey> = []
     readonly #obsolete: Array<ClipKey> = []
+
+    readonly #transportBlocks: Array<Block> = []
+    readonly #transportOffsets: Array<ppqn> = []
+    #transportPosition: Optional<ppqn> = undefined
+    #transportOffset: ppqn = 0
 
     constructor(boxGraph: BoxGraph) {
         this.#states = UUID.newSet<TrackState>(state => state.uuid)
@@ -63,7 +69,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
             return
         }
         clipAdapter.trackBoxAdapter.ifSome(({uuid}) => {
-            const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid))
+            const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid, this.#transportOffset))
             const optClip = trackState.waiting.flatMap(waiting => waiting)
             if (optClip.nonEmpty()) {
                 console.debug("obsolete", optClip.unwrap())
@@ -81,7 +87,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
     }
 
     scheduleStop({uuid}: TrackBoxAdapter): void {
-        const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid))
+        const trackState = this.#states.getOrCreate(uuid, uuid => new TrackState(uuid, this.#transportOffset))
         const optClip = trackState.waiting.flatMap(waiting => waiting)
         if (optClip.nonEmpty()) {
             console.debug("obsolete", optClip.unwrap())
@@ -102,6 +108,24 @@ export class ClipSequencingAudioContext implements ClipSequencing {
             state.playing = Option.None
         })
         this.#states.clear()
+        this.#transportBlocks.length = 0
+        this.#transportOffsets.length = 0
+        this.#transportPosition = undefined
+    }
+
+    // Loop wraps, marker jumps and seeks move the transport. Each playing block carries the
+    // cumulative offset; a track applies it when its iteration reaches that block.
+    followTransport(blocks: ReadonlyArray<Block>): void {
+        this.#transportBlocks.length = 0
+        this.#transportOffsets.length = 0
+        for (const block of blocks) {
+            if (!Bits.every(block.flags, BlockFlag.transporting | BlockFlag.playing)) {continue}
+            const position = this.#transportPosition
+            if (isDefined(position) && position !== block.p0) {this.#transportOffset += block.p0 - position}
+            this.#transportBlocks.push(block)
+            this.#transportOffsets.push(this.#transportOffset)
+            this.#transportPosition = block.p1
+        }
     }
 
     * iterate(trackKey: TrackKey, p0: ppqn, p1: ppqn): IterableIterator<Section> {
@@ -111,6 +135,7 @@ export class ClipSequencingAudioContext implements ClipSequencing {
             yield {optClip: Option.None, sectionFrom: p0, sectionTo: p1}
             return
         }
+        this.#followTransportAt(state, p0)
         state.waiting.flatMap(identity).ifSome(clip => {
             if (!this.#validDuration(clip)) {
                 this.#obsolete.push(clip.uuid)
@@ -162,6 +187,18 @@ export class ClipSequencingAudioContext implements ClipSequencing {
             }
         }
         yield {optClip: state.playing, sectionFrom: p0, sectionTo: p1}
+    }
+
+    #followTransportAt(state: TrackState, position: ppqn): void {
+        for (let index = 0; index < this.#transportBlocks.length; index++) {
+            const {p0, p1} = this.#transportBlocks[index]
+            if (p0 <= position && position < p1) {
+                const offset = this.#transportOffsets[index]
+                state.launchPosition += offset - state.transportOffset
+                state.transportOffset = offset
+                return
+            }
+        }
     }
 
     #validDuration(clip: AnyClipBoxAdapter): boolean {

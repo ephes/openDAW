@@ -4,6 +4,7 @@ import {BoxGraph, Update} from "@opendaw/lib-box"
 import {AnyClipBoxAdapter, TrackBoxAdapter} from "@opendaw/studio-adapters"
 import {PPQN} from "@opendaw/lib-dsp"
 import {ClipSequencingAudioContext} from "./ClipSequencingAudioContext"
+import {Block, BlockFlag} from "./processing"
 
 function fixture() {
     const observers = new Set<{onUpdate: (update: Update) => void}>()
@@ -129,4 +130,49 @@ it.each([0, -1, NaN, Infinity])("retires mutable invalid duration %s before quan
     Object.assign(a, {duration: PPQN.Bar})
     context.schedulePlay(a); Array.from(context.iterate(track.uuid, PPQN.Bar * 2, PPQN.Bar * 2 + 1))
     expect(context.changes().unwrap().started).toEqual([a.uuid])
+})
+
+const transportBlock = ([p0, p1]: number[]) =>
+    ({index: 0, p0: p0 * PPQN.Bar, p1: p1 * PPQN.Bar, s0: 0, s1: 128, bpm: 120,
+        flags: BlockFlag.transporting | BlockFlag.playing} as Block)
+
+// Each quantum reports all of its blocks first, then every block is iterated, as in the engine.
+const renderQuanta = (context: ClipSequencingAudioContext, track: TrackBoxAdapter, quanta: number[][][]) =>
+    quanta.flatMap(quantum => {
+        const blocks = quantum.map(transportBlock)
+        context.followTransport(blocks)
+        return blocks.flatMap(({p0, p1}) => Array.from(context.iterate(track.uuid, p0, p1)))
+    })
+
+it.each([
+    ["loop wrap", 2, [[[2.5, 3.5]], [[3.5, 4], [0, 0.5]], [[0.5, 1.5]], [[1.5, 3]]], 1],
+    ["loop wrap after a launch in the same quantum", 2, [[[2.5, 2.75]], [[2.75, 4], [0, 0.5]], [[0.5, 3]]], 1],
+    ["backward seek", 8, [[[9.5, 12]], [[12, 15]], [[2, 4]], [[4, 8]]], 5],
+    ["seek inside a quantum", 8, [[[9.5, 12]], [[12, 15], [2, 3]], [[3, 8]]], 5]
+])("keeps a one-shot's elapsed span across a %s", (_label, bars, quanta, endBar) => {
+    const {context, track, clip} = fixture()
+    const a = clip((bars as number) * PPQN.Bar, false)
+    context.schedulePlay(a)
+    const active = renderQuanta(context, track, quanta as number[][][]).filter(section => section.optClip.nonEmpty())
+    expect(active.reduce((sum, section) => sum + section.sectionTo - section.sectionFrom, 0)).toBe((bars as number) * PPQN.Bar)
+    expect(active.at(-1)?.sectionTo).toBe((endBar as number) * PPQN.Bar)
+    expect(context.changes().unwrap()).toEqual({started: [a.uuid], stopped: [a.uuid], obsolete: []})
+})
+
+it("ends a one-shot independent of interleaved point queries", () => {
+    const {context, track, clip} = fixture()
+    const a = clip(2 * PPQN.Bar, false), step = 0.25
+    context.schedulePlay(a)
+    let end = 0
+    for (let position = 0; position < 4; position += step) {
+        const block = transportBlock([position, position + step])
+        context.followTransport([block])
+        for (const query of [position + step / 2, position + step / 3]) {
+            Array.from(context.iterate(track.uuid, query * PPQN.Bar, query * PPQN.Bar + 1))
+        }
+        for (const section of context.iterate(track.uuid, block.p0, block.p1)) {
+            if (section.optClip.nonEmpty()) {end = section.sectionTo}
+        }
+    }
+    expect(end).toBe(2 * PPQN.Bar)
 })

@@ -154,7 +154,11 @@ or after the span start. Spans own `[from, to)`: a right-endpoint launch waits
 for the next nonempty span, so large and partitioned renders launch identically.
 
 One-shots end at their actual launch position plus their current duration, including
-when launch and end fall within one large span. Queued replacement quantization
+when launch and end fall within one large span. The engine reports each render's
+transport blocks (`followTransport`) with their cumulative jump offset; when a track's
+iteration reaches a block after a loop wrap, marker jump or seek, the launch is re-based so
+the one-shot keeps its already played span and still ends after one duration. Point queries
+such as automation `valueAt` never move the launch. Queued replacement quantization
 remains independent of that end. Only finite positive clip durations are admitted:
 invalid launch requests become obsolete; invalid queued or playing clips retire
 on the next nonempty iteration (obsolete or stopped respectively). Repairing the
@@ -173,8 +177,10 @@ for that measurement without waiting or retrying on the audio thread.
 
 Input and frozen-source replacement constructs the next owner before disconnecting
 or retiring the current source. Construction failure preserves the current source
-and wiring. Temporary processor/edge leases unwind on failure; completed sources
-own their leases, and successful replacement retires the previous source once.
+and wiring. `EngineContext.constructAtomically` scopes processor/edge registrations
+made during construction: they unwind on failure, completed sources own their leases
+(the source keeps the real context, no wrapper), and successful replacement retires
+the previous source once.
 
 An empty Delay span touches neither output nor DSP/pre-delay history. Changing
 controls after an empty first call initializes the delay just like a fresh network,

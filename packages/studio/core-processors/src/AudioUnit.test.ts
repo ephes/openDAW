@@ -1,10 +1,12 @@
 import {expect, it, vi} from "vitest"
-import {Option, Terminable} from "@opendaw/lib-std"
+import {Option, Provider, Terminable} from "@opendaw/lib-std"
 import {AudioData} from "@opendaw/lib-dsp"
 import {AudioUnitBoxAdapter} from "@opendaw/studio-adapters"
 import {AudioUnit} from "./AudioUnit"
 import {AudioUnitOptions} from "./AudioUnitOptions"
 import {EngineContext} from "./EngineContext"
+import {RegistrationScopes} from "./RegistrationScopes"
+import {Processor} from "./processing"
 
 const mocks = vi.hoisted(() => ({midi: vi.fn(), audio: vi.fn(), create: vi.fn()}))
 vi.mock("./AudioBusProcessor", () => ({AudioBusProcessor: class {}}))
@@ -32,9 +34,11 @@ vi.mock("./FrozenPlaybackProcessor", () => ({FrozenPlaybackProcessor: class {
 it.each(["input", "frozen"])("preserves the previous %s owner and unwinds failed construction before retry", kind => {
     mocks.midi.mockClear(); mocks.audio.mockClear()
     let processors = 0, edges = 0
+    const scopes = new RegistrationScopes()
     const context = {
-        registerProcessor: () => {processors++; return {terminate: () => {processors--}}},
-        registerEdge: () => {edges++; return {terminate: () => {edges--}}}
+        registerProcessor: (processor: Processor) => {processors++; return scopes.processor(processor, {terminate: () => {processors--}})},
+        registerEdge: () => {edges++; return scopes.edge({terminate: () => {edges--}})},
+        constructAtomically: <T>(create: Provider<T>) => scopes.run(create)
     } as unknown as EngineContext
     let notify: (owner: Option<never>) => void = () => {}
     const sources: Array<{audioOutput: {value: number}, terminate: () => void}> = []

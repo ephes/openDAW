@@ -5,11 +5,11 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Preserve Delay and pre-delay state on empty spans; prepare input/frozen replacements before retiring the last working source and unwind failed processor/edge registrations.
+- Preserve Delay and pre-delay state on empty spans; prepare input/frozen replacements before retiring the last working source and unwind failed processor/edge registrations through `EngineContext.constructAtomically`.
 
 - Publish clock timestamp/counter samples coherently and preserve consecutive measurements across signed Int32 counter rollover.
 
-- End one-shot clips relative to their actual launch, and retire invalid mutable clip durations before scheduling or quantization.
+- End one-shot clips relative to their actual launch (re-based across loop wraps and seeks), and retire invalid mutable clip durations before scheduling or quantization.
 
 - Cancel pending replacement/stop when selecting the playing clip, and launch at the first crossed half-open quantization boundary.
 
