@@ -46,13 +46,15 @@ export namespace ExportConfiguration {
         }
         return result.replace(/[. ]+$/u, "")
     }
+    const portableBase = (name: string, maxBytes: number): string => {
+        const bounded = boundedName(name, maxBytes)
+        return /[\p{L}\p{N}]/u.test(bounded) ? bounded : "Stem"
+    }
 
     export const sanitizeFileName = (name: string): string => {
-        let base = Array.from(name.normalize("NFKC"), character => character.charCodeAt(0) <= 31
-            || '<>:"/\\|?*'.includes(character) ? "_" : character).join("").trim().replace(/[. ]+$/u, "")
-        if (!/[\p{L}\p{N}]/u.test(base)) {base = "Stem"}
-        if (/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/iu.test(base)) {base = `_${base}`}
-        return boundedName(base, 200)
+        const base = portableBase(Array.from(name.normalize("NFKC"), character => character.charCodeAt(0) <= 31
+            || '<>:"/\\|?*'.includes(character) ? "_" : character).join("").trim(), 200)
+        return /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/iu.test(base) ? boundedName(`_${base}`, 200) : base
     }
 
     export const sanitizeExportNamesInPlace = (configuration: ExportConfiguration): void => {
@@ -64,7 +66,7 @@ export namespace ExportConfiguration {
             let name = base, count = 1
             while (used.has(collisionKey(name))) {
                 const suffix = ` ${count++}`
-                name = boundedName(base, 200 - utf8.encode(suffix).length) + suffix
+                name = portableBase(base, 200 - utf8.encode(suffix).length) + suffix
             }
             used.add(collisionKey(name))
             entry.fileName = name
