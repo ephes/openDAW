@@ -12,7 +12,8 @@ marker at the requested position on its left side.
 
 Warp drags preview the marker handle locally. Audio mapping changes on approval,
 which creates one undoable edit. Pointer cancellation, Escape, capture loss and
-editor disposal discard the preview without touching graph or undo history.
+editor disposal discard the preview without a marker mutation or position undo
+entry. Normal pointer-down selection still applies and may itself be undone.
 Each movement and approval resolves current attached marker membership and strict
 neighbors, refusing intervals narrower than twice the minimum marker spacing.
 Changes to the dragged marker's position or source seconds retire its proposal;
@@ -30,7 +31,8 @@ current audio file's transient collection; replacing analysis requires a new hit
 ## Selected note movement
 
 A move/copy captures note identities and collection owners at pointer-down. Both
-selected and unselected paint paths apply the preview only to surviving owned
+pitch and property painters use the gesture's owned selection for previews;
+copy origins use the identity strategy and previews apply only to surviving owned
 notes, so a later selection change cannot add another note to the gesture or
 remove an original note from its preview. Detached/reparented notes are skipped;
 copying uses the original attached destination even if the reference note retires.
@@ -61,3 +63,53 @@ synthetic regressions, runs them against the preceding implementation to confirm
 the failure, and then runs them with the fix. No live audio hardware or personal
 data is needed. Full local build, lint, unit and Chromium gates are recorded in
 the local handoff; cross-family review is performed by the merge clerk.
+
+## Local validation (2026-11-16)
+
+Fresh source: `b543a2592d46523a57c511c14b5163ddf7ebb8f4`, `origin/main`,
+`git@github.com:ephes/openDAW.git`. All twelve slices remain applicable.
+No owner decisions were needed. Node v26.13.1 satisfies `>=23`; npm v11.20.0.
+No version changes, remote branches, pushes, merges or deployments were made.
+
+Regression failures were confirmed before each bundle's production changes:
+
+| Bundle | Regression coverage |
+| --- | --- |
+| B01 | Nearest marker in both insertion orders, stable ties, fractional neighbors |
+| B02 | Current neighbor insertion/movement/deletion, insufficient spacing, cancellation, retirement and external updates |
+| B03 | Duplicate/reversed/nonfinite warp geometry, unavailable conversion/capture, current transient membership and insertion refusal |
+| B04 | Original surviving identities, move/copy/repeat-copy, low/high chords, MIDI audition domain and boundary notification suppression |
+| B05 | First motion vs subdivided motion, current endpoint/successor ownership and interpolation generation, unrelated-region diagnostic reads |
+
+A further painter regression confirmed copy origins and previews after selection
+replacement. Shared Chromium/DOM graph fixtures exercise actual BoxEditing undo,
+separate curve-box edits (including restore-to-original edits), inserted successors,
+and real Dragging pointer-up, pointercancel, Escape and disposal hooks.
+
+Passed gates:
+
+```sh
+npm ci --ignore-scripts
+npm run build
+npm run lint
+npm test
+npm test --workspace=@opendaw/app-studio -- src/ui/timeline
+npx tsc --noEmit -p packages/app/studio
+```
+
+The targeted timeline run passes 57 tests in eight files. Lint passes with the
+repository's existing warning policy. Browser fixtures are typechecked through
+the shared graph regression and checked by `lint:browser`.
+
+Blocked gate for the merge clerk:
+
+```sh
+npm run test:browser -- r114.spec.ts
+```
+
+Chromium fails before test execution with macOS MachPortRendezvous
+`bootstrap_check_in ... Permission denied (1100)` / `KERN_SUCCESS` assertion.
+The local Vite server starts. The seven Chromium scenarios remain unverified in
+a real browser; their shared graph and drag-hook cases pass under jsdom.
+Full gate and before/after logs are retained outside the clone in
+`/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r114-opendaw/`.

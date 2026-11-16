@@ -2,14 +2,19 @@ import {expect, it, vi} from "vitest"
 import {Editing, Option, Selection} from "@opendaw/lib-std"
 import {NoteEventBoxAdapter, NoteEventCollectionBoxAdapter} from "@opendaw/studio-adapters"
 import {Dragging} from "@opendaw/lib-dom"
+import {EventCollection} from "@opendaw/lib-dsp"
+import {createNotePitchPainter} from "./pitch/PitchPainter"
 import {NoteMoveModifier} from "./NoteMoveModifier"
+
+vi.mock("@/ui/timeline/editors/TimeGridRenderer.ts", () => ({renderTimeGrid() {}}))
 
 const setup = (pitches: number[]) => {
     const collection = {box: {events: {}, isAttached: () => true}} as unknown as NoteEventCollectionBoxAdapter
     const copies: {pitch: number, position: number}[] = []
     const notes = pitches.map(initial => {
         let pitch = initial, position = 100, attached = true
-        const adapter = {get pitch() {return pitch}, get position() {return position},
+        const adapter = {get isSelected() {return selected.includes(adapter as unknown as NoteEventBoxAdapter)},
+            chance: 1, velocity: 1, playCount: 1, get pitch() {return pitch}, get position() {return position},
             get complete() {return position + 10}, duration: 10, collection: Option.wrap(collection),
             copyTo: vi.fn((value: {pitch: number, position: number}) => {copies.push(value); return adapter}),
             box: {isAttached: () => attached, pitch: {setValue: (value: number) => {pitch = value}},
@@ -35,7 +40,9 @@ it.each([false, true])("owns the original surviving notes across selection chang
     h.select([3])
     h.notes[1].remove()
     h.move(61, copy)
-    expect(h.tool.unselectedModifyStrategy().readPitch(h.notes[0].adapter)).toBe(61)
+    expect(h.tool.isSelected(h.notes[0].adapter)).toBe(true)
+    expect(h.tool.isSelected(h.notes[3].adapter)).toBe(false)
+    expect(h.tool.selectedModifyStrategy().readPitch(h.notes[0].adapter)).toBe(61)
     expect(h.tool.selectedModifyStrategy().readPitch(h.notes[3].adapter)).toBe(72)
     h.tool.approve()
     if (copy) {
@@ -91,4 +98,26 @@ it("repeat-copy uses the same shared pitch delta", () => {
     h.move(-10, true, true)
     h.tool.approve()
     expect(h.copies.map(note => note.pitch)).toEqual([0, 4])
+})
+
+it("paints both copy origins and owned previews after selection replacement", () => {
+    vi.stubGlobal("devicePixelRatio", 1)
+    try {
+        const h = setup([2, 6, 90])
+        h.select([2])
+        h.move(-10, true)
+        const events = EventCollection.create<NoteEventBoxAdapter>()
+        h.notes.forEach(note => events.add(note.adapter))
+        const fillRect = vi.fn()
+        const context = {canvas: {width: 600, height: 100}, fillRect}
+        const construct = {canvas: {clientHeight: 100}, positioner: {yToPitch: () => 60, pitchToY: (pitch: number) => pitch * 10, noteHeight: 10},
+            range: {unitToX: (unit: number) => unit, unitMin: 0, unitMax: 1000, unitPadding: 0},
+            scale: {has: () => false}, snapping: {}, modifyContext: {modifier: Option.wrap(h.tool)},
+            reader: {offset: 0, hue: 0, contentDuration: 1000, timelineBoxAdapter: {}, content: {events, maxDuration: 10}}}
+        const paint = createNotePitchPainter(construct as unknown as Parameters<typeof createNotePitchPainter>[0])
+        paint({context, actualHeight: 100} as unknown as Parameters<typeof paint>[0])
+        const outlines = fillRect.mock.calls.filter(call => call[3] === 11).map(call => call.slice(0, 2))
+        expect(outlines).toEqual(expect.arrayContaining([[100, 19], [100, 59], [110, -1], [110, 39], [100, 899]]))
+        expect(outlines).toHaveLength(5)
+    } finally {vi.unstubAllGlobals()}
 })

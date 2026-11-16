@@ -289,6 +289,14 @@ Shared collection and subscription ownership contracts are documented in
 [`lib-runtime`](packages/lib/runtime/README.md). See the
 [round 94 repair plan](plans/scout-round94-collections-lifecycle.md) for regression evidence.
 
+### Timeline gesture ownership
+
+Warp marker handles preview locally and update audio mapping on approval; Escape
+or pointer cancellation discards the proposed marker move. Notes keep the gesture's
+original selection and preserve chord intervals at MIDI pitch limits. Automation
+slope edits retire when their source segment changes. See the
+[timeline gesture contracts and regression notes](plans/scout-round114-timeline-gestures.md).
+
 ### Live room and recovery log lifetime
 
 Room joins preserve shared map identities and unwind failed setup. Only the latest

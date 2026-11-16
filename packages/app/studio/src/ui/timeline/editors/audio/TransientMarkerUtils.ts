@@ -26,6 +26,7 @@ export namespace TransientMarkerUtils {
     }
 
     const mapSeconds = (seconds: number, markers: ReadonlyArray<Marker>): Nullable<ppqn> => {
+        if (!Number.isFinite(seconds)) {return null}
         const first = markers[0]
         const second = markers[1]
         const secondLast = markers[markers.length - 2]

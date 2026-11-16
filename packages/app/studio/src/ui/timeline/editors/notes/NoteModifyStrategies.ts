@@ -8,6 +8,7 @@ export type Point = Coordinates<number, unitValue> // time, value
 export type Line = [Point, Point]
 
 export interface NoteModifyStrategies {
+    isSelected?(note: UINoteEvent): boolean
     showOrigin(): boolean
     showCreation(): Option<UINoteEvent>
     showPropertyLine(): Option<Line>

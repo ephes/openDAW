@@ -118,7 +118,8 @@ export class NoteMoveModifier implements NoteModifier {
     showPropertyLine(): Option<Line> {return Option.None}
     readContentDuration(region: NoteEventOwnerReader): number {return region.contentDuration}
     selectedModifyStrategy(): NoteModifyStrategy {return this.#selectedModifyStrategy}
-    unselectedModifyStrategy(): NoteModifyStrategy {return this.#selectedModifyStrategy}
+    unselectedModifyStrategy(): NoteModifyStrategy {return NoteModifyStrategy.Identity}
+    isSelected(note: UINoteEvent): boolean {return this.owns(note as NoteEventBoxAdapter)}
 
     owns(note: NoteEventBoxAdapter): boolean {
         const owner = this.#notes.get(note)

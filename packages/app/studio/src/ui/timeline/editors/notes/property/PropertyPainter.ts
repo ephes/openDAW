@@ -57,7 +57,7 @@ export const createPropertyPainter =
                 })
             const render = (strategy: NoteModifyStrategy, filterSelected: boolean) => {
                 for (const event of events.iterateRange(unitMin, unitMax)) {
-                    if (event.isSelected === filterSelected) {continue}
+                    if ((strategies.isSelected?.(event) ?? event.isSelected) === filterSelected) {continue}
                     const position = strategy.readPosition(event)
                     const value = propertyAccessor.readValue(strategy, event)
                     const x = Math.floor(range.unitToX(position + offset) * devicePixelRatio)

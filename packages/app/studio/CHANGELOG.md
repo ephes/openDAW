@@ -7,7 +7,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Include the first slope-drag motion, retire changed automation segments and remove full-track loop-resize diagnostic snapshots.
 
-- Move and copy the original surviving note selection, preserve chord intervals at MIDI edges and keep audition aligned with preview.
+- Move and copy the original surviving note selection, preserve chord intervals at MIDI edges and keep audition aligned with preview, including copy origins after a selection change.
 
 - Refuse invalid warp mappings and retired transient analysis during hover and insertion.
 
