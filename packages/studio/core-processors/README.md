@@ -74,8 +74,10 @@ history and snaps drive/output ramps to current controls, preserving oversamplin
 A NAM process exception retires both native instances and reports one fixed
 diagnostic. The complete requested span uses dry bypass, including when a native
 channel already wrote partial output. Later blocks stay bypassed; reset and mono
-edits do not retry that generation. Explicitly changing/reloading a valid model
-creates new instances and permits recovery. Cleanup attempts both channels even
+edits do not retry that generation. Selecting a different valid model (or
+recreating the processor, e.g. by reopening the project) creates new instances
+and permits recovery; re-selecting the same model sends no model change and
+stays bypassed. Cleanup attempts both channels even
 if unloading one fails. Dattorro restart/partition tests exercise the real network
 at 44.1, 48 and 96 kHz, including nonzero pre-delay and unity dry stereo routing.
 

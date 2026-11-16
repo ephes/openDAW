@@ -209,7 +209,7 @@ export class NeuralAmpDeviceProcessor extends AudioProcessor implements AudioEff
                 outL[i] = inL[i]
                 outR[i] = inR[i]
             }
-            console.error("NAM processing failed; reload the model to recover.")
+            console.error("NAM processing failed; select a different model or reopen the project to recover.")
         }
         this.#peaks.process(outL, outR, s0, s1)
         if (this.#needsSpectrum) {

@@ -134,5 +134,6 @@ install a retired model or mark the newer selection as failed.
 
 If the native model fails during playback, Neural Amp switches the complete
 processed span to dry bypass and reports the failure once. Later blocks stay
-bypassed. Select or reload a valid model to recover; reset and Mono edits keep
-the failed model bypassed.
+bypassed. Select a different valid model, or reopen the project, to recover;
+re-selecting the same model, reset and Mono edits keep the failed model
+bypassed.
