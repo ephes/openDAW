@@ -2,6 +2,7 @@ import type {Dropbox, DropboxResponse, files} from "dropbox"
 import {Errors, isDefined, Option, panic} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {CloudHandler} from "./CloudHandler"
+import {InventoryBudget} from "./InventoryBudget"
 
 export class DropboxHandler implements CloudHandler {
     readonly #accessToken: string
@@ -65,10 +66,13 @@ export class DropboxHandler implements CloudHandler {
         const client = await this.#ensureClient()
         const fullPath = path ? this.#getFullPath(path) : ""
         let response = await client.filesListFolder({path: fullPath})
+        const budget = new InventoryBudget()
+        budget.admit(response.result.entries.length, response.result.has_more ? response.result.cursor : undefined)
         const names = response.result.entries.map(entry => entry.name).filter(isDefined)
         while (response.result.has_more) {
             response = await client.filesListFolderContinue({cursor: response.result.cursor})
-            names.push(...response.result.entries.map(entry => entry.name).filter(isDefined))
+            budget.admit(response.result.entries.length, response.result.has_more ? response.result.cursor : undefined)
+            for (const entry of response.result.entries) {if (isDefined(entry.name)) {names.push(entry.name)}}
         }
         return names
     }

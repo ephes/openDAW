@@ -1,4 +1,5 @@
 import {CloudHandler} from "./CloudHandler"
+import {InventoryBudget} from "./InventoryBudget"
 import {assert, Errors, isDefined, Option, panic} from "@opendaw/lib-std"
 
 type DriveFile = {
@@ -16,6 +17,7 @@ const DRIVE_FILES_API = "https://www.googleapis.com/drive/v3/files"
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
 const FOLDER_MIME = "application/vnd.google-apps.folder"
 const ROOT_ID = "appDataFolder"
+const escapeLiteral = (value: string): string => value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
 
 export class GoogleDriveHandler implements CloudHandler {
     readonly #accessToken: string
@@ -97,6 +99,7 @@ export class GoogleDriveHandler implements CloudHandler {
         const q = `'${folderId.unwrap()}' in parents and trashed = false`
         const names: string[] = []
         let pageToken: string | undefined = undefined
+        const budget = new InventoryBudget()
         do {
             const params = new URLSearchParams({
                 q,
@@ -113,6 +116,7 @@ export class GoogleDriveHandler implements CloudHandler {
                 return panic(`Google Drive list failed: ${res.status} ${text}`)
             }
             const json: DriveListResponse = await res.json()
+            budget.admit(json.files.length, json.nextPageToken)
             json.files.forEach(f => names.push(f.name))
             pageToken = json.nextPageToken
         } while (isDefined(pageToken))
@@ -200,15 +204,15 @@ export class GoogleDriveHandler implements CloudHandler {
 
     async #findFolderInFolder(name: string, parentId: string, signal?: AbortSignal): Promise<Option<DriveFile>> {
         const q = [
-            `name = '${name.replace(/'/g, "\\'")}'`,
+            `name = '${escapeLiteral(name)}'`,
             `'${parentId}' in parents`,
             `mimeType = '${FOLDER_MIME}'`,
             `trashed = false`
         ].join(" and ")
         const params = new URLSearchParams({
             q,
-            fields: "files(id,name,mimeType)",
-            pageSize: "1",
+            fields: "files(id,name,mimeType),nextPageToken",
+            pageSize: "2",
             spaces: "appDataFolder"
         })
         const res = await fetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders(), signal})
@@ -217,20 +221,23 @@ export class GoogleDriveHandler implements CloudHandler {
             return panic(`Google Drive query failed: ${res.status} ${text}`)
         }
         const json: DriveListResponse = await res.json()
+        if (json.files.length > 1 || json.nextPageToken) {
+            throw new Error("Ambiguous Google Drive name; repair duplicate backup entries before retrying.")
+        }
         return Option.wrap(json.files[0])
     }
 
     async #findFileInFolder(name: string, parentId: string, includeFolders = false, signal?: AbortSignal): Promise<Option<DriveFile>> {
         const q = [
-            `name = '${name.replace(/'/g, "\\'")}'`,
+            `name = '${escapeLiteral(name)}'`,
             `'${parentId}' in parents`,
             ...(includeFolders ? [] : [`mimeType != '${FOLDER_MIME}'`]),
             `trashed = false`
         ].join(" and ")
         const params = new URLSearchParams({
             q,
-            fields: "files(id,name,mimeType)",
-            pageSize: "1",
+            fields: "files(id,name,mimeType),nextPageToken",
+            pageSize: "2",
             spaces: "appDataFolder"
         })
         const res = await fetch(`${DRIVE_FILES_API}?${params.toString()}`, {headers: this.#authHeaders(), signal})
@@ -239,6 +246,9 @@ export class GoogleDriveHandler implements CloudHandler {
             return panic(`Google Drive query failed: ${res.status} ${text}`)
         }
         const json: DriveListResponse = await res.json()
+        if (json.files.length > 1 || json.nextPageToken) {
+            throw new Error("Ambiguous Google Drive name; repair duplicate backup entries before retrying.")
+        }
         return Option.wrap(json.files[0])
     }
 

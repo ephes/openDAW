@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound provider inventory pages/names, refuse ambiguous Drive targets and escape exact-name query literals.
+
 - Settle worklet readiness on faults/retirement and fence resumed playback against Stop, release and replacement.
 - Retire all prepared captures on recording acquisition/startup failures, own each startup resource immediately and report failures through Project.
 - Cancel pending recording acquisition on Project Stop/retirement and keep only the latest monitor sink selection.

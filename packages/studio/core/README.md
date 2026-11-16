@@ -448,3 +448,12 @@ Monitor sink changes keep candidate elements/destinations local until the latest
 selection succeeds. Superseded candidates pause and disconnect without changing
 current routing. Only a failed current selection falls back to the default output;
 retirement prevents any pending selection from installing.
+
+### Provider inventory admission
+
+Drive and Dropbox inventories admit at most 1,000 pages and 100,000 names. Repeated
+or empty continuation cursors and overflow reject the entire inventory; partial
+results never authorize backup cleanup. Drive exact-name lookups request two matches
+and refuse duplicates or incomplete results before mutation. Repair duplicate backup
+names deliberately before retrying. Name query literals escape backslashes before
+apostrophes, independently of URL encoding.
