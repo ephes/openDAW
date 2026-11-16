@@ -101,15 +101,16 @@ The targeted timeline run passes 57 tests in eight files. Lint passes with the
 repository's existing warning policy. Browser fixtures are typechecked through
 the shared graph regression and checked by `lint:browser`.
 
-Blocked gate for the merge clerk:
+Browser gate:
 
 ```sh
 npm run test:browser -- r114.spec.ts
 ```
 
-Chromium fails before test execution with macOS MachPortRendezvous
-`bootstrap_check_in ... Permission denied (1100)` / `KERN_SUCCESS` assertion.
-The local Vite server starts. The seven Chromium scenarios remain unverified in
-a real browser; their shared graph and drag-hook cases pass under jsdom.
+The implementation sandbox could not start Chromium (macOS MachPortRendezvous
+`bootstrap_check_in ... Permission denied (1100)`). The merge run outside the
+sandbox passes all seven Chromium scenarios in `r114.spec.ts`. In the same full
+browser run, `scripts.spec.ts` fails with an unregistered `script-contracts`
+worklet; it fails identically on the unchanged main branch and is unrelated.
 Full gate and before/after logs are retained outside the clone in
 `/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r114-opendaw/`.
