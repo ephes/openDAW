@@ -35,26 +35,41 @@ export namespace ExportConfiguration {
             some: cfg => isDefined(cfg.stems) ? Object.keys(cfg.stems).length : 1
         })
 
-    export const sanitizeFileName = (name: string): string => Array.from(name, character => character.charCodeAt(0) <= 31 || '<>:"/\\|?*'.includes(character) ? "_" : character).join("").trim()
+    const utf8 = new TextEncoder()
+    const boundedName = (name: string, maxBytes: number): string => {
+        let result = "", bytes = 0
+        for (const character of name) {
+            const size = utf8.encode(character).length
+            if (bytes + size > maxBytes) {break}
+            result += character
+            bytes += size
+        }
+        return result.replace(/[. ]+$/u, "")
+    }
+    const portableBase = (name: string, maxBytes: number): string => {
+        const bounded = boundedName(name, maxBytes)
+        return /[\p{L}\p{N}]/u.test(bounded) ? bounded : "Stem"
+    }
+
+    export const sanitizeFileName = (name: string): string => {
+        const base = portableBase(Array.from(name.normalize("NFKC"), character => character.charCodeAt(0) <= 31
+            || '<>:"/\\|?*'.includes(character) ? "_" : character).join("").trim(), 200)
+        return /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/iu.test(base) ? boundedName(`_${base}`, 200) : base
+    }
 
     export const sanitizeExportNamesInPlace = (configuration: ExportConfiguration): void => {
         if (!isDefined(configuration.stems)) {return}
-        const stems = configuration.stems
-        const sanitizedNames = new Map<string, number>()
-        const getUniqueName = (baseName: string): string => {
-            let count = sanitizedNames.get(baseName) ?? 0
-            let newName = baseName
-            while (sanitizedNames.has(newName)) {
-                count++
-                newName = `${baseName} ${count}`
+        const used = new Set<string>()
+        const collisionKey = (name: string) => name.normalize("NFKC").toUpperCase().toLowerCase()
+        for (const entry of Object.values(configuration.stems)) {
+            const base = sanitizeFileName(entry.fileName)
+            let name = base, count = 1
+            while (used.has(collisionKey(name))) {
+                const suffix = ` ${count++}`
+                name = portableBase(base, 200 - utf8.encode(suffix).length) + suffix
             }
-            sanitizedNames.set(baseName, count)
-            sanitizedNames.set(newName, 1)
-            return newName
+            used.add(collisionKey(name))
+            entry.fileName = name
         }
-        Object.keys(stems).forEach((key) => {
-            const entry = stems[key]
-            entry.fileName = getUniqueName(sanitizeFileName(entry.fileName))
-        })
     }
 }

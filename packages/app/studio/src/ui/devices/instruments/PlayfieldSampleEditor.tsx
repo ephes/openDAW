@@ -57,17 +57,33 @@ export const PlayfieldSampleEditor = ({lifecycle, service, adapter, deviceHost}:
                               </span>
                           )
                           let noteLifeTime = Terminable.Empty
+                          let pointer: number | null = null
+                          const stop = () => {
+                              const previous = pointer
+                              pointer = null
+                              const note = noteLifeTime
+                              noteLifeTime = Terminable.Empty
+                              note.terminate()
+                              if (previous !== null && playLabel.hasPointerCapture(previous)) {
+                                  playLabel.releasePointerCapture(previous)
+                              }
+                          }
+                          const release = (event: PointerEvent) => {if (event.pointerId === pointer) {stop()}}
                           lifecycle.ownAll(
-                              Terminable.create(() => noteLifeTime.terminate()),
+                              Terminable.create(stop),
                               adapter.labelField.catchupAndSubscribe(owner => fileNameLabel.textContent = owner.getValue()),
                               TextTooltip.default(deviceLabel, () => "Go back to device"),
                               Events.subscribe(playLabel, "dblclick", event => event.stopPropagation()),
                               Events.subscribe(playLabel, "pointerdown", (event: PointerEvent) => {
                                   event.stopPropagation()
+                                  stop()
                                   playLabel.setPointerCapture(event.pointerId)
+                                  pointer = event.pointerId
                                   noteLifeTime = NoteLifeCycle.start(signal => engine.noteSignal(signal), audioUnitBoxAdapter.uuid, adapter.indexField.getValue())
                               }),
-                              Events.subscribe(playLabel, "pointerup", () => noteLifeTime.terminate())
+                              Events.subscribe(playLabel, "pointerup", release),
+                              Events.subscribe(playLabel, "pointercancel", release),
+                              Events.subscribe(playLabel, "lostpointercapture", release)
                           )
                           return (
                               <h1 className="playfield-sample-label">

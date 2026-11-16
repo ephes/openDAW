@@ -183,21 +183,24 @@ export class StudioService implements ProjectEnv {
             new ProjectProfile(UUID.generate(), Project.new(this), ProjectMeta.init("Untitled"), Option.None)))
     }
 
-    async closeProject() {
-        RouteLocation.get().navigateTo("/")
-        if (!this.hasProfile) {
+    async closeProject(): Promise<boolean> {
+        const profile = this.#projectProfileService.getValue().unwrapOrNull()
+        if (profile === null) {
+            RouteLocation.get().navigateTo("/")
             this.switchScreen("dashboard")
-            return
+            return true
         }
-        if (this.project.editing.hasNoChanges()) {
-            this.#projectProfileService.setValue(Option.None)
-        } else {
+        if (!profile.project.editing.hasNoChanges()) {
             const approved = await RuntimeNotifier.approve({
                 headline: "Closing Project?",
                 message: "You will lose all progress!"
             })
-            if (approved) {this.#projectProfileService.setValue(Option.None)}
+            if (!approved) {return false}
         }
+        if (this.#projectProfileService.getValue().unwrapOrNull() !== profile) {return false}
+        this.#projectProfileService.setValue(Option.None)
+        RouteLocation.get().navigateTo("/")
+        return true
     }
 
     async browseLocalProjects(): Promise<void> {
@@ -210,14 +213,18 @@ export class StudioService implements ProjectEnv {
 
     async exportBundle() {return this.#projectProfileService.exportBundle()}
     async importBundle() {return this.#projectProfileService.importBundle()}
-    async deleteProject(uuid: UUID.Bytes, meta: ProjectMeta): Promise<void> {
-        if (this.#projectProfileService.getValue().ifSome(profile => UUID.equals(profile.uuid, uuid)) === true) {
-            await this.closeProject()
+    async deleteProject(uuid: UUID.Bytes, meta: ProjectMeta): Promise<boolean> {
+        const profile = this.#projectProfileService.getValue().unwrapOrNull()
+        if (profile !== null && UUID.equals(profile.uuid, uuid)) {
+            if (!await this.closeProject() || this.#projectProfileService.getValue().nonEmpty()) {return false}
         }
-        const {status} = await Promises.tryCatch(ProjectStorage.deleteProject(uuid))
-        if (status === "resolved") {
-            this.#signals.notify({type: "delete-project", meta})
+        const {status, error} = await Promises.tryCatch(ProjectStorage.deleteProject(uuid))
+        if (status === "rejected") {
+            await RuntimeNotifier.info({headline: "Could Not Delete Project", message: String(error)})
+            return false
         }
+        this.#signals.notify({type: "delete-project", meta})
+        return true
     }
 
     async exportMixdown() {

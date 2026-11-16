@@ -164,6 +164,7 @@ export const BusySlot = ({
         SlotDragAndDrop.installTarget({
             element,
             project: service.project,
+            device: adapter.box,
             getSlotIndex: () => octave.getValue() * 12 + semitone
         }),
         Events.subscribe(iconEdit, "click", () => userEditingManager.audioUnit.edit(sample.box)),

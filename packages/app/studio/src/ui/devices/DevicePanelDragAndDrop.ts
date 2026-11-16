@@ -1,4 +1,4 @@
-import {asDefined, isAbsent, isDefined, panic, RuntimeNotifier, Terminable, UUID} from "@opendaw/lib-std"
+import {asDefined, isAbsent, panic, RuntimeNotifier, Terminable, UUID} from "@opendaw/lib-std"
 import {Promises} from "@opendaw/lib-runtime"
 import {DragAndDrop} from "@/ui/DragAndDrop"
 import {AnyDragData} from "@/ui/AnyDragData"
@@ -16,6 +16,7 @@ import {InsertMarker} from "@/ui/components/InsertMarker"
 import {EffectFactories, PresetSource, Project} from "@opendaw/studio-core"
 import {PresetApplication} from "@/ui/browse/PresetApplication"
 import {IndexedBox} from "@opendaw/lib-box"
+import {Pointers} from "@opendaw/studio-enums"
 import {AudioUnitBox} from "@opendaw/studio-boxes"
 
 export namespace DevicePanelDragAndDrop {
@@ -130,13 +131,13 @@ export namespace DevicePanelDragAndDrop {
                 } else {
                     const uuids = dragData.uuids
                     if (uuids.length === 0) {return}
-                    const startIndices = uuids
-                        .map(uuidStr => project.boxGraph.findBox(UUID.parse(uuidStr)).unwrapOrNull())
-                        .filter(isDefined)
-                        .filter(IndexedBox.isIndexedBox)
-                        .map(box => box.index.getValue())
-                        .toSorted((a, b) => a - b)
-                    if (startIndices.length === 0) {return}
+                    if (new Set(uuids).size !== uuids.length) {return}
+                    const pointerType = type === "audio-effect" ? Pointers.AudioEffectHost : Pointers.MIDIEffectHost
+                    const members = field.pointerHub.incoming().filter(pointer => pointer.pointerType === pointerType)
+                    const boxes = uuids.map(uuid => project.boxGraph.findBox(UUID.parse(uuid)).unwrapOrNull())
+                    if (!boxes.every((box): box is IndexedBox => box !== null && IndexedBox.isIndexedBox(box)
+                        && members.some(pointer => pointer.box === box))) {return}
+                    const startIndices = boxes.map(box => box.index.getValue()).sort((a, b) => a - b)
                     editing.modify(() => IndexedBox.moveIndices(field, startIndices, index))
                 }
             },

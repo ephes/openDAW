@@ -23,3 +23,13 @@ Catchup subscribes before replaying an owned snapshot of the members listeners
 have already been told about (not the synchronous index), skips removed entries,
 and delivers each current member once. Live removals only balance delivered additions.
 A throwing replay unsubscribes before rethrowing. Filtered selections share this contract.
+
+### Portable stem filenames
+
+Export basenames use NFKC normalization, replace control/path characters, trim
+trailing dots/spaces and fall back to `Stem` when no letter or digit remains
+after truncation (also for the truncated base of a collision suffix).
+Reserved DOS device names (including extension forms) receive an underscore.
+Basenames are limited to 200 UTF-8 bytes before the audio extension. Collisions
+use normalized case folding and deterministic ` 1`, ` 2`, … suffixes in stem
+order, including collisions with authored suffixes. Display labels are unchanged.

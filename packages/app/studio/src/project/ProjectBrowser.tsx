@@ -8,6 +8,7 @@ import {
     RuntimeSignal,
     StringComparator,
     TimeSpan,
+    Terminator,
     UUID
 } from "@opendaw/lib-std"
 import {Icon} from "@/ui/components/Icon"
@@ -30,6 +31,9 @@ type Construct = {
 export const ProjectBrowser = ({service, lifecycle, select}: Construct) => {
     const now = new Date().getTime()
     const filter = new DefaultObservableValue("")
+    const rows = lifecycle.own(new Terminator())
+    let active = true
+    lifecycle.own({terminate: () => {active = false}})
     return (
         <div className={className}>
             <div className="filter">
@@ -40,7 +44,7 @@ export const ProjectBrowser = ({service, lifecycle, select}: Construct) => {
                 <div className="time">Modified</div>
                 <div/>
             </header>
-            <Await factory={() => ProjectStorage.listProjects()}
+            <Await factory={() => {rows.terminate(); return ProjectStorage.listProjects()}}
                    loading={() => (<div className="loader"><ThreeDots/></div>)}
                    failure={({reason, retry}) => (
                        <div className="error" onclick={retry}>
@@ -49,25 +53,26 @@ export const ProjectBrowser = ({service, lifecycle, select}: Construct) => {
                    )}
                    repeat={exec => lifecycle.own(RuntimeSignal
                        .subscribe(signal => signal === ProjectSignals.StorageUpdated && exec()))}
-                   success={projects => (
+                   success={projects => active ? (
                        <Frag>
                            <div className="content">
                                <div className="list">
                                    {projects
                                        .toSorted((a, b) => -StringComparator(a.meta.modified, b.meta.modified))
                                        .map(({uuid, meta}) => {
+                                           const rowLifecycle = rows.spawn()
                                            const icon: DomElement = <Icon symbol={IconSymbol.Delete}
                                                                           className="delete-icon"/>
                                            const timeString = TimeSpan.millis(new Date(meta.modified).getTime() - now).toUnitString()
                                            const row: HTMLElement = (
-                                               <Group onInit={element => filter.catchupAndSubscribe(owner => {
+                                               <Group onInit={element => rowLifecycle.own(filter.catchupAndSubscribe(owner => {
                                                    element.classList.toggle("hidden", !meta.name
                                                        .toLowerCase()
                                                        .includes(owner.getValue().toLowerCase()))
-                                               })}>
+                                               }))}>
                                                    <div className="labels"
                                                         onclick={() => select([uuid, meta])}
-                                                        onInit={element => lifecycle.own(ContextMenu.subscribe(element,
+                                                        onInit={element => rowLifecycle.own(ContextMenu.subscribe(element,
                                                             collector => collector.addItems(MenuItem.default({
                                                                 label: "Show UUID"
                                                             }).setTriggerProcedure(() => RuntimeNotifier.info({
@@ -80,23 +85,30 @@ export const ProjectBrowser = ({service, lifecycle, select}: Construct) => {
                                                    {icon}
                                                </Group>
                                            )
-                                           icon.onclick = (event) => {
+                                           let deleting = false
+                                           icon.onclick = async (event) => {
                                                event.stopPropagation()
-                                               Dialogs.approve({
-                                                   headline: "Delete Project?",
-                                                   message: "Are you sure? This cannot be undone."
-                                               }).then(approved => {
-                                                   if (approved) {
-                                                       service.deleteProject(uuid, meta).then(() => row.remove())
+                                               if (deleting) {return}
+                                               deleting = true
+                                               try {
+                                                   const approved = await Dialogs.approve({
+                                                       headline: "Delete Project?",
+                                                       message: "Are you sure? This cannot be undone."
+                                                   })
+                                                   if (approved && await service.deleteProject(uuid, meta)) {
+                                                       rowLifecycle.terminate()
+                                                       row.remove()
                                                    }
-                                               })
+                                               } catch (error) {
+                                                   await RuntimeNotifier.info({headline: "Could Not Delete Project", message: String(error)})
+                                               } finally {deleting = false}
                                            }
                                            return row
                                        })}
                                </div>
                            </div>
                        </Frag>
-                   )}/>
+                   ) : null}/>
         </div>
     )
 }

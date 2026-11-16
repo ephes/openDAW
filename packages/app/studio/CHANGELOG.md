@@ -5,6 +5,18 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep failed or declined project deletions visible and retryable; close approval belongs to the same active profile, and duplicate delete confirmations are ignored.
+
+- Balance pad audition notes across pointer replacement, cancellation, capture loss and editor disposal; export portable, distinct stem basenames.
+
+- Retire project-row filter/menu subscriptions on refresh and removal; fence Soundfont import completions by live editor, device, project and selection generation.
+
+- Settle project browsing and stem export on every dialog close; Enter exports stems while composing Enter keeps editing. Release dialog owners on setup failure.
+
+- Preflight pad-copy resources before replacing a destination; refuse whole effect selections from foreign chains, mixed kinds or retired identities.
+
+- Emit canonical drum-pad drag UUIDs, refuse malformed identities and bind moves to their source device and preserve authored sample fields when copying a pad, with shared audio-file identity.
+
 - Clarify Nano sample/disable ownership, Revamp and Fold restart behavior, NAM fault recovery and Maximizer latency-mode transitions in device manuals.
 
 - Preserve devices, parameters, undo history and pager position when a preset is refused; only the newest selection for a destination can install, and closed projects or removed targets discard pending loads.
