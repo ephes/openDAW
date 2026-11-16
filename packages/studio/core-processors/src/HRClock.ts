@@ -12,10 +12,11 @@ import {int} from "@opendaw/lib-std"
  *   int32[0]: request counter (incremented by HRClock on each signal)
  *   int32[1]: start response counter (odd signals)
  *   int32[2]: end response counter (even signals)
+ *   int32[3]: publication sequence (odd while writing, even when stable)
  *   float64[2]: start timestamp
  *   float64[3]: end timestamp
  *
- * Validation: We only use measurements where endCounter === startCounter + 1,
+ * Validation: We only use measurements where endCounter === ((startCounter + 1) | 0),
  * ensuring timestamps are from consecutive signals (same render). Invalid pairs
  * are dropped (return 0) rather than producing false spikes.
  */
@@ -23,6 +24,7 @@ export class HRClock {
     readonly #int32View: Int32Array
     readonly #float64View: Float64Array
 
+    #prevPairValid: boolean = false
     #prevStartCounter: int = 0
     #prevEndCounter: int = 0
     #prevStartTs: number = 0
@@ -34,21 +36,24 @@ export class HRClock {
     }
 
     start(): number {
-        // Read response counters to know which signals these timestamps are for
+        // Bounded seqlock read: the audio thread never waits for the worker.
+        const sequence = Atomics.load(this.#int32View, 3)
         const startCounter = Atomics.load(this.#int32View, 1)
         const endCounter = Atomics.load(this.#int32View, 2)
         // Read timestamps
         const startTs = this.#float64View[2]
         const endTs = this.#float64View[3]
+        const pairValid = (sequence & 1) === 0 && sequence === Atomics.load(this.#int32View, 3)
         // Signal for T[N,start] - counter becomes odd
         this.#signal()
         // Only compute elapsed if we have a valid pair from the SAME render
         // A valid pair: endCounter = startCounter + 1 (end signal immediately follows start)
         let elapsed = 0
-        if (this.#prevStartCounter > 0 && this.#prevEndCounter === this.#prevStartCounter + 1) {
+        if (this.#prevPairValid && this.#prevEndCounter === ((this.#prevStartCounter + 1) | 0)) {
             elapsed = this.#prevEndTs - this.#prevStartTs
         }
         // Store current values for the next render's calculation
+        this.#prevPairValid = pairValid
         this.#prevStartCounter = startCounter
         this.#prevEndCounter = endCounter
         this.#prevStartTs = startTs

@@ -159,3 +159,12 @@ remains independent of that end. Only finite positive clip durations are admitte
 invalid launch requests become obsolete; invalid queued or playing clips retire
 on the next nonempty iteration (obsolete or stopped respectively). Repairing the
 duration allows an explicit new launch. Empty spans perform no scheduling work.
+
+### Clock publication
+
+The timestamp worker brackets each response-counter/timestamp write with an
+odd/even Int32 publication sequence in word 3 of the existing 32-byte buffer.
+HRClock accepts only a stable even observation and consecutive response counters
+in the modular Int32 domain, including signed rollover and zero. Initialization
+is independent of counter sign. Overlapping or skipped publications return zero
+for that measurement without waiting or retrying on the audio thread.

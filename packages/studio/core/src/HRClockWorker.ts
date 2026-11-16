@@ -15,6 +15,7 @@ export class HRClockWorker {
         // int32[0]: request counter
         // int32[1]: start response counter (which request this start timestamp is for)
         // int32[2]: end response counter (which request this end timestamp is for)
+        // int32[3]: publication sequence (odd while writing, even when stable)
         // float64[2]: start timestamp (bytes 16-23)
         // float64[3]: end timestamp (bytes 24-31)
         this.sab = new SharedArrayBuffer(32)
@@ -27,6 +28,7 @@ export class HRClockWorker {
                     Atomics.wait(int32, 0, lastCounter)
                     lastCounter = Atomics.load(int32, 0)
                     const isStart = (lastCounter & 1) === 1
+                    Atomics.add(int32, 3, 1)
                     if (isStart) {
                         float64[2] = performance.now()
                         Atomics.store(int32, 1, lastCounter)
@@ -34,6 +36,7 @@ export class HRClockWorker {
                         float64[3] = performance.now()
                         Atomics.store(int32, 2, lastCounter)
                     }
+                    Atomics.add(int32, 3, 1)
                 }
             }
         `

@@ -19,3 +19,8 @@ play/stop partition parity and right-endpoint ownership. All pass after the fix.
 B04: twelve failing cases cover three-beat one-shots launched at beat four across
 three partitions, invalid initial/edited durations and explicit repaired relaunch.
 Natural ending also applies to the remainder of the launch span.
+
+B05: deterministic Atomics interception publishes a new start between counters and
+timestamps; the old reader accepts a mixed pair. A worker-source fixture executes
+two iterations and checks the odd write fence. Negative counters and both signed
+rollover pairs fail before the modular comparison fix. No busy waiting is added.

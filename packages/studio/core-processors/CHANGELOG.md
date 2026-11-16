@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Publish clock timestamp/counter samples coherently and preserve consecutive measurements across signed Int32 counter rollover.
+
 - End one-shot clips relative to their actual launch, and retire invalid mutable clip durations before scheduling or quantization.
 
 - Cancel pending replacement/stop when selecting the playing clip, and launch at the first crossed half-open quantization boundary.
