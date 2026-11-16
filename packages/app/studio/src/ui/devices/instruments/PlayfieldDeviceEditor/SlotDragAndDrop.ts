@@ -14,26 +14,18 @@ export namespace SlotDragAndDrop {
         const sourceIndex = sourceBox.index.getValue()
         if (sourceIndex === targetIndex) {return}
         const {editing, boxGraph} = project
-        const source = Option.wrap(sourceBox)
+        const file = sourceBox.file.targetVertex.unwrapOrNull()?.box
+        if (!(file instanceof AudioFileBox) || !file.isAttached()
+            || sourceBox.device.targetVertex.unwrapOrNull() !== device.samples) {return}
+        const contents = sourceBox.toArrayBuffer()
         const target = findSampleByIndex(device, targetIndex)
-        source.ifSome(sourceBox => {
-            editing.modify(() => {
-                // If target has a sample, delete it first
-                target.ifSome(targetBox => targetBox.delete())
-                // Get the source file (AudioFileBox)
-                const sourceFile = sourceBox.file.targetVertex
-                    .map(vertex => vertex.box instanceof AudioFileBox ? vertex.box : null)
-                // Get the device box and its samples hub
-                const deviceBox = sourceBox.device.targetVertex
-                    .map(vertex => vertex.box instanceof PlayfieldDeviceBox ? vertex.box : null)
-                if (sourceFile.nonEmpty() && deviceBox.nonEmpty()) {
-                    PlayfieldSampleBox.create(boxGraph, UUID.generate(), box => {
-                        box.read(new ByteArrayInput(sourceBox.toArrayBuffer()))
-                        box.file.refer(sourceFile.unwrap())
-                        box.device.refer(deviceBox.unwrap().samples)
-                        box.index.setValue(targetIndex)
-                    })
-                }
+        editing.modify(() => {
+            target.ifSome(box => box.delete())
+            PlayfieldSampleBox.create(boxGraph, UUID.generate(), box => {
+                box.read(new ByteArrayInput(contents))
+                box.file.refer(file)
+                box.device.refer(device.samples)
+                box.index.setValue(targetIndex)
             })
         })
     }

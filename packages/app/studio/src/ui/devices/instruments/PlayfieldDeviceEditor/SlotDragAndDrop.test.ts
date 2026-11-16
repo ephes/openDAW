@@ -1,6 +1,6 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {BoxEditing} from "@opendaw/lib-box"
-import {Terminator, UUID} from "@opendaw/lib-std"
+import {Option, Terminator, UUID} from "@opendaw/lib-std"
 import {AudioFileBox, AudioUnitBox, PlayfieldDeviceBox, PlayfieldSampleBox} from "@opendaw/studio-boxes"
 import {ProjectSkeleton} from "@opendaw/studio-adapters"
 import type {Project} from "@opendaw/studio-core"
@@ -56,4 +56,15 @@ it("copies every authored pad field with a new identity and shared file, and und
     expect(f.editing.undo()).toBe(true)
     expect(f.boxGraph.findBox(f.target.address.uuid).nonEmpty()).toBe(true)
     expect(f.editing.redo()).toBe(true)
+})
+it("preflights a detached file without deleting the target or adding history", () => {
+    const f = fixture()
+    vi.spyOn(f.source.file, "targetVertex", "get").mockReturnValue(Option.None)
+    const modify = vi.spyOn(f.editing, "modify")
+    const before = f.boxGraph.toArrayBuffer()
+    f.drop(true)
+    expect(modify).not.toHaveBeenCalled()
+    expect(f.boxGraph.toArrayBuffer()).toEqual(before)
+    expect(f.editing.canUndo()).toBe(false)
+    expect(f.editing.undo()).toBe(false); expect(f.editing.redo()).toBe(false)
 })

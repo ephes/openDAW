@@ -16,3 +16,14 @@ Regression: real drop handlers and two graph-backed devices; both swap direction
 foreign drops, nondefault pitch/trim/envelope/gate/polyphony and replacement undo/redo.
 The identity test failed on refreshed main; after identity repair the copy test
 still failed (pitch 0 instead of 7). Both pass with the complete change.
+
+## Destructive drops (B02)
+
+Pad copy resolves a live file and device and snapshots fields before opening an
+edit. A refused drop does not enter history. Effect moves require every distinct
+UUID to be an indexed member of the currently displayed chain with the matching
+host pointer kind. Partial selections are refused as a whole.
+
+Regression: missing-file getter at drop time, unchanged graph/history/undo/redo;
+foreign chains with matching indexes, MIDI/audio mixes, missing and duplicate
+UUIDs, plus a valid reorder. Both new tests failed before repair and pass after.

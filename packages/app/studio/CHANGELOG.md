@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preflight pad-copy resources before replacing a destination; refuse whole effect selections from foreign chains, mixed kinds or retired identities.
+
 - Bind drum-pad moves to their source device and preserve authored sample fields when copying a pad, with shared audio-file identity.
 
 - Clarify Nano sample/disable ownership, Revamp and Fold restart behavior, NAM fault recovery and Maximizer latency-mode transitions in device manuals.
