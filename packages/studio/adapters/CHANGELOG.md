@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Normalize stem basenames, replace unsupported characters, avoid reserved desktop device names and trailing dots, bound names to 200 UTF-8 bytes and suffix normalized case collisions deterministically.
+
 - Publish selection indexes before callbacks, own reentrant catchup replay in both selections, and preserve targets installed during release.
 - Keep filtered selection indexes synchronous for selections changed inside a caller's transaction and deliver deferred selection notifications as balanced transitions.
 

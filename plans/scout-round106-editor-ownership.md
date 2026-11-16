@@ -54,3 +54,15 @@ Regression: 100 synthetic rows over three refreshes, filtering retired rows,
 row deletion and teardown; delayed browse across editor/device/project retirement,
 current success and observed failure. Byte snapshots compare Uint8Array contents.
 New tests failed before each repair and pass after.
+
+## Audition pointers and portable stems (B05)
+
+A pad-label audition owns one pointer and one note. Replacement ends the old
+note first; releases from other pointers do nothing. Up, cancel, lost capture
+and disposal release the active note once and relinquish capture.
+Stem naming follows the adapter README policy and preserves display labels.
+
+Regression: real sample-editor event handlers with synthetic note routing cover
+two-pointer ordering, cancellation, lost capture and disposal. Export tests cover
+case/Unicode collisions, reserved names, empty/punctuation names, authored suffix
+collisions, byte limits and idempotence. Both failed before repair and pass after.
