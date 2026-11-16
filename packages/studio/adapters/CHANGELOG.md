@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reserve an empty recording-ring slot and expose sticky dropped-frame evidence instead of overwriting unread audio.
+
 - Normalize stem basenames, replace unsupported characters, avoid reserved desktop device names and trailing dots, bound names to 200 UTF-8 bytes (falling back to `Stem` when truncation leaves no letter or digit) and suffix normalized case collisions deterministically.
 
 - Publish selection indexes before callbacks, own reentrant catchup replay in both selections, and preserve targets installed during release.

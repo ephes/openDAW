@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Publish recording-ring overflow as a terminal recording error and refuse clean sample persistence.
+
 - Publish clock timestamp/counter samples coherently and preserve consecutive measurements across signed Int32 counter rollover.
 
 - Compact audio lanes using tempo-aware region endpoints, including seconds-based recordings across tempo changes.

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Detect nonzero signed bit words, including MIDI boundary notes.
+
 - Stage virtual-object updates before publication, support null/scalar-to-record replacements and refuse unsupported/read-only shapes without partial mutation.
 
 - Isolate listener proxy errors consistently for object/class methods while preserving their receiver binding.

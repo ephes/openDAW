@@ -479,3 +479,9 @@ File picker lifecycle and WAV source geometry are documented in the
 
 Audio output selection switches the context back to the system default when selected.
 Switch refusals reach the selector; delayed device lookups cannot replace a newer sink.
+
+Audio recording rings reserve one slot, so usable capacity is numChunks - 1. If
+the reader falls behind, capture reports lost frames and requires a new recording;
+a discontinuous capture is never imported as a clean sample. The shared header
+contains two cursors and a sticky dropped-frame count; producers and consumers
+must use the same build. Boundary MIDI notes 31, 63, 95 and 127 light note displays.

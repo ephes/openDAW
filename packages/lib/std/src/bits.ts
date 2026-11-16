@@ -3,7 +3,7 @@ import {int} from "./lang"
 
 export class Bits {
     static readonly every = (set: int, flag: int): boolean => (set & flag) === flag
-    static readonly some = (set: int, flag: int): boolean => (set & flag) > 0
+    static readonly some = (set: int, flag: int): boolean => (set & flag) !== 0
 
     readonly #numBits: int
     readonly #array: Int32Array
@@ -30,7 +30,7 @@ export class Bits {
     }
 
     isEmpty(): boolean {return this.#array.every(value => value === 0)}
-    nonEmpty(): boolean {return this.#array.some(value => value > 0)}
+    nonEmpty(): boolean {return this.#array.some(value => value !== 0)}
 
     set buffer(value: ArrayBufferLike) {this.#array.set(new Int32Array(value))}
     get buffer(): ArrayBufferLike {return this.#array.buffer}

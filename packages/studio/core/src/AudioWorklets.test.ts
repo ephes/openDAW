@@ -65,7 +65,7 @@ describe("recording geometry admission", () => {
         "refuses channels=%s chunks=%s before allocation or node construction", async (channels, chunks) => {
             const AudioWorklets = await fixture()
             const allocations = vi.fn((target, args) => {
-                if (args[0] > 64 * 1024 * 1024 + 8) {throw new Error("unexpected large allocation")}
+                if (args[0] > 64 * 1024 * 1024 + RingBuffer.HEADER_BYTES) {throw new Error("unexpected large allocation")}
                 return Reflect.construct(target, args)
             })
             vi.stubGlobal("SharedArrayBuffer", new Proxy(SharedArrayBuffer, {construct: allocations}))
@@ -77,11 +77,11 @@ describe("recording geometry admission", () => {
         const AudioWorklets = await fixture()
         const node = new AudioWorklets(context()).createRecording(channels, chunks)
         const config = nodeConstruct.mock.calls[0][2].processorOptions as RingBuffer.Config
-        expect(config.sab.byteLength).toBe(8 + channels * chunks * RenderQuantum * 4)
+        expect(config.sab.byteLength).toBe(RingBuffer.HEADER_BYTES + channels * chunks * RenderQuantum * 4)
         expect(new Int32Array(config.sab, 0, 2)).toEqual(new Int32Array(2))
         const planes = Array.from({length: channels}, (_, i) => new Float32Array(RenderQuantum).fill((i + 1) / 32))
         RingBuffer.writer(config).write(planes)
-        const audio = new Float32Array(config.sab, 8)
+        const audio = new Float32Array(config.sab, RingBuffer.HEADER_BYTES)
         planes.forEach((plane, i) => expect(audio.slice(i * RenderQuantum, (i + 1) * RenderQuantum)).toEqual(plane))
         await vi.advanceTimersByTimeAsync(1)
         expect(node.numberOfFrames).toBe(RenderQuantum)

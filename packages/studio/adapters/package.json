@@ -20,7 +20,7 @@
     "generate-exports": "node generate-exports.mjs",
     "build": "npm run generate-exports && tsc",
     "lint": "eslint \"**/*.ts\"",
-    "test": "vitest run src/ScriptDeclaration.test.ts src/selection/VertexSelection.test.ts src/EngineProcessorAttachment.test.ts"
+    "test": "vitest run src/ScriptDeclaration.test.ts src/RingBuffer.test.ts src/NoteStreamReceiver.test.ts src/selection/VertexSelection.test.ts src/EngineProcessorAttachment.test.ts"
   },
   "dependencies": {
     "@opendaw/lib-box": "^0.0.86",
