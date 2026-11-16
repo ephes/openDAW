@@ -25,3 +25,26 @@ processor README and pending notes in its CHANGELOG.
 - B05: both active/internal-fade generation replacements and all four fractional
   pitch/stretch gain/partition cases failed first. Tests check every frame against
   an independent envelope/grid oracle and compare whole versus split pitch blocks.
+- B06: mode 3 failed the held/release/partition test before retaining its mode;
+  modes 0 and 1 already passed. Seventeen geometry/rate/overshoot cases failed
+  before validating loop admission, guarding reads and using modulo wrapping.
+- Final boundary audit: a subframe stretch region still retired an overlapping
+  pitch voice before returning for its empty span. A real-processor regression
+  failed first; retirement now happens only after admitting a nonempty span.
+
+## Local validation
+
+Node 26.13.1 / npm 11.20.0; locked `npm ci --ignore-scripts`. Run root
+`npm run build` before `npm run lint` and `npm test`, matching Checks. The build
+includes production TypeScript and generated sources; the core-processor package
+also runs `npm run typecheck`. No browser or hardware gate is required for these
+processor-only changes. Test and review logs belong to the worker's external log
+directory; no scratch output is committed. User manuals document the changed
+restart, geometry, voice-stealing, generation and loop-mode policies.
+
+Final local result: locked install passed; root build 24/24 tasks, root lint
+(including browser-fixture lint) and root tests 44/44 tasks passed. The processor
+suite passes 270 tests in 50 files, including 46 newly added cases. Focused
+processor TypeScript also passed. No local gate was blocked. Expected fixture
+error diagnostics and existing lint warnings do not fail the gates. External
+cross-family review remains pending; no review verdict is claimed.

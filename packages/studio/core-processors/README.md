@@ -127,3 +127,11 @@ Cycle start/end boundaries are each floored to output frames, then their differe
 defines the span. Empty quantized spans do no work. Pitch and stretch gain buffers
 use those same boundaries and evaluate region fades on the output frame grid,
 so adjacent fractional cycles cover each frame once across block partitions.
+
+Soundfont sample mode 0 plays once, mode 1 loops through its release envelope,
+and mode 3 stops wrapping on note-off and plays the natural sample tail. Loop
+admission requires integral sample-relative bounds with `0 <= start < end <=
+length`. Invalid bounds and unsupported modes fall back to nonlooping playback;
+empty samples and nonfinite/nonpositive playback rates retire silently without
+reading PCM. Other voices continue. Valid loops wrap arbitrary finite overshoot
+with modulo arithmetic, including one-frame loops and high pitches.

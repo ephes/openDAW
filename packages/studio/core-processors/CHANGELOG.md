@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Distinguish continuous and until-note-off Soundfont loops, validate sample-relative loop bounds with nonlooping fallback, and wrap arbitrary finite overshoot in constant work.
+
 - Bind Tape pitch voices to audio-data generations and quantize shared cycle boundaries before deriving spans, aligning pitch/stretch fade gains with output frames.
 
 - Isolate unavailable Tape timeline regions and discard disabled-lane pitch/stretch tails instead of freezing them across re-enable.

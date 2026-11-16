@@ -52,6 +52,10 @@ it("keeps adjacent representable loops bounded at high pitch in either direction
         expect(v.position).toBeGreaterThanOrEqual(Math.min(a, b) * 2)
         expect(v.position).toBeLessThanOrEqual(Math.max(a, b) * 2)
         expect(output.every(ch => ch.every(Number.isFinite))).toBe(true)
+        v.release(true)
+        let done = false
+        for (let i = 0; i < 3 && !done; i++) done = v.processAdd(output, 0, 128)
+        expect(done).toBe(true)
     }
 })
 it.each([false, true])("includes every admitted one-shot frame against endpoint oracle, reverse=%s", reverse => {

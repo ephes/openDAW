@@ -1,5 +1,5 @@
 import {beforeAll, expect, it} from "vitest"
-import {ClassicWaveform} from "@opendaw/lib-dsp"
+import {ClassicWaveform, PPQN} from "@opendaw/lib-dsp"
 import {VaporisateurDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {VoicingMode} from "@opendaw/studio-enums"
 import {NoteLifecycleEvent} from "../../NoteEventSource"
@@ -49,7 +49,8 @@ it("clears a loud limiter history before a quiet restart over split blocks", () 
     for (const {p, events} of [warm, fresh]) {
         p.gainOscA = p.gainOscB = 0.1
         events.push(NoteLifecycleEvent.start(0, 1000, 60, 0.25))
-        p.process({blocks: [block(0, 19), block(19, 73), block(73, 128)]})
+        p.process({blocks: [[0, 19], [19, 73], [73, 128]].map(([a, b], index) =>
+            ({...block(a, b, PPQN.samplesToPulses(a, 120, sampleRate)), index}))})
     }
     expect(Array.from(warm.p.audioOutput.getChannel(0))).toEqual(Array.from(fresh.p.audioOutput.getChannel(0)))
     warm.p.terminate(); fresh.p.terminate()

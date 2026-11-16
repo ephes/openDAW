@@ -75,6 +75,9 @@ Large waveform view with draggable start and end markers. The colored vertical l
 - **Drag left marker**: Adjust sample start point
 - **Drag right marker**: Adjust sample end point
 
+Reversing the markers reverses playback. Equal markers define an empty interval
+and produce no sound; sources shorter than two frames also retire silently.
+
 ### 2.2 Note Assignment
 
 Displays the MIDI note this pad responds to (e.g., G#3). This is determined by the pad's position in the grid.
@@ -99,7 +102,10 @@ Controls how the sample responds to note-on/note-off:
 ### 2.6 Voice
 
 - **Mono**: Only one instance plays at a time (re-triggering restarts)
-- **Poly**: Multiple overlapping instances can play simultaneously
+- **Poly**: Up to 16 overlapping instances per sample, including release tails
+
+At the limit, a new trigger immediately replaces the oldest instance. This may
+create a click. Releasing an older, replaced note does not stop a newer trigger.
 
 ### 2.7 Start
 
