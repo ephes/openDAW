@@ -457,3 +457,17 @@ results never authorize backup cleanup. Drive exact-name lookups request two mat
 and refuse duplicates or incomplete results before mutation. Repair duplicate backup
 names deliberately before retrying. Name query literals escape backslashes before
 apostrophes, independently of URL encoding.
+
+Every provider operation accepts optional cancellation and has one ten-minute
+elapsed deadline covering lookup, pagination and body consumption. Cancellation
+retires pending reads and folder lookup ownership; late headers are cancelled.
+Remote writes already accepted by a provider may still complete after cancellation;
+no atomic remote rollback is promised. Provider failures expose fixed operation/HTTP
+status categories without raw response text, SDK objects, account paths or causes.
+Unused error bodies are cancelled; Dropbox's missing-path classifier reads at most
+1 MiB of structured error data. No raw provider response is logged.
+
+Cloud downloads enforce existing OPFS limits while streaming: JSON metadata 1 MiB,
+presets 16 MiB, project graphs 64 MiB, sample/font/cover media 1 GiB. Declared and
+actual bytes are checked before assembly; encoded responses other than identity
+are refused. SDK download responses are bounded before Blob materialization.

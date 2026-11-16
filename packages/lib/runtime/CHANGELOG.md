@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add a bounded response reader with cancellation and observer-failure cleanup.
+
 - Fence retired messenger owners and channels; clear only owned port handlers and keep replacement transports receiving.
 
 - Validate positive integer concurrency before scheduling; accumulate sequential batch results in linear work.

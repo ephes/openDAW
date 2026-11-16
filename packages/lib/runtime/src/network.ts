@@ -36,6 +36,52 @@ export namespace network {
         })
     }
 
+    /** Consume once, checking decoded bytes before retaining each chunk. */
+    export const readBounded = async (response: Response, maxBytes: number,
+                                     signal?: AbortSignal, progress?: Progress.Handler): Promise<ArrayBuffer> => {
+        const reader = response.body?.getReader()
+        if (!reader) {throw new Error("Missing response body")}
+        let complete = false
+        let cancelled = false
+        const cancel = () => {
+            if (cancelled) {return}
+            cancelled = true
+            void reader.cancel().catch(() => {})
+        }
+        signal?.addEventListener("abort", cancel, {once: true})
+        try {
+            signal?.throwIfAborted()
+            const encoding = response.headers.get("Content-Encoding")
+            if (encoding && encoding.toLowerCase() !== "identity") {throw new Error("Unsupported response encoding")}
+            const declared = Number(response.headers.get("Content-Length") ?? "0")
+            if (!Number.isSafeInteger(declared) || declared < 0 || declared > maxBytes) {
+                throw new Error("Response byte limit exceeded")
+            }
+            let loaded = 0
+            const chunks: Uint8Array[] = []
+            for (;;) {
+                const {done, value} = await abortable(reader.read(), signal)
+                signal?.throwIfAborted()
+                if (done) {break}
+                if (value.byteLength > maxBytes - loaded) {throw new Error("Response byte limit exceeded")}
+                loaded += value.byteLength
+                chunks.push(value)
+                progress?.(declared > 0 ? Math.min(1, loaded / declared) : 0)
+            }
+            signal?.throwIfAborted()
+            progress?.(1)
+            const bytes = new Uint8Array(loaded)
+            let offset = 0
+            for (const chunk of chunks) {bytes.set(chunk, offset); offset += chunk.byteLength}
+            complete = true
+            return bytes.buffer
+        } finally {
+            signal?.removeEventListener("abort", cancel)
+            if (!complete) {cancel()}
+            reader.releaseLock()
+        }
+    }
+
     const backoff = (signal?: AbortSignal | null): Promise<void> => new Promise((resolve, reject) => {
         const abort = () => {
             clearTimeout(timer)

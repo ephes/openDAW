@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound cloud transfers and entire provider operations; cancel late responses and expose private fixed error categories.
+
 - Bound provider inventory pages/names, refuse ambiguous Drive targets and escape exact-name query literals.
 
 - Settle worklet readiness on faults/retirement and fence resumed playback against Stop, release and replacement.

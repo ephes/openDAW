@@ -28,7 +28,7 @@ for (const provider of ["drive", "dropbox"]) {
         expect(next).toHaveBeenCalledTimes(2)
     })
     it(`${provider} refuses an over-budget last page`, async () => {
-        const {handler} = setup([{names: Array(100000).fill("a"), token: "next"}, {names: ["overflow"]}])
+        const {handler} = setup([...Array.from({length: 100}, (_, i) => ({names: Array(1000).fill("a"), token: String(i)})), {names: ["overflow"]}])
         await expect(handler.list()).rejects.toThrow("inventory")
     })
     it(`${provider} stops at the page budget`, async () => {

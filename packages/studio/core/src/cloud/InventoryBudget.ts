@@ -1,3 +1,5 @@
+import {CloudError} from "./CloudExchange"
+
 // A partial inventory must never authorize backup cleanup or restore.
 export class InventoryBudget {
     readonly #seen = new Set<string>()
@@ -9,7 +11,7 @@ export class InventoryBudget {
         this.#names += names
         if (this.#names > 100000 || (next !== undefined &&
             (this.#pages >= 1000 || next.length === 0 || this.#seen.has(next)))) {
-            throw new Error("Cloud inventory incomplete: page/name budget or cursor progress refused")
+            throw new CloudError("Cloud inventory incomplete: page/name budget or cursor progress refused")
         }
         if (next !== undefined) {this.#seen.add(next)}
     }

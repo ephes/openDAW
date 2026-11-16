@@ -31,7 +31,7 @@ it("retries catalog publication after Dropbox already deleted the preset", async
 for (const error of [new Error("transport"), {status: 401, error: notFound.error}, {status: 409, error: {error: {".tag": "path_write", path_write: {".tag": "no_write_permission"}}}}, {status: 409, error: {error: {".tag": "path_lookup", path_lookup: {".tag": "restricted_content"}}}}]) {
     it("does not suppress unrelated Dropbox deletion errors", async () => {
         mocks.remove.mockRejectedValueOnce(error)
-        await expect(new DropboxHandler("synthetic").delete("file")).rejects.toBe(error)
+        await expect(new DropboxHandler("synthetic").delete("file")).rejects.toThrow(/Cloud delete failed/)
     })
 }
 for (const kind of ["folder", "file", "missing", "denied", "query denied"] as const) {

@@ -61,3 +61,9 @@ without sending, so late callers holding a stale protocol object stay harmless.
 Failed protocol binding releases the new sender while preserving the binding
 error. Engine worklet and offline renderer senders use their existing terminators,
 so shutdown settles outstanding engine requests.
+
+`network.readBounded` consumes one response with a declared/actual decoded byte
+ceiling and optional signal/progress callback. It accepts identity encoding only,
+checks abort before success, and cancels/unlocks the reader on failures (including
+observer exceptions). Unknown lengths report zero until EOF. It does not own an
+elapsed deadline; callers supply their operation's signal.
