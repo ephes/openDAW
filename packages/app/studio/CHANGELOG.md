@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Target the nearest warp marker and preserve fractional immediate neighbors.
+
 - Preserve protected effects on Cut and restore master content after a failed output paste.
 - Refuse time-signature moves onto occupied bars and bound constant-tail tempo calculations.
 - Keep Stop effective during audio resume and recording preparation; failed recording startup releases prepared resources and permits retry.
