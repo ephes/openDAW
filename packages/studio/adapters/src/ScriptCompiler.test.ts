@@ -92,3 +92,141 @@ it("reorders unique declarations without replacing their bindings", async () => 
     expect(f.box.parameters.pointerHub.filter()[0].box).toBe(parameter)
     expect(f.box.samples.pointerHub.filter()[0].box).toBe(sample)
 })
+
+it("preserves saved graph, parameters and samples on rejected installation", async () => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source() + "\n// @sample hit")
+    const code = f.box.code.getValue(), label = f.box.label.getValue()
+    const parameter = f.box.parameters.pointerHub.filter()[0].box
+    const sample = f.box.samples.pointerHub.filter()[0].box
+    f.addModule.mockRejectedValueOnce(new Error("install refused"))
+    await expect(f.compiler.compile(f.context, f.editing, f.box, "// @label changed\nclass Processor {}")).rejects.toThrow("install refused")
+    expect(f.box.code.getValue()).toBe(code)
+    expect(f.box.label.getValue()).toBe(label)
+    expect(f.box.parameters.pointerHub.filter()[0].box).toBe(parameter)
+    expect(f.box.samples.pointerHub.filter()[0].box).toBe(sample)
+})
+it("waits for installation and discards superseded or externally edited attempts", async () => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source())
+    const before = f.box.code.getValue()
+    let finish!: () => void
+    f.addModule.mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve}))
+    const older = f.compiler.compile(f.context, f.editing, f.box, source("0.2"))
+    expect(f.box.code.getValue()).toBe(before)
+    await f.compiler.compile(f.context, f.editing, f.box, source("0.3"))
+    const latest = f.box.code.getValue()
+    finish()
+    await older
+    expect(f.box.code.getValue()).toBe(latest)
+    f.addModule.mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve}))
+    const pending = f.compiler.compile(f.context, f.editing, f.box, source("0.4"))
+    f.editing.modify(() => f.box.code.setValue(latest + "\n// external edit"))
+    finish(); await pending
+    expect(f.box.code.getValue()).toBe(latest + "\n// external edit")
+})
+
+const evaluateModule = async (url: string) => {new Function(await (await fetch(url)).text())()}
+const registryEntry = (f: ReturnType<typeof fixture>) =>
+    (globalThis as typeof globalThis & {openDAW: {werkstattProcessors: Record<string, {
+        update: number, create: new () => {version: number}
+    }>}}).openDAW.werkstattProcessors[UUID.toString(f.box.address.uuid)]
+const versioned = (version: number) => source() + `\nProcessor.prototype.version = ${version}`
+it("fences reverse module completion and deliberately loads an older saved update", async () => {
+    const f = fixture()
+    f.addModule.mockImplementation(evaluateModule)
+    await f.compiler.compile(f.context, f.editing, f.box, versioned(0))
+    const saved = f.box.code.getValue()
+    let finish!: () => Promise<void>
+    f.addModule.mockImplementationOnce((url: string) => new Promise<void>((resolve, reject) => {
+        finish = async () => {try {await evaluateModule(url); resolve()} catch (error) {reject(error)}}
+    }))
+    const older = f.compiler.compile(f.context, f.editing, f.box, versioned(1))
+    await f.compiler.compile(f.context, f.editing, f.box, versioned(2))
+    const latest = registryEntry(f).update
+    await finish(); await older
+    expect(registryEntry(f).update).toBe(latest)
+    expect(new (registryEntry(f).create)().version).toBe(2)
+    f.editing.modify(() => f.box.code.setValue(saved))
+    const loader = ScriptCompiler.create({headerTag: "werkstatt", registryName: "werkstattProcessors", functionName: "test"})
+    await loader.load(f.context, f.box)
+    expect(new (registryEntry(f).create)().version).toBe(0)
+})
+it("does not replace the working registry when module evaluation throws", async () => {
+    const f = fixture()
+    f.addModule.mockImplementation(evaluateModule)
+    await f.compiler.compile(f.context, f.editing, f.box, versioned(0))
+    const working = registryEntry(f), saved = f.box.code.getValue()
+    await expect(f.compiler.compile(f.context, f.editing, f.box, source() + '\nthrow new Error("evaluation refused")')).rejects.toThrow("evaluation refused")
+    expect(registryEntry(f)).toBe(working)
+    expect(f.box.code.getValue()).toBe(saved)
+})
+
+it("restores only its own activation if superseded while activation completes", async () => {
+    const f = fixture()
+    f.addModule.mockImplementation(evaluateModule)
+    await f.compiler.compile(f.context, f.editing, f.box, versioned(0))
+    const working = registryEntry(f), saved = f.box.code.getValue()
+    let finish!: () => void
+    f.addModule.mockImplementationOnce(evaluateModule).mockImplementationOnce(async (url: string) => {
+        await evaluateModule(url)
+        await new Promise<void>(resolve => {finish = resolve})
+    })
+    const pending = f.compiler.compile(f.context, f.editing, f.box, versioned(1))
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    await expect(f.compiler.compile(f.context, f.editing, f.box, source() + '\nthrow new Error("latest failure")')).rejects.toThrow("latest failure")
+    finish(); await pending
+    expect(f.box.code.getValue()).toBe(saved)
+    expect(registryEntry(f)).toBe(working)
+})
+it("restores its registry activation when graph publication fails", async () => {
+    const f = fixture()
+    f.addModule.mockImplementation(evaluateModule)
+    await f.compiler.compile(f.context, f.editing, f.box, versioned(0))
+    const working = registryEntry(f), saved = f.box.code.getValue()
+    vi.spyOn(f.editing, "modify").mockImplementationOnce(() => {throw new Error("publication refused")})
+    await expect(f.compiler.compile(f.context, f.editing, f.box, versioned(1))).rejects.toThrow("publication refused")
+    expect(f.box.code.getValue()).toBe(saved)
+    expect(registryEntry(f)).toBe(working)
+})
+
+it("does not resurrect an already retired activation during a later failed publication", async () => {
+    const f = fixture()
+    f.addModule.mockImplementation(evaluateModule)
+    await f.compiler.compile(f.context, f.editing, f.box, versioned(0))
+    const working = registryEntry(f), saved = f.box.code.getValue()
+    let finishFirst!: () => void, finishSecond!: () => void
+    f.addModule.mockImplementationOnce(evaluateModule).mockImplementationOnce(async (url: string) => {
+        await evaluateModule(url); await new Promise<void>(resolve => {finishFirst = resolve})
+    })
+    const first = f.compiler.compile(f.context, f.editing, f.box, versioned(1))
+    await vi.waitFor(() => expect(finishFirst).toBeDefined())
+    f.addModule.mockImplementationOnce(evaluateModule).mockImplementationOnce(async (url: string) => {
+        await evaluateModule(url); await new Promise<void>(resolve => {finishSecond = resolve})
+    })
+    const second = f.compiler.compile(f.context, f.editing, f.box, versioned(2))
+    await vi.waitFor(() => expect(finishSecond).toBeDefined())
+    finishFirst(); await first
+    vi.spyOn(f.editing, "modify").mockImplementationOnce(() => {throw new Error("second publication refused")})
+    finishSecond()
+    await expect(second).rejects.toThrow("second publication refused")
+    expect(f.box.code.getValue()).toBe(saved)
+    expect(registryEntry(f)).toBe(working)
+})
+
+it.each(["invalid request", "edit then undo"])("retires an in-flight install after %s", async kind => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source())
+    const saved = f.box.code.getValue()
+    let finish!: () => void
+    f.addModule.mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve}))
+    const pending = f.compiler.compile(f.context, f.editing, f.box, source("0.2"))
+    if (kind === "invalid request") {
+        await expect(f.compiler.compile(f.context, f.editing, f.box, "// @param gain Infinity")).rejects.toThrow()
+    } else {
+        f.editing.modify(() => f.box.code.setValue(saved + "\n// external edit"))
+        f.editing.undo()
+    }
+    finish(); await pending
+    expect(f.box.code.getValue()).toBe(saved)
+})

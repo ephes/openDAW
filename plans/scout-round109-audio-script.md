@@ -40,3 +40,41 @@ Parser and real compiler tests reject invalid numeric domains and duplicate
 resources before installation or graph publication. Valid scientific notation,
 integer rounding and unique declaration reordering remain supported. Older test
 fixtures using zero exponential endpoints now use positive minima.
+
+## B10 — script installation publication
+
+A context/device request serial fences compilation and load independently of the
+saved update number. Preparation evaluates the user module into a private
+candidate. Activation has a worklet-side request fence; graph publication checks
+client ownership, source-change history and live box identity after each await.
+Even invalid newer requests retire older installs. Rollback skips retired ancestors
+so a failed overlapping publication cannot resurrect a discarded activation.
+Retirement frees the candidate and conditionally restores its own activation if
+publication did not occur. Failed graph transactions cannot restore over a newer
+registry entry. Successful publication logs cleanup refusal without reporting the
+saved compile as failed.
+
+Compiler tests evaluate actual generated Blob payloads, including reverse order,
+evaluation rejection, superseded activation, external edits, rejected installation,
+failed graph publication and intentional loading of older source. Integration
+tests run exact-update lookup through real Werkstatt/Spielwerk processors. The
+Chromium fixtures repeat reverse completion and undo in a real AudioWorklet.
+
+## Local verification
+
+All twelve scout slices still applied at fresh main bceae5b. No owner decision was
+needed and no package version changed. Each slice's new regression failed against
+its pre-fix implementation; production build, lint and aggregate unit tests are
+the final local gates. Chromium execution is blocked by this macOS sandbox's Mach
+port bootstrap permission; the merge clerk must run `npm run test:browser`, including
+`tests/browser/r109.spec.ts`, outside it. Logs are retained under
+`/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r109-opendaw/`.
+
+Final gate results: `npm ci`, `npm run build`, `npm run lint` and `npm test`
+passed (24 build/lint tasks and 44 aggregate test/dependency tasks). The targeted
+compiler suite has 19 tests; exact Werkstatt/Spielwerk processor integration has
+two tests. The three new browser modules also bundle successfully with esbuild.
+`npm run test:browser -- tests/browser/r109.spec.ts tests/browser/scripts.spec.ts`
+was attempted: all four cases are blocked before execution by Chromium's
+`bootstrap_check_in ... MachPortRendezvousServer: Permission denied (1100)`.
+No browser pass is claimed. No pushes, merges, tags or external review commands ran.

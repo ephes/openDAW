@@ -51,3 +51,17 @@ Boolean endpoints are 0 and 1. Integer mappings use ValueMapping's rounded/clamp
 bounds and must remain increasing. Parameter and sample labels share one unique,
 case-sensitive namespace; duplicates report the declaration line and preserve the
 previous device. These admission rules also apply to saved script loads.
+
+### Script installation publication
+
+Compilation validates declarations and syntax, installs a private attempt-specific
+constructor, then activates it and publishes one graph transaction. Installation
+failure leaves saved code, labels, parameters and samples unchanged. A newer
+compile/load request, source edit or removed device retires pending publication.
+Request ownership is shared across compiler instances for each context/device and
+is separate from saved update numbers, so undo may deliberately reload an older
+saved update. Worklet staging fences late modules; retirement restores only the
+same attempt's activation and frees its candidate. Script top-level code runs
+during preparation, so external/global side effects authored by a script are not
+rolled back. Successful graph publication remains successful if candidate cleanup
+is refused; that cleanup fault is logged.

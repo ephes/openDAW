@@ -485,3 +485,9 @@ the reader falls behind, capture reports lost frames and requires a new recordin
 a discontinuous capture is never imported as a clean sample. The shared header
 contains two cursors and a sticky dropped-frame count; producers and consumers
 must use the same build. Boundary MIDI notes 31, 63, 95 and 127 light note displays.
+
+Script compilation installs the new worklet generation before publishing saved
+code and resource changes. Failed or superseded installations preserve the prior
+device; default/unit edits preserve parameter identity. See the
+[adapter script contracts](packages/studio/adapters/README.md) for numeric admission,
+resource naming, domain changes and intentional undo/load semantics.
