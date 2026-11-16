@@ -37,14 +37,16 @@ export const WarpMarkerEditor = ({
                 element.classList.toggle("no-content", audioContent.isPlayModeNoStretch)))}>
             <canvas tabIndex={-1}
                     onInit={canvas => {
+                        let warpPreview: WarpMarkerEditing.Preview = null
                         const {requestUpdate} = lifecycle.own(new CanvasPainter(canvas, painter => {
                             const {context, actualHeight, devicePixelRatio} = painter
                             if (observableOptPlayMode.isEmpty()) {return}
                             if (audioContent.isPlayModeNoStretch) {return}
                             const warpMarkers = observableOptPlayMode.unwrap().warpMarkers
-                            for (const marker of warpMarkers.iterateFrom(range.unitMin - reader.offset)) {
-                                const unit = reader.offset + marker.position
-                                if (unit > range.unitMax) {break}
+                            for (const marker of warpMarkers.asArray()) {
+                                const position = warpPreview?.marker === marker ? warpPreview.position : marker.position
+                                const unit = reader.offset + position
+                                if (unit < range.unitMin || unit > range.unitMax) {continue}
                                 const x = range.unitToX(unit) * devicePixelRatio
                                 context.beginPath()
                                 context.arc(x, actualHeight * 0.5, markerRadius, 0.0, TAU)
@@ -65,7 +67,8 @@ export const WarpMarkerEditor = ({
                                     audioPlayModeLifeCycle.ownAll(
                                         audioPlayMode.subscribe(requestUpdate),
                                         WarpMarkerEditing.install(
-                                            project, canvas, range, snapping, reader, audioPlayMode, hoverTransient))
+                                            project, canvas, range, snapping, reader, audioPlayMode, hoverTransient,
+                                            preview => {warpPreview = preview; requestUpdate()}))
 
                                     if (audioPlayMode instanceof AudioTimeStretchBoxAdapter) {
                                         const warpMarkers = audioPlayMode.warpMarkers

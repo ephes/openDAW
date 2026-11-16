@@ -15,6 +15,7 @@ import {
     Nullable,
     ObservableValue,
     Option,
+    Procedure,
     Terminable,
     Terminator,
     UUID
@@ -28,6 +29,8 @@ import {Snapping} from "@/ui/timeline/Snapping"
 export namespace WarpMarkerEditing {
     export const MIN_DISTANCE = PPQN.SemiQuaver
 
+    export type Preview = Nullable<{marker: WarpMarkerBoxAdapter, position: number}>
+
     const MARKER_RADIUS = 4
 
     export const install = (project: Project,
@@ -36,7 +39,8 @@ export namespace WarpMarkerEditing {
                             snapping: Snapping,
                             reader: AudioEventOwnerReader,
                             audioPlayMode: AudioPlayMode,
-                            hoverTransient: ObservableValue<Nullable<TransientMarkerBoxAdapter>>): Terminable => {
+                            hoverTransient: ObservableValue<Nullable<TransientMarkerBoxAdapter>>,
+                            preview: Procedure<Preview> = () => {}): Terminable => {
         const terminator = new Terminator()
         const capturing = WarpMarkerUtils.createCapturing(canvas, range, reader, MARKER_RADIUS)
         const warpMarkersField = reader.audioContent.observableOptPlayMode.map(playMode => playMode.box.warpMarkers)
@@ -149,23 +153,43 @@ export namespace WarpMarkerEditing {
                 selection.deselectAll()
                 if (isNull(marker)) {return Option.None}
                 selection.select(marker)
-                const [left, right] = WarpMarkerUtils.findAdjacent(marker.position, warpMarkers, false)
-                if (isNull(left) && isNull(right)) {
-                    console.warn("Broken warp-markers")
-                    return Option.None
+                const initialPosition = marker.position
+                const initialSeconds = marker.seconds
+                let proposed: Nullable<number> = null
+                let settled = false
+                const currentPosition = (local: number): Nullable<number> => {
+                    if (!marker.box.isAttached() || !warpMarkers.contains(marker)
+                        || marker.position !== initialPosition || marker.seconds !== initialSeconds
+                        || !Number.isFinite(local)) {return null}
+                    const [left, right] = WarpMarkerUtils.findAdjacent(marker.position, warpMarkers, false)
+                    if (isNull(left) && isNull(right)) {return null}
+                    const min = (left?.position ?? Number.MIN_SAFE_INTEGER) + MIN_DISTANCE
+                    const max = (right?.position ?? Number.MAX_SAFE_INTEGER) - MIN_DISTANCE
+                    return min <= max ? clamp(local, min, max) : null
                 }
                 return Option.wrap({
                     update: (event: Dragging.Event) => {
+                        if (settled) {return}
                         const rect = canvas.getBoundingClientRect()
                         const x = event.clientX - rect.left
                         const unit = event.shiftKey ? range.xToUnit(x) : snapping.xToUnitRound(x)
-                        const local = unit - reader.offset
-                        const min = left?.position ?? Number.MIN_SAFE_INTEGER
-                        const max = right?.position ?? Number.MAX_SAFE_INTEGER
-                        const clamped = clamp(local, min + MIN_DISTANCE, max - MIN_DISTANCE)
-                        project.editing.modify(() => marker.box.position.setValue(clamped), false)
+                        proposed = currentPosition(unit - reader.offset)
+                        preview(isNull(proposed) ? null : {marker, position: proposed})
                     },
-                    approve: () => project.editing.mark()
+                    approve: () => {
+                        if (settled) {return}
+                        settled = true
+                        const position = isNull(proposed) ? null : currentPosition(proposed)
+                        preview(null)
+                        if (!isNull(position) && position !== initialPosition) {
+                            project.editing.modify(() => marker.box.position.setValue(position))
+                        }
+                    },
+                    cancel: () => {
+                        if (settled) {return}
+                        settled = true
+                        preview(null)
+                    }
                 })
             }))
         return terminator
