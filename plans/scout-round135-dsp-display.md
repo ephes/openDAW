@@ -15,3 +15,7 @@ The chronological impulse/ramp/DC regression separately fails for the old extra
 source-sample delay on the odd phase. Correcting its origin passes direct FIR
 checks at 2x/4x/8x and real Fold transfer/downsampling comparisons. Existing response
 snapshots are regenerated only after those independent oracle checks pass.
+
+The delay regression warms identical ramp histories, slews 0→10 for five frames,
+then retargets to 5. The old code continues moving and fails the stationary reference.
+Cancellation now retires its delta/countdown, including partitioned continuation.

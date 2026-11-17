@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cancel an active delay slew when automation retargets to its instantaneous position.
+
 - Align odd/even resampler phases to one chronological FIR stream, with partitioned 2x/4x/8x reference regressions.
 
 - Retain every halfband coefficient in the polyphase resampler used by Fold oversampling.

@@ -170,3 +170,8 @@ Both phases share that origin. Upsampling packs each selected input span at outp
 index zero; downsampling writes back to the requested output span. State continues
 across calls, including nonzero input/output offsets. This corrects Fold's phase
 and latency as well as its gain; saved projects can sound different after rebuild.
+
+Retargeting a delay to its instantaneous slew offset cancels the previous movement
+immediately. Later retargets start there; ordinary interpolation and steady-delay
+arithmetic remain unchanged. Ramp regressions cover midpoint cancellation and
+subsequent fractional retargets across uneven spans.
