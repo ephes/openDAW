@@ -617,7 +617,8 @@ clip content are refused because their playback coordinate composition is not
 implemented. Ordinary inline clips and nested arrangement lanes remain supported.
 
 Single nested clip wrappers flatten only when the inner source starts at zero,
-has no trim/loop/mute transform and covers the entire outer playback window.
+has no trim/loop/mute transform and covers the entire outer playback window
+(within 1.5 microbeats, for independently rounded six-decimal coordinates).
 Nontransparent wrappers refuse before graph or asset publication.
 Automation point times must fit nonnegative integer int32 pulses (960 pulses per
 quarter note). Floating-point roundoff and six-decimal beat serializations (as

@@ -194,6 +194,17 @@ it.each(['time="12" duration="4"', 'time="0" duration="1"', 'time="0" duration="
         expect(begin).not.toHaveBeenCalled()
         expect(resources.fromPath).not.toHaveBeenCalled()
     })
+const trimmedWrapper = (playStart: string, duration: string, inner: string) =>
+    `<Lanes><Lanes track="track"><Clips><Clip time="2" duration="${duration}" playStart="${playStart}"><Clips><Clip time="0" duration="${inner}">${notes}</Clip></Clips></Clip></Clips></Lanes></Lanes>`
+it.each([['0.1', '0.2', '0.3'], ['0.666667', '0.666667', '1.333333']])(
+    'B05 retains a wrapper whose inner source ends at the outer window end despite decimal rounding: %s', async (playStart, duration, inner) => {
+        const {skeleton} = await read(source(trimmedWrapper(playStart, duration, inner)))
+        expect(skeleton.boxGraph.boxes().filter(box => box instanceof NoteRegionBox)).toHaveLength(1)
+        skeleton.boxGraph.verifyPointers()
+    })
+it('B05 refuses a wrapper whose inner source ends audibly before the outer window end', async () => {
+    await expect(read(source(trimmedWrapper('0.5', '0.5', '0.99')))).rejects.toThrow(/nested clip coordinates/i)
+})
 it('B05 retains a transparent nested wrapper at its independent audible position', async () => {
     const {skeleton} = await read(source(lanes(`<Clips><Clip time="0" duration="4">${notes}</Clip></Clips>`)))
     const region = skeleton.boxGraph.boxes().find(box => box instanceof NoteRegionBox) as NoteRegionBox

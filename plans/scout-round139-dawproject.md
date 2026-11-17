@@ -100,3 +100,5 @@ Review of the merged bundle reversed four refusals that blocked real projects:
 - A disabled marker track only suspends marker playback actions, so its markers
   export. Repeat play counts still refuse.
 - Export writes Arrangement children in DAWproject schema order.
+- A transparent wrapper's inner source may end up to 1.5 microbeats short of the
+  outer window end (float sums and independent six-decimal rounding).

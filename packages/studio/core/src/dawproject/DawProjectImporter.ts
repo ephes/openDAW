@@ -189,9 +189,12 @@ export namespace DawProjectImport {
             // Flatten only a transparent source window; the outer clip owns placement/trim.
             const inner = content.clips[0]
             const sourceEnd = clip.loopEnd ?? (clip.playStart ?? 0) + asDefined(clip.duration, "Duration not defined")
+            // playStart, duration and the inner duration are rounded independently when written
+            // with six decimals (and summed in binary floats), so they may disagree by ~1.5 microbeats.
+            const sourceEndTolerance = 1.5e-6 * (1 + 1e-6)
             assert((inner.time ?? 0) === 0 && (inner.playStart ?? 0) === 0
                 && (inner.loopStart ?? 0) === 0 && inner.loopEnd === undefined && inner.enable !== false
-                && (inner.duration === undefined || (Number.isFinite(inner.duration) && inner.duration >= sourceEnd)),
+                && (inner.duration === undefined || (Number.isFinite(inner.duration) && inner.duration >= sourceEnd - sourceEndTolerance)),
             "Unsupported nested clip coordinates: expected a transparent inner source window")
             const nestedFades = clipFades(inner)
             assert(nestedFades.fadeIn === 0 && nestedFades.fadeOut === 0, "Unsupported nested clip fades: only the outer playback envelope is supported")
