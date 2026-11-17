@@ -1,4 +1,4 @@
-import {Address, Box, Int32Field} from "@opendaw/lib-box"
+import {Address, BooleanField, Box, Int32Field} from "@opendaw/lib-box"
 import {
     float,
     Notifier,
@@ -66,6 +66,7 @@ export class AuxSendBoxAdapter implements BoxAdapter {
     get uuid(): UUID.Bytes {return this.#box.address.uuid}
     get address(): Address {return this.#box.address}
     get box(): Box {return this.#box}
+    get enabledField(): BooleanField {return this.#box.enabled}
     get indexField(): Int32Field {return this.#box.index}
     get sendPan(): AutomatableParameterFieldAdapter<float> {return this.#sendPan}
     get sendGain(): AutomatableParameterFieldAdapter<float> {return this.#sendGain}

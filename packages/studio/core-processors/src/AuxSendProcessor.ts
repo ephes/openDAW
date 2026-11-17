@@ -31,6 +31,7 @@ export class AuxSendProcessor extends AudioProcessor implements Processor, Audio
         this.#parameterSendGain = this.own(this.bindParameter(adapter.sendGain))
         this.#parameterSendPan = this.own(this.bindParameter(adapter.sendPan))
 
+        this.own(adapter.enabledField.catchupAndSubscribe(() => {this.#needsUpdate = true}))
         this.own(context.registerProcessor(this))
         this.readAllParameters()
     }
@@ -49,7 +50,7 @@ export class AuxSendProcessor extends AudioProcessor implements Processor, Audio
     processAudio({s0, s1}: Block): void {
         if (this.#source.isEmpty()) {return}
         if (this.#needsUpdate) {
-            const gain = dbToGain(this.#parameterSendGain.getValue())
+            const gain = this.#adapter.enabledField.getValue() ? dbToGain(this.#parameterSendGain.getValue()) : 0
             const panning = this.#parameterSendPan.getValue()
             this.#rampGainL.set((1.0 - Math.max(0.0, panning)) * gain, this.#processing)
             this.#rampGainR.set((1.0 + Math.min(0.0, panning)) * gain, this.#processing)

@@ -520,3 +520,8 @@ DAWproject export preserves note loop offsets and converts seconds-based audio
 source trims to beats at constant tempo. Nonzero note event offsets and invalid
 source loop windows are refused before media packing; consolidate note regions
 with event offsets before interchange.
+
+DAWproject channels retain mute and solo independently of clip mute. Auxiliary
+sends retain destination, pre/post routing, gain, pan and enable state; disabled
+sends keep their saved settings while producing silence. Existing projects default
+sends to enabled.

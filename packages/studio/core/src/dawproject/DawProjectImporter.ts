@@ -285,12 +285,11 @@ export namespace DawProjectImport {
 
         const createSends = (audioUnitBox: AudioUnitBox, sends: ReadonlyArray<SendSchema>) => {
             sends
-                // bitwig does not set enabled if it is enabled 🤥
-                .filter((send) => isUndefined(send?.enable?.value) || send.enable.value)
                 .forEach((send, index) => {
                     const destination = asDefined(send.destination, "destination is undefined")
                     const auxSendBox = AuxSendBox.create(boxGraph, UUID.generate(), box => {
                         const type = send.type as Maybe<SendType>
+                        box.enabled.setValue(send.enable?.value !== false)
                         box.routing.setValue(type === SendType.PRE ? AudioSendRouting.Pre : AudioSendRouting.Post)
                         box.sendGain.setValue(gainToDb(send.volume?.value ?? 1.0)) // TODO Take unit into account
                         box.sendPan.setValue(ValueMapping.bipolar().y(send.pan?.value ?? 0.5)) // TODO Take unit into account

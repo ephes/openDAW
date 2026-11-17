@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Round-trip channel mute/solo and auxiliary send routing, gain, pan and enable state through DAWproject.
+
 - Preserve DAWproject note loop offsets and convert absolute audio source trims to beats; refuse unsupported event offsets and invalid playback windows before packing.
 
 - Refuse malformed nested recovery update payloads before opening replay transactions.

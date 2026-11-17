@@ -3,8 +3,9 @@ import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema} from "@opendaw/lib-dawproject"
 import {AudioData, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
-import {AudioRegionBox, NoteEventBox, NoteRegionBox} from "@opendaw/studio-boxes"
+import {AudioRegionBox, AudioUnitBox, AuxSendBox, NoteEventBox, NoteRegionBox} from "@opendaw/studio-boxes"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
+import {AudioUnitType} from "@opendaw/studio-enums"
 import {Option, UUID} from "@opendaw/lib-std"
 import {DawProjectExporter} from "./DawProjectExporter"
 import {DawProjectImport} from "./DawProjectImporter"
@@ -25,7 +26,7 @@ const write = (skeleton: Awaited<ReturnType<typeof DawProjectImport.read>>['skel
 const xml = (schema: ProjectSchema) => Xml.pretty(Xml.toElement("Project", schema))
 const audible = (skeleton: Awaited<ReturnType<typeof DawProjectImport.read>>['skeleton']) => skeleton.boxGraph.boxes().filter(box => box instanceof NoteRegionBox).flatMap(region => {
     const position = region.position.getValue(), complete = position + region.duration.getValue()
-    const events = skeleton.boxGraph.boxes().filter(box => box instanceof NoteEventBox && box.events.targetVertex.unwrap().box === region.events.targetVertex.unwrap().box)
+    const events = skeleton.boxGraph.boxes().filter((box): box is NoteEventBox => box instanceof NoteEventBox && box.events.targetVertex.unwrap().box === region.events.targetVertex.unwrap().box)
     return [...LoopableRegion.locateLoops({position, complete, loopOffset: region.loopOffset.getValue(), loopDuration: region.loopDuration.getValue()}, position, complete)]
         .flatMap(loop => events.map(event => loop.rawStart + event.position.getValue()).filter(at => at >= loop.resultStart && at < loop.resultEnd))
 }).sort((a, b) => a - b)
@@ -74,4 +75,38 @@ it("B01 refuses an invalid audio loop before media packing", async () => {
     skeleton.boxGraph.endTransaction()
     expect(() => write(skeleton)).toThrow(/Unsupported audio export playback window/)
     expect(packer.write).not.toHaveBeenCalled()
+})
+
+const aux = '<Track id="aux" contentType="audio"><Channel id="aux-channel" role="effect" destination="master"/></Track>'
+it("B02 round-trips send destinations, pre/post, level, pan and disabled state", async () => {
+    const source = xml(project(notes, '', aux)).replace(/<Channel[^>]*id="channel"[^>]*\/>/, `<Channel id="channel" role="regular" destination="master">
+        <Sends><Send destination="aux-channel" type="pre"><Volume value="0.5" unit="linear"/><Pan value="0.25" unit="normalized"/></Send>
+        <Send destination="aux-channel" type="post"><Volume value="0.25" unit="linear"/><Pan value="0.75" unit="normalized"/><Enable value="false"/></Send></Sends></Channel>`)
+    const {skeleton} = await DawProjectImport.read(Xml.parse(source, ProjectSchema), resources)
+    const exported = xml(write(skeleton))
+    expect((exported.match(/<Send /g) ?? [])).toHaveLength(2)
+    expect(exported).toContain('value="false"')
+    const {skeleton: imported} = await DawProjectImport.read(Xml.parse(exported, ProjectSchema), resources)
+    const sends = imported.boxGraph.boxes().filter(box => box instanceof AuxSendBox).sort((a, b) => a.index.getValue() - b.index.getValue())
+    expect(sends).toHaveLength(2)
+    expect(sends.map(box => box.routing.getValue())).toEqual([0, 1])
+    expect(sends.map(box => box.sendGain.getValue())).toEqual(expect.arrayContaining([expect.closeTo(-6.0206, 3), expect.closeTo(-12.0412, 3)]))
+    expect(sends.map(box => box.sendPan.getValue())).toEqual([-0.5, 0.5])
+    expect(sends[0].targetBus.targetVertex.unwrap().box).toBe(sends[1].targetBus.targetVertex.unwrap().box)
+    expect(sends.map(box => box.getField(7).getValue())).toEqual([true, false])
+})
+it("B02 keeps channel mute/solo independent from clip mute", async () => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    skeleton.boxGraph.beginTransaction()
+    const unit = skeleton.boxGraph.boxes().find(box => box instanceof AudioUnitBox && box.type.getValue() === AudioUnitType.Instrument) as AudioUnitBox
+    unit.mute.setValue(true)
+    unit.solo.setValue(true)
+    skeleton.boxGraph.endTransaction()
+    const {skeleton: imported} = await DawProjectImport.read(Xml.parse(xml(write(skeleton)), ProjectSchema), resources)
+    const result = imported.boxGraph.boxes().find(box => box instanceof AudioUnitBox && box.type.getValue() === AudioUnitType.Instrument) as AudioUnitBox
+    expect(result.mute.getValue()).toBe(true)
+    expect(result.solo.getValue()).toBe(true)
+    expect((imported.boxGraph.boxes().find(box => box instanceof NoteRegionBox) as NoteRegionBox).mute.getValue()).toBe(false)
+    expect(imported.mandatoryBoxes.primaryAudioUnitBox.mute.getValue()).toBe(false)
+    expect(imported.mandatoryBoxes.primaryAudioUnitBox.solo.getValue()).toBe(false)
 })

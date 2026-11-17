@@ -26,6 +26,8 @@ import {
     ProjectSchema,
     RealParameterSchema,
     RealPointSchema,
+    SendSchema,
+    SendType,
     TempoAutomationConverter,
     TimelineSchema,
     TimeSignatureParameterSchema,
@@ -37,7 +39,7 @@ import {
     WarpSchema,
     WarpsSchema
 } from "@opendaw/lib-dawproject"
-import {AudioUnitType} from "@opendaw/studio-enums"
+import {AudioSendRouting, AudioUnitType} from "@opendaw/studio-enums"
 import {
     AudioFileBox,
     AudioPitchStretchBox,
@@ -45,6 +47,7 @@ import {
     WarpMarkerBox,
     AudioRegionBox,
     AudioUnitBox,
+    AuxSendBox,
     BoxVisitor,
     NoteEventBox,
     NoteEventCollectionBox,
@@ -189,6 +192,19 @@ export namespace DawProjectExporter {
                             ...(writeDevices(audioUnitBox.input, DeviceRole.INSTRUMENT)),
                             ...(writeDevices(audioUnitBox.audioEffects, DeviceRole.AUDIO_FX))
                         ],
+                        mute: ParameterEncoder.bool(ids.getOrCreate(audioUnitBox.mute.address), audioUnitBox.mute.getValue(), "Mute"),
+                        solo: audioUnitBox.solo.getValue(),
+                        sends: audioUnitBox.auxSends.pointerHub.incoming()
+                            .map(({box}) => asInstanceOf(box, AuxSendBox))
+                            .sort((a, b) => a.index.getValue() - b.index.getValue())
+                            .map(send => Xml.element({
+                                id: ids.getOrCreate(send.address),
+                                destination: ids.getOrCreate(send.targetBus.targetVertex.unwrap("Send has no destination").box.address),
+                                type: send.routing.getValue() === AudioSendRouting.Pre ? SendType.PRE : SendType.POST,
+                                enable: ParameterEncoder.bool(ids.getOrCreate(send.enabled.address), send.enabled.getValue(), "Enable"),
+                                volume: ParameterEncoder.linear(ids.getOrCreate(send.sendGain.address), dbToGain(send.sendGain.getValue()), 0, 2, "Volume"),
+                                pan: ParameterEncoder.normalized(ids.getOrCreate(send.sendPan.address), (send.sendPan.getValue() + 1) / 2, 0, 1, "Pan")
+                            }, SendSchema)),
                         volume: ParameterEncoder.linear(ids.getOrCreate(audioUnitBox.volume.address),
                             dbToGain(audioUnitBox.volume.getValue()), 0.0, 2.0,
                             "Volume"),
