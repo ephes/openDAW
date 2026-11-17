@@ -26,3 +26,12 @@ Self-replacement and an ordered 200,000-element input failed before the fix
 (empty result and RangeError respectively). Identity-preserving indexed copying
 and an alias no-op avoid both failures. The regression suite also checks ordinary
 effect reordering and clearing without a live audio graph.
+
+## Fade painting
+
+Five renderer regressions failed before the fix: offscreen path work, clipped
+samples and hidden fades. All six tests pass after intersecting with the viewport
+and evaluating the original curve at visible positions. DPR 1/2, widths through
+one million pixels, fractional zoom, scaled overlapping fades, zero-height
+bounds and unchanged handles are covered by the real renderer with counting
+Path2D/canvas fixtures. These are operation bounds, not browser timings.
