@@ -133,3 +133,55 @@ describe("LiveStreamReceiver validated frames", () => {
         expect(received).toHaveBeenLastCalledWith(6)
     })
 })
+
+const packageTypes = [PackageType.Float, PackageType.Integer, PackageType.FloatArray, PackageType.IntegerArray, PackageType.ByteArray]
+const subscribe = (receiver: LiveStreamReceiver, type: PackageType, listener: (value: unknown) => void) => {
+    switch (type) {
+        case PackageType.Float: return receiver.subscribeFloat(address, listener)
+        case PackageType.Integer: return receiver.subscribeInteger(address, listener)
+        case PackageType.FloatArray: return receiver.subscribeFloats(address, listener)
+        case PackageType.IntegerArray: return receiver.subscribeIntegers(address, listener)
+        case PackageType.ByteArray: return receiver.subscribeByteArray(address, listener)
+    }
+}
+const writePackage = (output: ByteArrayOutput, type: PackageType) => {
+    if (type !== PackageType.Float && type !== PackageType.Integer) {output.writeInt(1)}
+    if (type === PackageType.Float || type === PackageType.FloatArray) {output.writeFloat(7)}
+    else if (type === PackageType.ByteArray) {output.writeByte(7)}
+    else {output.writeInt(7)}
+}
+
+it.each(packageTypes)("delivers a stable frame when its first listener retires itself: type %s", type => {
+    const test = fixture()
+    const deliveries: string[] = []
+    const first = subscribe(test.receiver, type, () => {deliveries.push("first"); first.terminate()})
+    subscribe(test.receiver, type, () => deliveries.push("second"))
+    subscribe(test.receiver, type, () => deliveries.push("third"))
+    test.send("sendUpdateStructure", test.structure(0, [type]))
+    for (let frame = 0; frame < 2; frame++) {
+        test.frame(0, 1, output => writePackage(output, type))
+        test.receiver.dispatch()
+    }
+    expect(deliveries).toEqual(["first", "second", "third", "second", "third"])
+})
+
+it("defers additions and keeps removals from changing the current frame snapshot", () => {
+    const test = fixture()
+    const deliveries: string[] = []
+    let firstFrame = true
+    test.receiver.subscribeFloat(address, () => {
+        deliveries.push("first")
+        if (firstFrame) {
+            second.terminate()
+            test.receiver.subscribeFloat(address, () => deliveries.push("new"))
+            firstFrame = false
+        }
+    })
+    const second = test.receiver.subscribeFloat(address, () => deliveries.push("second"))
+    test.send("sendUpdateStructure", test.structure(0, [PackageType.Float]))
+    for (let frame = 0; frame < 2; frame++) {
+        test.frame(0, 1, output => output.writeFloat(7))
+        test.receiver.dispatch()
+    }
+    expect(deliveries).toEqual(["first", "second", "first", "new"])
+})

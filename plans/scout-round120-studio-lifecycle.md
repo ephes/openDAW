@@ -57,3 +57,14 @@ and missing-device errors propagate; an omitted selector keeps the default.
 `AudioDevices.test.ts` uses fake permissions and streams, including a fake browser
 that falls back for ideal selectors. Both regressions fail before their fixes.
 The browser fixture exercises the same real acquisition entry points with stubs.
+
+## B05: listener ownership and delivery
+
+Subscriptions capture their entry and a unique registration token. Repeated
+termination cannot remove another duplicate, and an obsolete handle cannot touch
+a replacement entry after clear/reconnect. Clear releases old listener references.
+The delivery lookup materializes a snapshot in registration order. Self-removal
+and removal of another listener affect the next frame; additions also wait until
+the next frame. Exceptions still stop dispatch under the existing documented rule.
+`Subscribers.test.ts` and real `LiveStreamReceiver.test.ts` regressions fail on
+the original implementation, covering all five scalar/array package types.
