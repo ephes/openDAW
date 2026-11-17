@@ -96,3 +96,10 @@ source list, keep their boxes and content. The replacement spans the earliest
 start through the greatest complete endpoint, including nested and disjoint
 regions. Copied notes retain their ratchet count and curve; explicit ratchet
 consolidation still produces single notes.
+
+Content-start trims isolate mirrored note/value collections before changing event
+coordinates. Musical audio trims clone shared play modes and their warp markers.
+Each selected region is translated once; other regions and clips retain their
+content. Seconds-based audio trims continue to change only the region offset.
+Automation preroll uses the first unmuted value region; all-muted tracks return
+the supplied fallback. Enabled regions retain their holding-value behavior.

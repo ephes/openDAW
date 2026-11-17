@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Isolate shared note/value and warp-marker content on start trims; ignore muted automation regions in preroll.
+
 - Flatten only supplied note/automation regions over their full union, retaining other overlaps. Preserve ratchet curves when copying note content.
 
 - Skip constant tempo exterior spans in closed form and reject non-finite, unsupported or nonprogressing cursor input with RangeError. Same-position tempo step pairs remain valid.

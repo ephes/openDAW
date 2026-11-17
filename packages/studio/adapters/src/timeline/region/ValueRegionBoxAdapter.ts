@@ -183,6 +183,7 @@ export class ValueRegionBoxAdapter
     set loopDuration(value: ppqn) {this.#box.loopDuration.setValue(value)}
 
     moveContentStart(delta: ppqn): void {
+        this.consolidate()
         this.optCollection.ifSome(collection => collection.events.asArray()
             .forEach(event => event.box.position.setValue(event.position - delta)))
         this.position = this.position + delta

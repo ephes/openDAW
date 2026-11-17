@@ -1,8 +1,8 @@
 import {describe, expect, it, vi} from "vitest"
 import {BoxGraph, Update} from "@opendaw/lib-box"
-import {Option, UUID} from "@opendaw/lib-std"
-import {AudioUnitBox, CaptureAudioBox, BoxIO, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox,
-    ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
+import {DefaultObservableValue, Option, Terminable, UUID} from "@opendaw/lib-std"
+import {AudioClipBox, AudioFileBox, AudioPitchStretchBox, AudioRegionBox, AudioUnitBox, CaptureAudioBox, BoxIO, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox,
+    ValueClipBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox, WarpMarkerBox} from "@opendaw/studio-boxes"
 import {BoxAdapters} from "../BoxAdapters"
 import {BoxAdaptersContext} from "../BoxAdaptersContext"
 import {NoteRegionBoxAdapter} from "./region/NoteRegionBoxAdapter"
@@ -10,6 +10,9 @@ import {ValueRegionBoxAdapter} from "./region/ValueRegionBoxAdapter"
 import {NoteEventBoxAdapter} from "./event/NoteEventBoxAdapter"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {ProjectSkeleton} from "../project/ProjectSkeleton"
+import {ConstantTempoMap, TimeBase} from "@opendaw/lib-dsp"
+import {AudioRegionBoxAdapter} from "./region/AudioRegionBoxAdapter"
+import {TrackBoxAdapter} from "./TrackBoxAdapter"
 import {TrackType} from "./TrackType"
 
 const reopen = (bytes: ArrayBufferLike) => {
@@ -145,4 +148,113 @@ it("copies ratchet curves through collection copies and keeps single-note consol
     expect(reopenedNote.playCurve.getValue()).toBe(0.5)
     const adapter = context.boxAdapters.adapterFor(copy.box, NoteEventBoxAdapter)
     expect(adapter.computeCurveValue(0.25)).toBe(copy.computeCurveValue(0.25))
+})
+
+
+describe.each(["note", "value"] as const)("%s content trim", type => {
+    it.each([false, true])("isolates each translated owner, including two selected mirrors (%s)", trimBoth => {
+        const {boxGraph, create, track} = fixture(type)
+        const first = create(0, 16)
+        const second = first.copyTo({position: 32})
+        const content = first.box.events.targetVertex.unwrap()
+        const clip = type === "note"
+            ? NoteClipBox.create(boxGraph, UUID.generate(), box => {
+                box.events.refer(content)
+                box.clips.refer(track.clips)
+            })
+            : ValueClipBox.create(boxGraph, UUID.generate(), box => {
+                box.events.refer(content)
+                box.clips.refer(track.clips)
+            })
+        boxGraph.endTransaction()
+        const before = boxGraph.toArrayBuffer()
+        const updates: Update[] = []
+        const subscription = boxGraph.subscribeToAllUpdates({onUpdate: update => updates.push(update)})
+        first.onSelected()
+        if (trimBoth) {second.onSelected()}
+        boxGraph.beginTransaction()
+        first.moveContentStart(2)
+        if (trimBoth) {second.moveContentStart(2)}
+        boxGraph.endTransaction()
+        subscription.terminate()
+        const positions = (region: typeof first) => region.optCollection.unwrap().events.asArray().map(event => event.position)
+        expect(positions(first)).toEqual([-2])
+        expect(positions(second)).toEqual(trimBoth ? [-2] : [0])
+        expect(clip.events.targetVertex.unwrap()).toBe(content)
+        expect(content.box.pointerHub.incoming().length).toBeGreaterThan(0)
+        const reopened = reopen(boxGraph.toArrayBuffer())
+        expect(reopened.findBox(clip.address.uuid).nonEmpty()).toBe(true)
+        const replay = reopen(before)
+        replay.beginTransaction()
+        updates.forEach(update => update.forward(replay))
+        replay.endTransaction()
+        expect(replay.toArrayBuffer()).toEqual(reopened.toArrayBuffer())
+        replay.beginTransaction()
+        updates.toReversed().forEach(update => update.inverse(replay))
+        replay.endTransaction()
+        expect(replay.toArrayBuffer()).toEqual(before)
+    })
+})
+
+it("isolates shared warp markers before translating audio content", () => {
+    const {boxGraph, context, track} = fixture("value")
+    Object.assign(context, {
+        tempoMap: new ConstantTempoMap(new DefaultObservableValue(120)),
+        sampleManager: {getOrCreate: () => ({subscribe: () => Terminable.Empty})}
+    })
+    track.type.setValue(TrackType.Audio)
+    const file = AudioFileBox.create(boxGraph, UUID.generate())
+    const collection = ValueEventCollectionBox.create(boxGraph, UUID.generate())
+    const mode = AudioPitchStretchBox.create(boxGraph, UUID.generate())
+    const marker = WarpMarkerBox.create(boxGraph, UUID.generate(), box => {
+        box.position.setValue(8)
+        box.seconds.setValue(0.5)
+        box.owner.refer(mode.warpMarkers)
+    })
+    const createAudio = (position: number) => AudioRegionBox.create(boxGraph, UUID.generate(), box => {
+        box.position.setValue(position)
+        box.timeBase.setValue(TimeBase.Musical)
+        box.duration.setValue(16)
+        box.loopDuration.setValue(16)
+        box.file.refer(file)
+        box.events.refer(collection.owners)
+        box.playMode.refer(mode)
+        box.regions.refer(track.regions)
+    })
+    const first = createAudio(0), second = createAudio(32)
+    const clip = AudioClipBox.create(boxGraph, UUID.generate(), box => {
+        box.clips.refer(track.clips)
+        box.events.refer(collection.owners)
+        box.file.refer(file)
+        box.playMode.refer(mode)
+    })
+    boxGraph.endTransaction()
+    const firstAdapter = context.boxAdapters.adapterFor(first, AudioRegionBoxAdapter)
+    const secondAdapter = context.boxAdapters.adapterFor(second, AudioRegionBoxAdapter)
+    boxGraph.beginTransaction()
+    firstAdapter.moveContentStart(2)
+    secondAdapter.moveContentStart(2)
+    boxGraph.endTransaction()
+    expect(marker.position.getValue()).toBe(8)
+    expect(clip.playMode.targetVertex.unwrap()).toBe(mode)
+    expect(firstAdapter.optWarpMarkers.unwrap().asArray().map(event => event.position)).toEqual([6])
+    expect(secondAdapter.optWarpMarkers.unwrap().asArray().map(event => event.position)).toEqual([6])
+    expect(reopen(boxGraph.toArrayBuffer()).findBox<WarpMarkerBox>(marker.address.uuid).unwrap().position.getValue()).toBe(8)
+})
+
+it("holds the first eligible automation value in preroll and falls back when all are muted", () => {
+    const {boxGraph, context, track, create} = fixture("value")
+    Object.assign(context, {clipSequencing: {iterate: () => [{optClip: Option.None, sectionFrom: 0}]}})
+    const first = create(10, 4) as ValueRegionBoxAdapter
+    const second = create(20, 4) as ValueRegionBoxAdapter
+    second.optCollection.unwrap().events.asArray()[0].box.value.setValue(0.25)
+    first.box.mute.setValue(true)
+    boxGraph.endTransaction()
+    const adapter = context.boxAdapters.adapterFor(track, TrackBoxAdapter)
+    expect(adapter.valueAt(0, 0.5)).toBe(0.25)
+    boxGraph.beginTransaction(); second.box.mute.setValue(true); boxGraph.endTransaction()
+    expect(adapter.valueAt(0, 0.5)).toBe(0.5)
+    boxGraph.beginTransaction(); first.box.mute.setValue(false); boxGraph.endTransaction()
+    expect(adapter.valueAt(0, 0.5)).toBe(0.75)
+    expect(adapter.valueAt(18, 0.5)).toBe(0.75)
 })

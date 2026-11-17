@@ -21,3 +21,12 @@ per-source chance behavior. The current flatten API has no playback-preference
 argument. Exact preservation needs a decision on persistent boundary metadata
 (or acceptance of quantization/chance changes) and preference plumbing. No partial
 clipping repair is included; this slice remains applicable and unfixed.
+
+## B02
+
+Content start translation uses the existing note/value consolidation and play-mode
+clone APIs before changing coordinates. The audio path resolves the new adapter
+directly because pointer subscription publication waits for transaction end.
+TimelineEdits covers single/two-owner trims with a shared clip, graph replay/undo,
+serialized content and shared audio warp markers. Preroll tests cover muted-first,
+all-muted and enabled holding values. All six new cases failed on the prior code.

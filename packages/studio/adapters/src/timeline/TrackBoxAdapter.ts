@@ -194,7 +194,8 @@ export class TrackBoxAdapter implements BoxAdapter {
                 none: () => {
                     const region = this.regions.collection.lowerEqual(position, region => !region.mute)
                     if (region === null) {
-                        const firstRegion = this.regions.collection.optAt(0)
+                        const firstRegion = this.regions.collection.greaterEqual(Number.NEGATIVE_INFINITY,
+                            region => !region.mute && isInstanceOf(region, ValueRegionBoxAdapter))
                         return isInstanceOf(firstRegion, ValueRegionBoxAdapter) ? firstRegion.incomingValue(fallback) : fallback
                     } else if (isInstanceOf(region, ValueRegionBoxAdapter)) {
                         if (position < region.complete) {
