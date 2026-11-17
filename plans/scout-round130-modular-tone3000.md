@@ -45,3 +45,18 @@ that would abort valid selections. A local relay with an extra user click could
 own a reliably observable same-origin popup, but changes the user flow. S05's
 close-detection scope is deferred pending that choice. Scoped callback ownership
 (S06) and finite cancellation do not depend on that decision.
+
+## Current device and pack revisions
+
+A browse captures the staged device and original model target before the dialog.
+Every asynchronous boundary and the graph transaction check that owner; changing
+the model, deleting the device, closing its editor or a newer browse intent
+retires the attempt. Late hashing cannot create an unattached model box.
+
+Pack metadata carries an opaque persisted `cacheRevision`. Model paths include
+that revision; reads check the manifest again after asynchronous reads/downloads.
+An updated `updated_at` gets a new revision even if model IDs are unchanged.
+An unchanged revision retains cache hits. Legacy unversioned model files are
+never trusted as current: reselect the pack online to establish its revision.
+Existing project-embedded models continue to work offline. Legacy metadata may
+still supply download URLs, but legacy bytes are not promoted into the new cache.

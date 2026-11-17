@@ -15,12 +15,18 @@ export type PackMeta = {
     toneId: number
     title: string
     updatedAt: string
+    cacheRevision?: string
     models: ReadonlyArray<{ id: number, name: string, size: string, model_url: string }>
 }
 
 const packPath = (toneId: number): string => `tone3000/${toneId}`
 const packMetaPath = (toneId: number): string => `${packPath(toneId)}/pack.json`
-const modelPath = (toneId: number, modelId: number): string => `${packPath(toneId)}/models/${modelId}.nam`
+const modelPath = (toneId: number, revision: string, modelId: number): string =>
+    `${packPath(toneId)}/revisions/${revision}/models/${modelId}.nam`
+const readPackId = (packId: string): number => {
+    if (!/^[1-9][0-9]*$/.test(packId) || !Number.isSafeInteger(Number(packId))) {throw new Error("Invalid pack ID")}
+    return Number(packId)
+}
 
 const fetchTone = async (toneUrl: string): Promise<ToneResponse> => {
     const response = await fetch(toneUrl)
@@ -38,57 +44,62 @@ const readPackMeta = async (toneId: number): Promise<PackMeta | null> => {
     const path = packMetaPath(toneId)
     if (!await Workers.Opfs.exists(path)) {return null}
     const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Metadata)
-    return JSON.parse(new TextDecoder().decode(bytes))
+    const meta: PackMeta = JSON.parse(new TextDecoder().decode(bytes))
+    if (meta.cacheRevision !== undefined && !UUID.validateString(meta.cacheRevision)) {throw new Error("Invalid cache revision")}
+    return meta
 }
 
 export const readPackMetaFromId = async (packId: string): Promise<PackMeta | null> => {
-    const toneId = parseInt(packId, 10)
-    if (isNaN(toneId)) {return null}
-    return readPackMeta(toneId)
+    return readPackMeta(readPackId(packId))
 }
 
 export const readModelFromPack = async (packId: string, modelId: number, signal?: AbortSignal): Promise<string> => {
-    const toneId = parseInt(packId, 10)
-    const path = modelPath(toneId, modelId)
-    if (await Workers.Opfs.exists(path)) {
-        const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Media)
-        return new TextDecoder().decode(bytes)
-    }
+    const toneId = readPackId(packId)
+    signal?.throwIfAborted()
     const meta = await readPackMeta(toneId)
+    signal?.throwIfAborted()
     if (meta === null) {throw new Error("Pack metadata not found")}
     const entry = meta.models.find(entry => entry.id === modelId)
-    if (!isDefined(entry) || entry.model_url.length === 0) {
-        throw new Error("Model URL not available — re-select pack to refresh URLs")
+    if (!isDefined(entry)) {throw new Error("Model not in pack")}
+    const path = meta.cacheRevision ? modelPath(toneId, meta.cacheRevision, modelId) : null
+    const checkRevision = async () => {
+        signal?.throwIfAborted()
+        const current = await readPackMeta(toneId)
+        if (current?.updatedAt !== meta.updatedAt || current?.cacheRevision !== meta.cacheRevision) {throw Errors.AbortError}
+        signal?.throwIfAborted()
     }
+    if (path !== null && await Workers.Opfs.exists(path)) {
+        const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Media)
+        await checkRevision()
+        return new TextDecoder().decode(bytes)
+    }
+    if (entry.model_url.length === 0) {throw new Error("Model URL not available — re-select pack to refresh URLs")}
     const text = await downloadModel(entry.model_url, signal)
-    await Workers.Opfs.write(path, new TextEncoder().encode(text))
+    await checkRevision()
+    if (path !== null) {await Workers.Opfs.write(path, new TextEncoder().encode(text))}
+    await checkRevision()
     return text
 }
 
-const storePackToOpfs = async (tone: ToneResponse): Promise<PackMeta> => {
+export const storePackToOpfs = async (tone: ToneResponse, signal?: AbortSignal): Promise<PackMeta> => {
     const toneId = tone.id
     const existingMeta = await readPackMeta(toneId)
-    if (isDefined(existingMeta) && existingMeta.updatedAt !== tone.updated_at) {
-        const newModelIds = new Set(tone.models.map(model => model.id))
-        for (const model of existingMeta.models) {
-            if (!newModelIds.has(model.id) && await Workers.Opfs.exists(modelPath(toneId, model.id))) {
-                await Workers.Opfs.delete(modelPath(toneId, model.id))
-            }
-        }
-    }
     const meta: PackMeta = {
         toneId,
         title: tone.title,
         updatedAt: tone.updated_at,
+        cacheRevision: existingMeta?.updatedAt === tone.updated_at && existingMeta.cacheRevision
+            ? existingMeta.cacheRevision : crypto.randomUUID(),
         models: tone.models.map(model => ({
             id: model.id, name: model.name, size: model.size, model_url: model.model_url
         }))
     }
+    signal?.throwIfAborted()
     await Workers.Opfs.write(packMetaPath(toneId), new TextEncoder().encode(JSON.stringify(meta)))
     const defaultModel = pickDefaultModel(meta)
-    if (!await Workers.Opfs.exists(modelPath(toneId, defaultModel.id))) {
-        const text = await downloadModel(defaultModel.model_url)
-        await Workers.Opfs.write(modelPath(toneId, defaultModel.id), new TextEncoder().encode(text))
+    if (!await Workers.Opfs.exists(modelPath(toneId, meta.cacheRevision!, defaultModel.id))) {
+        const text = await downloadModel(defaultModel.model_url, signal)
+        await Workers.Opfs.write(modelPath(toneId, meta.cacheRevision!, defaultModel.id), new TextEncoder().encode(text))
     }
     return meta
 }
@@ -99,9 +110,9 @@ const pickDefaultModel = (meta: PackMeta): PackMeta["models"][number] => {
 }
 
 export const scanCachedModels = async (packId: string, meta: PackMeta): Promise<ReadonlySet<number>> => {
-    const toneId = parseInt(packId, 10)
-    if (isNaN(toneId)) {return new Set()}
-    const entries = await Workers.Opfs.list(`${packPath(toneId)}/models`)
+    const toneId = readPackId(packId)
+    if (!meta.cacheRevision) {return new Set()}
+    const entries = await Workers.Opfs.list(`${packPath(toneId)}/revisions/${meta.cacheRevision}/models`)
         .catch(() => [] as ReadonlyArray<{name: string, kind: string}>)
     const fileNames = new Set(entries.filter(entry => entry.kind === "file").map(entry => entry.name))
     const cached = new Set<number>()
@@ -111,55 +122,73 @@ export const scanCachedModels = async (packId: string, meta: PackMeta): Promise<
     return cached
 }
 
+const browseOwners = new WeakMap<NeuralAmpDeviceBoxAdapter["box"], AbortController>()
+
 export namespace NamTone3000 {
     export const browse = (boxGraph: BoxGraph, editing: Editing, adapter: NeuralAmpDeviceBoxAdapter, signal?: AbortSignal) => {
-        let current: AbortController | null = null
         return async () => {
-        current?.abort(Errors.AbortError)
-        const controller = new AbortController()
-        current = controller
-        const retire = () => controller.abort(Errors.AbortError)
-        signal?.addEventListener("abort", retire, {once: true})
-        if (signal?.aborted) {retire()}
-        const ownerSignal = controller.signal
-        const deletion = adapter.box.subscribeDeletion(() => controller.abort(Errors.AbortError))
-        try {
-            ownerSignal.throwIfAborted()
-            const {status} = await Promises.tryCatch(showTone3000Dialog())
-            if (status === "rejected") {return}
-            ownerSignal.throwIfAborted()
-            const toneUrl = await selectToneUrl(ownerSignal)
-            const tone = await fetchTone(toneUrl)
-            if (tone.models.length === 0) {return}
-            const meta = await storePackToOpfs(tone)
-            const defaultModel = pickDefaultModel(meta)
-            const text = await readModelFromPack(meta.toneId.toString(), defaultModel.id)
-            const jsonBuffer = new TextEncoder().encode(text)
-            const uuid = await UUID.sha256(jsonBuffer.buffer as ArrayBuffer)
-            editing.modify(() => {
-                const oldTarget = adapter.box.model.targetVertex
-                const modelBox = boxGraph.findBox<NeuralAmpModelBox>(uuid).unwrapOrElse(() =>
-                    NeuralAmpModelBox.create(boxGraph, uuid, box => {
-                        box.label.setValue(`${meta.title} — ${defaultModel.name}`)
-                        box.model.setValue(text)
-                        box.packId.setValue(meta.toneId.toString())
-                    }))
-                adapter.box.model.refer(modelBox)
-                if (oldTarget.nonEmpty()) {
-                    const oldVertex = oldTarget.unwrap()
-                    if (oldVertex !== modelBox && oldVertex.pointerHub.isEmpty()) {
-                        oldVertex.box.unstage()
-                    }
-                }
+            browseOwners.get(adapter.box)?.abort(Errors.AbortError)
+            const controller = new AbortController()
+            browseOwners.set(adapter.box, controller)
+            const retire = () => controller.abort(Errors.AbortError)
+            signal?.addEventListener("abort", retire, {once: true})
+            if (signal?.aborted) {retire()}
+            const ownerSignal = controller.signal
+            const target = adapter.box.model.targetVertex.unwrapOrNull()
+            const checkOwner = () => {
+                ownerSignal.throwIfAborted()
+                if (browseOwners.get(adapter.box) !== controller
+                    || boxGraph.findBox(adapter.box.address.uuid).unwrapOrNull() !== adapter.box
+                    || adapter.box.model.targetVertex.unwrapOrNull() !== target) {throw Errors.AbortError}
+            }
+            const modelChange = adapter.box.model.subscribe(() => {
+                if (adapter.box.model.targetVertex.unwrapOrNull() !== target) {retire()}
             })
-        } catch (error) {
-            if (Errors.isAbort(error)) {return}
-            console.error("Failed to load NAM model from Tone 3000:", error)
-        } finally {
-            deletion.terminate()
-            signal?.removeEventListener("abort", retire)
-            if (current === controller) {current = null}
-        }
+            const deletion = adapter.box.subscribeDeletion(() => controller.abort(Errors.AbortError))
+            try {
+                checkOwner()
+                const {status} = await Promises.tryCatch(showTone3000Dialog())
+                if (status === "rejected") {return}
+                checkOwner()
+                const toneUrl = await selectToneUrl(ownerSignal)
+                checkOwner()
+                const tone = await fetchTone(toneUrl)
+                checkOwner()
+                if (tone.models.length === 0) {return}
+                const meta = await storePackToOpfs(tone, ownerSignal)
+                checkOwner()
+                const defaultModel = pickDefaultModel(meta)
+                const text = await readModelFromPack(meta.toneId.toString(), defaultModel.id, ownerSignal)
+                checkOwner()
+                const jsonBuffer = new TextEncoder().encode(text)
+                const uuid = await UUID.sha256(jsonBuffer.buffer as ArrayBuffer)
+                checkOwner()
+                editing.modify(() => {
+                    checkOwner()
+                    const oldTarget = adapter.box.model.targetVertex
+                    const modelBox = boxGraph.findBox<NeuralAmpModelBox>(uuid).unwrapOrElse(() =>
+                        NeuralAmpModelBox.create(boxGraph, uuid, box => {
+                            box.label.setValue(`${meta.title} — ${defaultModel.name}`)
+                            box.model.setValue(text)
+                            box.packId.setValue(meta.toneId.toString())
+                        }))
+                    adapter.box.model.refer(modelBox)
+                    if (oldTarget.nonEmpty()) {
+                        const oldVertex = oldTarget.unwrap()
+                        if (oldVertex !== modelBox && oldVertex.pointerHub.isEmpty()) {
+                            oldVertex.box.unstage()
+                        }
+                    }
+                })
+            } catch (error) {
+                if (Errors.isAbort(error)) {return}
+                console.error("Failed to load NAM model from Tone 3000:", error)
+            } finally {
+                deletion.terminate()
+                modelChange.terminate()
+                signal?.removeEventListener("abort", retire)
+                if (browseOwners.get(adapter.box) === controller) {browseOwners.delete(adapter.box)}
+            }
         }
     }
 

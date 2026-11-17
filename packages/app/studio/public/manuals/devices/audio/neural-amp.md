@@ -146,3 +146,11 @@ a five-minute timeout, device deletion or closing the editor cancel the pending
 selection. Start again after cancellation. Because browser cross-origin isolation
 can detach a popup's window handle, closing the external selector alone may wait
 until the timeout; an unrelated later callback cannot complete that selection.
+
+### Cached pack revisions
+
+A refreshed pack downloads new bytes when its revision changes, including models
+whose IDs stayed the same. Unchanged revisions keep their cache hits. Older
+unversioned caches require an online pack re-selection; models already embedded
+in saved projects remain available offline. A pending browse cannot replace a
+model selected more recently or modify a removed device.
