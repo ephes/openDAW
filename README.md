@@ -474,6 +474,18 @@ tooling: tar, nx, sigstore, pacote, node-gyp, js-yaml, minimatch), vitest 5
 also clear `@nx/devkit`, but only by moving lerna's nx toolchain back from 20
 to 18/19, so that one is left as is.
 
+On 2026-11-17 a root `overrides` entry pins every DOMPurify copy to `^3.4.18`.
+Monaco does not import the npm package; it ships a vendored DOMPurify 3.1.7 at
+`monaco-editor/esm/vs/base/browser/dompurify/dompurify.js` (monaco-editor 0.57
+still vendors 3.4.15). The studio build plugin
+`packages/app/studio/src/build/MonacoDompurify.ts` resolves that vendored import to
+the overridden package, so the shipped editor uses the patched sanitizer.
+`src/build/MonacoDompurify.test.ts` asserts the lock floor and bundles Monaco's
+sanitizer to check the embedded DOMPurify version. After this change
+`npm audit --omit=dev` reports no DOMPurify finding; the remaining runtime-graph
+entries (picomatch, minimatch, fast-glob, micromatch via ts-morph in
+`lib-box-forge`) are build-time code generation only.
+
 ### MIDI and file boundaries
 
 Selection notifications expose updated indexes; catchup owns replay and live events

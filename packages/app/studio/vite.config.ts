@@ -4,6 +4,7 @@ import {defineConfig} from "vite"
 import crossOriginIsolation from "vite-plugin-cross-origin-isolation"
 import viteCompression from "vite-plugin-compression"
 import {BuildInfo} from "./src/BuildInfo"
+import {monacoDompurify} from "./src/build/MonacoDompurify"
 import {existsSync} from "node:fs"
 
 export default defineConfig(({command}) => {
@@ -90,6 +91,7 @@ export default defineConfig(({command}) => {
             }
         },
         plugins: [
+            monacoDompurify(),
             crossOriginIsolation(),
             viteCompression({
                 algorithm: "brotliCompress"
