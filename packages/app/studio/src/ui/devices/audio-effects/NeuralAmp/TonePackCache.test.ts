@@ -95,3 +95,12 @@ it.each([
     expect([...files.keys()].some(path => path.includes("orphan"))).toBe(false)
     expect(await readModelFromPack("1", 1)).toContain("v1")
 })
+it("propagates a transient manifest storage failure without discarding the current revision", async () => {
+    const meta = await storePackToOpfs(tone("v1"))
+    const read = vi.mocked(Workers.Opfs.read).getMockImplementation()!
+    vi.mocked(Workers.Opfs.read).mockImplementationOnce(async () => {throw new DOMException("locked", "NoModificationAllowedError")})
+    await expect(storePackToOpfs(tone("v2"))).rejects.toThrow("locked")
+    vi.mocked(Workers.Opfs.read).mockImplementation(read)
+    expect(await readPackMetaFromId("1")).toEqual(meta)
+    expect(await readModelFromPack("1", 1)).toContain("v1")
+})

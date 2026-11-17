@@ -181,10 +181,14 @@ export class ModularEnvironment implements Terminable {
             runtime.own(Events.subscribe(owner, "pointerup", event => {
                 try {
                     const view = this.findConnectorViewByEventTarget(event.target)
-                    if (isDefined(view) && matchingConnectors.includes(view)
-                        && (!original || (original.box.source.targetVertex.unwrapOrNull() === originalSource
-                            && original.box.target.targetVertex.unwrapOrNull() === originalTarget))) {
+                    const originalIntact = !original || (original.box.source.targetVertex.unwrapOrNull() === originalSource
+                        && original.box.target.targetVertex.unwrapOrNull() === originalTarget)
+                    if (isDefined(view) && matchingConnectors.includes(view) && originalIntact) {
                         this.#connect(adapter, view.adapter, original)
+                    } else if (!isDefined(view) && isDefined(original) && originalIntact) {
+                        // Releasing a rewired cable away from any connector disconnects it
+                        // (one undo step); an incompatible connector keeps the route.
+                        this.#disconnect(original)
                     }
                 } finally {runtime.terminate()}
             }, {capture: true}))
@@ -223,6 +227,13 @@ export class ModularEnvironment implements Terminable {
         this.#modules.forEach(entry => entry.lifecycle.terminate())
         this.#modules.clear()
         this.#terminator.terminate()
+    }
+
+    #disconnect(original: ModuleConnectionAdapter): void {
+        const {editing, boxGraph} = this.#service.project
+        if (!this.#modularAdapter.connections.includes(original)
+            || boxGraph.findBox(original.uuid).unwrapOrNull() !== original.box) {return}
+        editing.modify(() => original.box.delete())
     }
 
     #connect(adapter: ModuleConnectorAdapter<Pointers, unknown>, other: ModuleConnectorAdapter<Pointers, unknown>, original?: ModuleConnectionAdapter): void {

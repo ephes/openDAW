@@ -29,16 +29,28 @@ const readPackId = (packId: string): number => {
     return Number(packId)
 }
 
+/** The stored manifest bytes are unreadable or no longer admissible (not a storage failure). */
+class InvalidPackManifest extends Error {}
+
+const parsePackMeta = (toneId: number, bytes: Uint8Array): PackMeta => {
+    try {
+        const meta: PackMeta = JSON.parse(new TextDecoder().decode(bytes))
+        const admitted = admitTone({id: meta?.toneId, title: meta?.title, updated_at: meta?.updatedAt, models: meta?.models})
+        if (admitted.id !== toneId) {throw new Error("Mismatched cached pack")}
+        if (meta.cacheFormat !== undefined && meta.cacheFormat !== 1) {throw new Error("Unsupported cached pack")}
+        if (meta.cacheFormat === 1 && !meta.cacheRevision) {throw new Error("Missing cached pack revision")}
+        if (meta.cacheRevision !== undefined && !UUID.validateString(meta.cacheRevision)) {throw new Error("Invalid cache revision")}
+        return meta
+    } catch (error) {
+        throw new InvalidPackManifest(error instanceof Error ? error.message : "Invalid cached pack", {cause: error})
+    }
+}
+
 const readPackMeta = async (toneId: number, requireComplete = true): Promise<PackMeta | null> => {
     const path = packMetaPath(toneId)
     if (!await Workers.Opfs.exists(path)) {return null}
     const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Metadata)
-    const meta: PackMeta = JSON.parse(new TextDecoder().decode(bytes))
-    const admitted = admitTone({id: meta?.toneId, title: meta?.title, updated_at: meta?.updatedAt, models: meta?.models})
-    if (admitted.id !== toneId) {throw new Error("Mismatched cached pack")}
-    if (meta.cacheFormat !== undefined && meta.cacheFormat !== 1) {throw new Error("Unsupported cached pack")}
-    if (meta.cacheFormat === 1 && !meta.cacheRevision) {throw new Error("Missing cached pack revision")}
-    if (meta.cacheRevision !== undefined && !UUID.validateString(meta.cacheRevision)) {throw new Error("Invalid cache revision")}
+    const meta = parsePackMeta(toneId, bytes)
     if (requireComplete && meta.cacheFormat === 1 && !await Workers.Opfs.exists(modelPath(toneId, meta.cacheRevision!, pickDefaultModel(meta).id))) {
         throw new Error("Incomplete cached pack — re-select pack to recover")
     }
@@ -89,9 +101,10 @@ export const storePackToOpfs = async (input: ToneResponse, signal?: AbortSignal)
         // An unreadable or no longer admissible manifest (truncated by an older
         // non-atomic write, or a legacy pack) must not block re-selection: treat it
         // as absent so the fresh pack replaces it and its revisions are recovered.
+        // Storage failures still propagate, so a current revision is never discarded.
         const existingMeta = await readPackMeta(tone.id, false).catch((error: unknown) => {
-            if (Errors.isAbort(error)) {throw error}
-            return null
+            if (error instanceof InvalidPackManifest) {return null}
+            throw error
         })
         const revisions = `${packPath(tone.id)}/revisions`
         // Only the current complete revision survives recovery; abandoned staging

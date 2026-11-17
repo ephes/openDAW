@@ -5,7 +5,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Publish Tone3000 packs only after their complete default model; recover unfinished staging, and bound/validate metadata and model transfers with cancellation and total deadlines. Re-selecting a pack replaces an unreadable or no longer valid cached manifest instead of failing.
+- Publish Tone3000 packs only after their complete default model; recover unfinished staging, and bound/validate metadata and model transfers with cancellation and total deadlines. Re-selecting a pack replaces an unreadable or no longer valid cached manifest instead of failing; storage errors still keep the current revision.
 
 - Fence late Tone3000 imports against current devices and model selections; bind cached bytes to persisted pack revisions and refuse stale downloads.
 
@@ -13,7 +13,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Release modular wire observers and deferred draws with their view; ignore removed connections and preserve newer preview registrations.
 
-- Own modular wiring previews through cancellation and teardown; preserve original routes until a valid, single-undo replacement commits.
+- Own modular wiring previews through cancellation and teardown; preserve original routes until a valid, single-undo replacement commits. Releasing a rewired cable away from any connector still disconnects it in one undo step.
 
 - Show disabled auxiliary sends dimmed in the mixer and toggle them with an "Enabled" entry in the send menu.
 
