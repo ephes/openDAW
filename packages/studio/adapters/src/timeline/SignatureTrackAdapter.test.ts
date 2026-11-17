@@ -1,6 +1,8 @@
+import {BoxAdapters} from "../BoxAdapters"
+import {ProjectSkeleton} from "../project/ProjectSkeleton"
 import {describe, expect, it} from "vitest"
 import {ppqn, PPQN, SMPTE} from "@opendaw/lib-dsp"
-import {int} from "@opendaw/lib-std"
+import {int, Option} from "@opendaw/lib-std"
 
 describe("SignatureTrackAdapter", () => {
     const BPM = 60
@@ -525,7 +527,7 @@ describe("SignatureTrackAdapter", () => {
 })
 import {BoxEditing, BoxGraph} from "@opendaw/lib-box"
 import {UUID} from "@opendaw/lib-std"
-import {SignatureEventBox, TimelineBox} from "@opendaw/studio-boxes"
+import {BoxIO, SignatureEventBox, TimelineBox} from "@opendaw/studio-boxes"
 import {SignatureTrackAdapter} from "./SignatureTrackAdapter"
 import {SignatureEventBoxAdapter} from "./SignatureEventBoxAdapter"
 import {BoxAdaptersContext} from "../BoxAdaptersContext"
@@ -559,3 +561,78 @@ it.each([[0, 4, [2, 4, 6]], [1, 2, [2, 4, 6]], [0, 5, [4, 5, 6]], [1, 1, [1, 2, 
         if (editing.canUndo()) {editing.undo(); expect(bars()).toEqual([2, 4, 6]); editing.redo(); expect(bars()).toEqual(expected)}
         adapter.terminate()
     })
+
+const meterFixture = (enabled: boolean) => {
+    const {boxGraph: graph, mandatoryBoxes: {timelineBox: timeline}} = ProjectSkeleton.empty({createDefaultUser: true, createOutputMaximizer: false})
+    graph.beginTransaction()
+    timeline.signatureTrack.enabled.setValue(enabled)
+    for (let index = 0; index < 2; index++) {
+        SignatureEventBox.create(graph, UUID.generate(), box => {
+            box.events.refer(timeline.signatureTrack.events)
+            box.index.setValue(index)
+            box.relativePosition.setValue(index === 0 ? 4 : 2)
+            box.nominator.setValue(index === 0 ? 3 : 5)
+            box.denominator.setValue(4)
+        })
+    }
+    graph.endTransaction()
+    const context = {boxGraph: graph} as BoxAdaptersContext
+    Object.assign(context, {boxAdapters: new BoxAdapters(context)})
+    const adapter = new SignatureTrackAdapter(context, timeline.signature, timeline.signatureTrack)
+    return {graph, timeline, adapter, editing: new BoxEditing(graph)}
+}
+
+it("edits the stored meter map identically while enabled or disabled, through history and reopen", () => {
+    const enabled = meterFixture(true), disabled = meterFixture(false)
+    for (const fixture of [enabled, disabled]) {
+        fixture.editing.modify(() => fixture.adapter.changeSignature(2, 4))
+    }
+    disabled.editing.modify(() => disabled.timeline.signatureTrack.enabled.setValue(true))
+    const events = (adapter: SignatureTrackAdapter) => Array.from(adapter.iterateAll()).slice(1)
+    expect(events(disabled.adapter)).toEqual(events(enabled.adapter))
+    disabled.editing.undo()
+    disabled.editing.undo()
+    expect(disabled.adapter.adapterAt(0).unwrap().relativePosition).toBe(4)
+    disabled.editing.redo()
+    disabled.editing.redo()
+    const reopened = new BoxGraph(Option.wrap(BoxIO.create))
+    reopened.fromArrayBuffer(disabled.graph.toArrayBuffer())
+    const timeline = reopened.findBox(disabled.timeline.address.uuid).unwrap() as TimelineBox
+    expect(timeline.signature.nominator.getValue()).toBe(2)
+    const restoredContext = {boxGraph: reopened} as BoxAdaptersContext
+    Object.assign(restoredContext, {boxAdapters: new BoxAdapters(restoredContext)})
+    const restored = new SignatureTrackAdapter(restoredContext, timeline.signature, timeline.signatureTrack)
+    expect(events(restored)).toEqual(events(enabled.adapter))
+    restored.terminate()
+    enabled.adapter.terminate(); disabled.adapter.terminate()
+})
+
+it.each([15000, 15360, 15400])("refuses an occupied snapped boundary at %s without changing stored events", position => {
+    const {graph, adapter, editing} = meterFixture(true)
+    const before = graph.toArrayBuffer()
+    editing.modify(() => adapter.createEvent(position, 5, 4))
+    expect(new Uint8Array(graph.toArrayBuffer())).toEqual(new Uint8Array(before))
+    adapter.terminate()
+})
+
+it("admits a free snapped boundary and supports undo/redo", () => {
+    const {adapter, editing} = meterFixture(true)
+    const events = () => Array.from(adapter.iterateAll()).slice(1)
+    const before = events()
+    editing.modify(() => adapter.createEvent(7600, 4, 4))
+    expect(events().map(event => event.accumulatedPpqn)).toEqual([7680, 15360, 21120])
+    editing.undo(); expect(events()).toEqual(before)
+    editing.redo(); expect(events()).toHaveLength(3)
+    adapter.terminate()
+})
+
+
+
+it("refuses a minimum-one-bar insertion that would collide with the first stored event", () => {
+    const {graph, adapter, editing} = meterFixture(false)
+    editing.modify(() => adapter.adapterAt(0).unwrap().box.relativePosition.setValue(1))
+    const before = new Uint8Array(graph.toArrayBuffer())
+    editing.modify(() => adapter.createEvent(0, 5, 4))
+    expect(new Uint8Array(graph.toArrayBuffer())).toEqual(before)
+    adapter.terminate()
+})

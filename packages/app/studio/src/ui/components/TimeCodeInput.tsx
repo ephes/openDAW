@@ -4,9 +4,9 @@ import {
     int,
     isDefined,
     isInstanceOf,
+    isRecord,
     Lifecycle,
     MutableObservableValue,
-    safeRead,
     tryCatch
 } from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
@@ -73,11 +73,12 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
         Events.subscribe(element, "paste", (event: ClipboardEvent) => {
             const data = event.clipboardData?.getData("application/json")
             if (isDefined(data)) {
-                const {status, value: json} = tryCatch(() => JSON.parse(data))
-                if (status === "failure") {return}
-                if (safeRead(json, "app") === "openDAW" && safeRead(json, "content") === "timecode") {
+                const {status, value: json} = tryCatch<unknown>(() => JSON.parse(data))
+                if (status === "success" && isRecord(json) && Object.getPrototypeOf(json) === Object.prototype
+                    && json.app === "openDAW" && json.content === "timecode"
+                    && typeof json.value === "number" && Number.isFinite(json.value)) {
                     event.preventDefault()
-                    model.setValue(json.value ?? 0)
+                    model.setValue(json.value)
                 }
             }
         }),

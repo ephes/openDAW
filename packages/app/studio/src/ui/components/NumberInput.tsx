@@ -4,6 +4,7 @@ import {
     int,
     isDefined,
     isInstanceOf,
+    isRecord,
     Lifecycle,
     MutableObservableValue,
     StringMapping,
@@ -70,8 +71,10 @@ export const NumberInput = ({
         Events.subscribe(element, "paste", (event: ClipboardEvent) => {
             const data = event.clipboardData?.getData("application/json")
             if (isDefined(data)) {
-                const {status, value: json} = tryCatch(() => JSON.parse(data))
-                if (status === "success" && json.app === "openDAW" && json.content === "number") {
+                const {status, value: json} = tryCatch<unknown>(() => JSON.parse(data))
+                if (status === "success" && isRecord(json) && Object.getPrototypeOf(json) === Object.prototype
+                    && json.app === "openDAW" && json.content === "number"
+                    && typeof json.value === "number" && Number.isFinite(json.value)) {
                     event.preventDefault()
                     model.setValue(isDefined(guard) ? guard.guard(json.value) : json.value)
                 }

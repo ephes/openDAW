@@ -156,3 +156,5 @@ obsolete pending owner. Publication-triggered reloads join the publishing owner
 without installing saved old code over it. Pending owners/subscriptions are
 released on success or failure, and a later explicit retry starts a fresh attempt.
 The existing worklet activation fence and graph rollback remain in force.
+
+Base-signature edits use stored events even when signature playback is disabled, preserving the same approximate musical positions as enabled edits. Creating a signature event refuses an occupied snapped boundary without changing the map. Both operations retain the existing editing transaction and history.

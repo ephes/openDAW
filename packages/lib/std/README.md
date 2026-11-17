@@ -184,3 +184,5 @@ negative/past semantics and explicit NaN/infinity formatting. Compact strings re
 their existing unsigned wording (including singular zero units); relative strings
 use explicit English past/future wording. No wall-clock waits or locale defaults
 are used.
+
+Float16 expands all IEEE binary16 patterns exactly and encodes JavaScript numbers with round-to-nearest, ties-to-even (including subnormals). Signed zero and infinities survive; NaN is canonicalized to 0x7e00. The existing overflow policy is retained: magnitudes in [65520, 65536) saturate at the largest finite value, and magnitudes >=65536 become infinity. Peak storage layout is unchanged.

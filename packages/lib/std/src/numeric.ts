@@ -59,26 +59,17 @@ export namespace Float {
 
 export namespace Float16 {
     export const floatToIntBits = (value: float): int => {
-        const bits = Float.floatToIntBits(value)
-        const sign = bits >>> 16 & 0x8000
-        let val = (bits & 0x7fffffff) + 0x1000
-        if (val >= 0x47800000) {
-            if ((bits & 0x7fffffff) >= 0x47800000) {
-                if (val < 0x7f800000) {
-                    return sign | 0x7c00
-                }
-                return sign | 0x7c00 | (bits & 0x007fffff) >>> 13
-            }
-            return sign | 0x7bff
-        }
-        if (val >= 0x38800000) {
-            return sign | val - 0x38000000 >>> 13
-        }
-        if (val < 0x33000000) {
-            return sign
-        }
-        val = (bits & 0x7fffffff) >>> 23
-        return sign | ((bits & 0x7fffff | 0x800000) + (0x800000 >>> val - 102) >>> 126 - val)
+        if (Number.isNaN(value)) {return 0x7e00}
+        const sign = value < 0 || Object.is(value, -0) ? 0x8000 : 0
+        const magnitude = Math.abs(value)
+        if (magnitude >= 65536) {return sign | 0x7c00}
+        if (magnitude === 0) {return sign}
+        const exponent = Math.max(-14, Math.floor(Math.log2(magnitude)))
+        const scaled = magnitude / 2 ** (exponent - 10)
+        const truncated = Math.floor(scaled)
+        const fraction = scaled - truncated
+        const rounded = truncated + (fraction > 0.5 || (fraction === 0.5 && (truncated & 1) !== 0) ? 1 : 0)
+        return sign | Math.min(0x7bff, ((exponent + 14) << 10) + rounded)
     }
 
     export const intBitsToFloat = (bits: int): float => {
@@ -88,9 +79,6 @@ export namespace Float16 {
             exp = 0x3fc00
         } else if (exp !== 0) {
             exp += 0x1c000
-            if (mantissa === 0 && exp > 0x1c400) {
-                return Float.intBitsToFloat((bits & 0x8000) << 16 | exp << 13 | 0x3ff)
-            }
         } else if (mantissa !== 0) {
             exp = 0x1c400
             do {
