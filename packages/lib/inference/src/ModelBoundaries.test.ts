@@ -11,6 +11,7 @@ beforeEach(() => {
     installInferenceConfig({opfs: {
         read: async (path: string) => {const value = files.get(path); if (!value) {throw new Error("missing")} return value},
         write: async (path: string, bytes: Uint8Array) => {files.set(path, bytes)},
+        writeAtomic: async (path: string, bytes: Uint8Array) => {files.set(path, bytes)},
         exists: async (path: string) => files.has(path), delete: async () => {}, list: async () => []
     } as OpfsProtocol})
 })
