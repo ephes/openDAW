@@ -26,3 +26,8 @@ Real Compressor regressions independently enable auto attack, auto release and b
 (with automatic makeup disabled). Whole and uneven spans fail before the sample
 clock fix; a changed future suffix also tests causal prefix equality. Continuation
 for twelve quanta checks retained state, rather than only a block average.
+
+Automatic makeup has its own failing whole/split regression with manual and auto
+ballistics, including lookahead. A per-sample attenuation/makeup recurrence pins
+the time constant and gain, and disabled→enabled tracking and existing reset tests
+protect lifecycle behavior. Seeded nonempty partitions include nonzero offsets.

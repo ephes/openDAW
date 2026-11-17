@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Estimate and apply compressor automatic makeup causally per sample with a quantum-equivalent smoothing time constant; preserve disabled tracking/reset and empty-span state.
+
 - Advance compressor automatic attack/release causally per sample, independent of render/event partitions.
 
 - Correct Fold oversampling gain/phase through complete aligned halfband stages; validate real 2x/4x/8x processing against direct FIR.

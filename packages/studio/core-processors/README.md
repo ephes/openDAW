@@ -203,3 +203,10 @@ choose earlier coefficients; event/render partitions do not change the output.
 Manual ballistics retain their attack/release values. The CTAG block APIs are
 called with single-sample spans to preserve this causal ordering without allocating
 coefficient buffers on the audio thread.
+
+Automatic makeup also advances per sample from the undelayed smoothed attenuation.
+Its input weight is `1 - 0.97^(1/128)`, preserving the former 0.03-per-render-quantum
+time constant. Each sample keeps its own makeup while lookahead transforms gain
+reduction. The estimator continues tracking when disabled (zero makeup applied),
+and reset retires both estimator and retained sample gains. Empty spans advance
+neither state nor meters. Rebuilds change automatic compressor dynamics/loudness.
