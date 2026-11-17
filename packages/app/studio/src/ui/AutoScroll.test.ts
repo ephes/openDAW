@@ -28,7 +28,8 @@ describe("auto scroll ownership", () => {
         expect(scroll).not.toHaveBeenCalled()
     })
     it("ignores other pointer movement and completion", () => {
-        const {owner, frame, measure, scroll} = setup()
+        const {target, owner, frame, measure, scroll} = setup()
+        event(target, "pointerdown", 2)
         event(document, "pointermove", 2, -100)
         event(document, "pointerup", 2)
         frame.callback()

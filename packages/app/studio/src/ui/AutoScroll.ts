@@ -50,7 +50,7 @@ export const installAutoScroll = (target: Element, autoScroller: AutoScroller, o
         lifeTime.terminate()
     }
     const start = Events.subscribe(target, "pointerdown", (event: PointerEvent) => {
-        if (retired) {return}
+        if (retired || active) {return}
         finish()
         active = true
         const pointerId = event.pointerId

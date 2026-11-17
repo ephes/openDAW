@@ -16,21 +16,37 @@ export type AwarenessUserState = {
     panel: Nullable<string>
 }
 
-export const readIdentity = (): { name: string, color: string } => {
-    const name = localStorage.getItem(StorageKeyName) ?? ""
-    let color = localStorage.getItem(StorageKeyColor)
-    if (color === null) {
+let launchIdentity: {name: string, color: string} | undefined
+const fallbackIdentity = () => {
+    if (launchIdentity === undefined) {
         const bytes = new Uint8Array(1)
         crypto.getRandomValues(bytes)
-        color = UserColors[bytes[0] % UserColors.length]
-        localStorage.setItem(StorageKeyColor, color)
+        launchIdentity = {name: "", color: UserColors[bytes[0] % UserColors.length]}
     }
+    return launchIdentity
+}
+const readPreference = (key: string): string | null => {
+    try {return localStorage.getItem(key)} catch {return null}
+}
+const writePreference = (key: string, value: string): void => {
+    try {localStorage.setItem(key, value)} catch { /* Identity persistence is optional. */ }
+}
+
+export const readIdentity = (): { name: string, color: string } => {
+    if (launchIdentity !== undefined) {return {...launchIdentity}}
+    const fallback = fallbackIdentity()
+    const name = readPreference(StorageKeyName) ?? fallback.name
+    const storedColor = readPreference(StorageKeyColor)
+    const color = storedColor ?? fallback.color
+    launchIdentity = {name, color}
+    if (storedColor === null) {writePreference(StorageKeyColor, color)}
     return {name, color}
 }
 
 export const writeIdentity = (name: string, color: string): void => {
-    localStorage.setItem(StorageKeyName, name)
-    localStorage.setItem(StorageKeyColor, color)
+    launchIdentity = {name, color}
+    writePreference(StorageKeyName, name)
+    writePreference(StorageKeyColor, color)
 }
 
 export const userColors = (): ReadonlyArray<string> => UserColors

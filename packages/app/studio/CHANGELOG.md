@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Count monotonic elapsed room minutes, carry fractions and resume current rooms after BFCache suspension without counting time away. Fall back to keepalive fetch on refused beacons and keep identity persistence optional when storage fails.
+
 - Bound selected sample source and decoded PCM to 64 MiB before decode/encode; own one upload attempt until completion and retire it with its page. Reject malformed shortcut context imports atomically.
 
 - Retire active auto-scroll listeners and frames with the editor, track the initiating pointer and stop on cancellation/blur. Retire drag payloads, ghosts and source classes on disposal or failed setup without clearing newer drags.
