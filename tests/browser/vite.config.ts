@@ -6,7 +6,7 @@ export default defineConfig({
     resolve: {alias: {"@": fileURLToPath(new URL("../../packages/app/studio/src", import.meta.url))}},
     esbuild: {jsxFactory: "createElement", jsxFragment: "Fragment"},
     // Scan dynamic fixtures too: a cold dependency cache otherwise reloads mid-test.
-    optimizeDeps: {entries: ["index.html", "script-worklet.ts", "r120-studio.ts", "r123-ownership.ts"]},
+    optimizeDeps: {entries: ["index.html", "script-worklet.ts", "r120-studio.ts", "r123-ownership.ts", "r126-editors.ts"]},
     // Match the studio's cross-origin isolation so SharedArrayBuffer-backed AudioData works.
     server: {
         host: "127.0.0.1", port: 4179, strictPort: true,

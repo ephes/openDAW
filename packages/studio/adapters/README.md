@@ -111,3 +111,10 @@ cached fonts and clearing the file. Only the current loader generation publishes
 font/preset state. Adapter termination releases file/preset pointer observers and
 its loader observation once; queued old callbacks are inert. Shared loaders are
 not invalidated or terminated by an adapter.
+
+### MIDI control registrations
+
+Each `registerMidiControl()` call owns one idempotent handle. Control-source
+listeners see one aggregate MIDI-add transition on the first registration and one
+remove transition on the last release. Catchup observes the aggregate presence
+even after another owner has released its handle.

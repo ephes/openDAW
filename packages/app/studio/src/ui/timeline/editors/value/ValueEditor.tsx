@@ -221,7 +221,7 @@ export const ValueEditor = ({lifecycle, service, range, snapping, eventMapping, 
                             yAxis={valueAxis}/>
     )
     const element: HTMLElement = (
-        <div className={className} tabIndex={-1} onConnect={(self: HTMLElement) => self.focus()}>
+        <div className={className} tabIndex={-1} onConnectLifecycle={lifecycle} onConnect={(self: HTMLElement) => self.focus()}>
             {canvas}
             {selectionRectangle}
         </div>

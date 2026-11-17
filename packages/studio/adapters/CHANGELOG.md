@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Give MIDI control registrations independent idempotent owners with aggregate presence notifications.
+
 - Retire soundfont loader observations on every transition and release pointer observers on adapter termination; fence stale callbacks.
 
 - Isolate shared note/value and warp-marker content on start trims; ignore muted automation regions in preroll.

@@ -39,3 +39,18 @@ retires the whole owner and fences saved callbacks. Synthetic loader tests cover
 pending A to cached B, empty and pending B, old loaded/error/idle callbacks, preset
 selection and repeated disposal with real pointer listener cleanup. Four tests
 failed before the repair. No font downloads or shared-loader disposal is used.
+
+## B04
+
+MIDI registrations count independent idempotent owners and publish aggregate state
+before notifying listeners. JSX accepts an explicit connection lifetime; all four
+current call sites use their existing view owner. Unit tests with fake frames
+verify cancellation, queued callback fencing and first-connection-only dispatch.
+The new independent-owner and frame tests failed before the fix.
+
+The r126 browser fixtures construct real NoteEditor/ValueEditor views on synthetic
+projects. Their integration run is not qualified locally: Chromium exits before
+page creation because macOS sandbox denies MachPortRendezvousServer bootstrap.
+Exact attempted command (from repo root):
+`PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r126-opendaw/.cache/playwright npm run test:browser -- tests/browser/r126.spec.ts`.
+The clerk must run the full `npm run test:browser` outside the sandbox.

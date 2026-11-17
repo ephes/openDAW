@@ -24,7 +24,7 @@ export const SearchInput = ({lifecycle, model, placeholder, style}: Construct) =
                        model.setValue(event.target.value)
                    }
                }}
-               onConnect={element => {
+               onConnectLifecycle={lifecycle} onConnect={element => {
                    // Intentionally NOT auto-focusing on mount: when the
                    // browser panel becomes visible, grabbing focus prevents
                    // Space from triggering transport play/pause until the

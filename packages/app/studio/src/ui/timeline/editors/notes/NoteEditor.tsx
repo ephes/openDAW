@@ -160,7 +160,7 @@ export const NoteEditor =
                 }
             })()))
         const element: HTMLElement = (
-            <div className={className} tabIndex={-1} onConnect={(self: HTMLElement) => self.focus()}>
+            <div className={className} tabIndex={-1} onConnectLifecycle={lifecycle} onConnect={(self: HTMLElement) => self.focus()}>
                 {pitchHeader}
                 {pitchBody}
                 <PropertyHeader lifecycle={lifecycle}
