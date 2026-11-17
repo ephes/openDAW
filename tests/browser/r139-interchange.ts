@@ -19,7 +19,7 @@ export const interchange = async (): Promise<void> => {
         <Track id="parent" contentType="notes"><Channel id="parent-channel" role="regular" destination="master"/>
             <Track id="child" contentType="notes"><Channel id="child-channel" role="regular" destination="master"/></Track>
         </Track>
-        <Track id="output" contentType="audio"><Channel id="master" role="master"><Sends><Send destination="aux-channel" type="pre"><Volume value="0.5"/><Pan value="0.25"/></Send></Sends></Channel></Track>
+        <Track id="output" contentType="audio"><Channel id="master" role="master"><Sends><Send destination="aux-channel" type="pre"><Volume value="0.5" unit="linear"/><Pan value="0.25" unit="normalized"/></Send></Sends></Channel></Track>
         <Track id="aux"><Channel id="aux-channel" role="effect"/></Track>
         </Structure><Arrangement>
         <TempoAutomation unit="bpm"><RealPoint time="0" value="120" interpolation="hold"/><RealPoint time="4" value="400"/></TempoAutomation>
