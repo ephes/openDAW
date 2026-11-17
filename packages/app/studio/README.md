@@ -30,3 +30,10 @@ panel was remounted still compiles and reports to the code editor; only the
 retired panel's icon stays untouched. Remounting joins the device/context's pending installation
 so closing or reopening the presentation cannot replace a pending explicit script
 with older saved/default code. External code changes still load immediately.
+
+### Audio region conversion
+
+Converting an audio region to a clip keeps its native loop duration and time base,
+source waveform offset, file and playback mode. It does not convert an already
+native seconds value a second time. Existing saved conversions are not migrated;
+region-only fades and loop offset are outside this operation.
