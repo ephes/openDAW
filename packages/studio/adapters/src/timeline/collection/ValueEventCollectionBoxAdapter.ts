@@ -3,7 +3,6 @@ import {
     asDefined,
     Curve,
     int,
-    isDefined,
     linear,
     Notifier,
     Observer,
@@ -16,7 +15,7 @@ import {
     UUID,
     ValueMapping
 } from "@opendaw/lib-std"
-import {Address, Box} from "@opendaw/lib-box"
+import {Address, Box, Update} from "@opendaw/lib-box"
 import {EventCollection, Interpolation, ppqn, ValueEvent} from "@opendaw/lib-dsp"
 import {Pointers} from "@opendaw/studio-enums"
 import {BoxAdapter} from "../../BoxAdapter"
@@ -40,6 +39,8 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
     readonly #changeNotifier: Notifier<this>
     readonly #adapters: SortedSet<UUID.Bytes, ValueEventBoxAdapter>
     readonly #events: EventCollection<ValueEventBoxAdapter>
+    readonly #eventKeys = new Map<string, Set<ValueEventBox>>()
+    readonly #indexedBoxes = new Map<string, {box: ValueEventBox, key: string}>()
 
     constructor(context: BoxAdaptersContext, box: ValueEventCollectionBox) {
         this.#context = context
@@ -50,6 +51,7 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         this.#events = EventCollection.create(ValueEventBoxAdapter.Comparator)
 
         const addValueProcedure = (box: Box) => {
+            if (box instanceof ValueEventBox) {this.#indexBox(box)}
             const adapter = asDefined(box.accept<BoxVisitor<ValueEventBoxAdapter>>({
                 visitValueEventBox: (box: ValueEventBox) => this.#context.boxAdapters.adapterFor(box, ValueEventBoxAdapter)
             }), `Could not find adapter for ${box}`)
@@ -63,6 +65,33 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
             onAdded: ({box}) => addValueProcedure(box),
             onRemoved: ({box: {address: {uuid}}}) => {
                 this.#events.remove(this.#adapters.removeByKey(uuid))
+                this.#onEventsChanged()
+            }
+        }))
+        // Immediate graph updates include staged boxes before deferred pointer notifications,
+        // field moves, transfers, deletion and the inverse updates of an abort.
+        this.#terminator.own(context.boxGraph.subscribeToAllUpdatesImmediate({
+            onUpdate: (update: Update) => {
+                const uuid = update.type === "new" || update.type === "delete" ? update.uuid : update.address.uuid
+                const id = UUID.toString(uuid)
+                this.#unindexBox(id)
+                context.boxGraph.findBox(uuid).ifSome(box => {
+                    if (box instanceof ValueEventBox) {this.#indexBox(box)}
+                })
+            }
+        }))
+        this.#terminator.own(context.boxGraph.subscribeTransaction({
+            onBeginTransaction: () => {},
+            onEndTransaction: rolledBack => {
+                if (!rolledBack) {return}
+                // Editors temporarily remove points to avoid sort-key collisions. An abort
+                // restores graph pointers without pointerHub notifications, possibly with
+                // new box instances under the original UUIDs.
+                this.#adapters.clear()
+                this.#events.clear()
+                this.#eventKeys.clear()
+                this.#indexedBoxes.clear()
+                this.#box.events.pointerHub.incoming().forEach(({box}) => addValueProcedure(box))
                 this.#onEventsChanged()
             }
         }))
@@ -156,9 +185,9 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
 
     createEvent({position, index, value, interpolation}: CreateEventParams): ValueEventBoxAdapter {
         const intPosition = Math.trunc(position)
-        const existing = this.#adapters.values().find(event => event.position === intPosition && event.index === index)
-        // the adapters might be out of sync until the current transaction ends. Therefore, we check with isAttached.
-        if (isDefined(existing) && existing.box.isAttached()) {
+        const existingBox = this.#eventKeys.get(`${intPosition}:${index}`)?.values().next().value
+        if (existingBox !== undefined) {
+            const existing = this.#context.boxAdapters.adapterFor(existingBox, ValueEventBoxAdapter)
             // Return an existing event instead of creating a duplicate-update its value
             existing.box.value.setValue(value)
             InterpolationFieldAdapter.write(existing.box.interpolation, interpolation)
@@ -190,6 +219,26 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
     get events(): EventCollection<ValueEventBoxAdapter> {return this.#events}
 
     toString(): string {return `{ValueEventCollectionBox ${UUID.toString(this.#box.address.uuid)}}`}
+
+    #unindexBox(id: string): void {
+        const previous = this.#indexedBoxes.get(id)
+        if (previous === undefined) {return}
+        const entries = asDefined(this.#eventKeys.get(previous.key))
+        entries.delete(previous.box)
+        if (entries.size === 0) {this.#eventKeys.delete(previous.key)}
+        this.#indexedBoxes.delete(id)
+    }
+
+    #indexBox(box: ValueEventBox): void {
+        const id = UUID.toString(box.address.uuid)
+        this.#unindexBox(id)
+        if (!box.isAttached() || !box.events.targetAddress.mapOr(address => address.equals(this.#box.events.address), false)) {return}
+        const key = `${box.position.getValue()}:${box.index.getValue()}`
+        const entries = this.#eventKeys.get(key) ?? new Set<ValueEventBox>()
+        entries.add(box)
+        this.#eventKeys.set(key, entries)
+        this.#indexedBoxes.set(id, {box, key})
+    }
 
     #onEventsChanged(): void {this.#changeNotifier.notify(this)}
 }

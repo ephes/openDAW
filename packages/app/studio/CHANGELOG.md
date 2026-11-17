@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Restore visible automation points after failed deletion/moves and capture the nearest automation/property node; equal-distance ties retain the first candidate, with selected-note priority unchanged.
+
 - Publish Tone3000 packs only after their complete default model; recover unfinished staging, and bound/validate metadata and model transfers with cancellation and total deadlines. Re-selecting a pack replaces an unreadable or no longer valid cached manifest instead of failing; storage errors still keep the current revision.
 
 - Fence late Tone3000 imports against current devices and model selections; bind cached bytes to persisted pack revisions and refuse stale downloads.

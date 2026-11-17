@@ -118,3 +118,13 @@ Each `registerMidiControl()` call owns one idempotent handle. Control-source
 listeners see one aggregate MIDI-add transition on the first registration and one
 remove transition on the last release. Catchup observes the aggregate presence
 even after another owner has released its handle.
+
+### Automation event identity and rollback
+
+Value collections identify points by integer `(position, index)`. Creating the same
+key again in one transaction updates its value/interpolation, including pending
+points and replacements; indices 0 and 1 still represent intentional jumps. The
+lookup follows immediate graph updates rather than scanning notified adapters.
+After an aborted graph transaction, collections rebuild their editor index from
+the restored pointers, including replacement box instances. Editors may still
+remove points temporarily to avoid collisions during promotion and batch moves.
