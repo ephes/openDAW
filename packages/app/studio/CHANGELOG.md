@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Floor silent Revamp spectrum bins at -60 dB before interpolation and handle empty/one-pixel canvas geometry without nonfinite path coordinates.
+
+- Evaluate Revamp response curves and frequency normalization at the engine sample rate, matching the audible high-frequency digital filter shapes.
+
 - Cancel obsolete Playfield octave-hover timers on replacement, leave, drop and teardown; refresh saved MIDI-output availability after permission and port state changes without changing routing.
 
 - Preserve signed grab offsets when dragging sample endpoints; repaint the sample editor when its current file finishes loading and retire replaced loader subscriptions.

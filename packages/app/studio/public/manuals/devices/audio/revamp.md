@@ -101,12 +101,18 @@ Attenuates frequencies above the cutoff. Use to tame harshness, remove hiss, or 
 
 ### 4.1 Frequency Response Curve
 
-The main display shows the combined frequency response of all enabled bands. The horizontal axis spans 20 Hz to 20 kHz (logarithmic). The vertical axis spans -24 dB to +24 dB.
+The main display shows the combined frequency response of all enabled bands.
+Curves use the engine sample rate, matching the digital filters at 44.1, 48 and
+96 kHz, including high-Q shapes near Nyquist. One response sample per device pixel
+provides display resolution without changing the filter design sample rate. The horizontal axis spans 20 Hz to 20 kHz (logarithmic). The vertical axis spans -24 dB to +24 dB.
 
 ### 4.2 Spectrum Analyzer
 
 A real-time spectrum analyzer overlays the frequency response, showing the actual frequency content of the output signal.
 A processor reset clears the previous spectrum immediately; new audio repopulates it.
+Zero-energy and quieter-than-floor bins draw at the displayed -60 dB floor.
+Empty canvases wait for usable geometry; one-pixel displays use the leftmost
+frequency without dividing by zero. Peaks recover normally after a resize.
 
 ### 4.3 Output Meter
 

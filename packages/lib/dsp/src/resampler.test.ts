@@ -1,6 +1,6 @@
 import {describe, expect, test} from "vitest"
 import {ResamplerMono, ResamplerStereo} from "./resampler"
-import {upsampleReference} from "./resampler-test-fixture"
+import {upsampleReference} from "../test/resampler-reference"
 import {RenderQuantum} from "./constants"
 
 describe("Resampler", () => {

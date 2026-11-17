@@ -1,7 +1,7 @@
 import {beforeAll, expect, it} from "vitest"
 import {FoldDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {processorFixture, block} from "../processor-test-fixture"
-import {upsampleReference, downsampleReference} from "../../../../../lib/dsp/src/resampler-test-fixture"
+import {upsampleReference, downsampleReference} from "../../../../../lib/dsp/test/resampler-reference"
 let Fold: typeof import("./FoldDeviceProcessor").FoldDeviceProcessor
 beforeAll(async () => {Object.assign(globalThis, {sampleRate: 48000}); Fold = (await import("./FoldDeviceProcessor")).FoldDeviceProcessor})
 function fixture(factor: number) {

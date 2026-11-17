@@ -44,7 +44,7 @@ export const RevampDeviceEditor = ({adapter, service, lifecycle, deviceHost}: Co
     const spectrumContext = asDefined(spectrum.getContext("2d"))
     const spectrumScale = new LinearScale(-60.0, -3.0)
     lifecycle.ownAll(
-        createCurveRenderer(curves, xAxis, yAxis, adapter),
+        createCurveRenderer(curves, xAxis, yAxis, adapter, project.engine.sampleRate),
         project.liveStreamReceiver.subscribeFloats(adapter.spectrum,
             values => plotSpectrum(spectrumContext, xAxis, spectrumScale, values, project.engine.sampleRate)))
     const grid: SVGSVGElement = <svg/>
