@@ -5,7 +5,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Import/export ordinary DAWproject arrangement markers with beat positions, labels and representable native hue colors; refuse unsupported attributes and native repeat/track semantics before publication.
+- Import/export ordinary DAWproject arrangement markers with beat positions, labels and representable native hue colors, writing Arrangement children in DAWproject schema order; refuse unsupported attributes and native repeat/track semantics before publication.
 
 - Refuse lossy nested clip coordinate transforms and invalid/unrepresentable automation times before DAWproject graph construction; retain transparent wrappers and exact signature bar boundaries.
 

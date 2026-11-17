@@ -455,9 +455,10 @@ export namespace DawProjectExporter {
             transport: writeTransport(),
             structure: writeStructure(),
             arrangement: Xml.element({
-                markers: writeMarkers(),
-                tempoAutomation: writeTempoAutomation(),
+                // Key order is XML child order: follow the DAWproject Arrangement sequence.
                 timeSignatureAutomation: writeSignatureAutomation(),
+                tempoAutomation: writeTempoAutomation(),
+                markers: writeMarkers(),
                 lanes: Xml.element({
                     lanes: writeLanes(),
                     timeUnit: TimeUnit.BEATS

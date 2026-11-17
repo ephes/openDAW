@@ -241,7 +241,7 @@ it('B06 accepts an empty marker collection', async () => {
     expect(write(skeleton).arrangement!.markers).toBeUndefined()
 })
 it('B06 exports independently constructed native markers as literal beat coordinates', async () => {
-    const {skeleton} = await read(source())
+    const {skeleton} = await read(source(tempo))
     const {boxGraph, mandatoryBoxes: {timelineBox}} = skeleton
     boxGraph.beginTransaction()
     MarkerBox.create(boxGraph, UUID.generate(), box => {box.track.refer(timelineBox.markerTrack.markers); box.position.setValue(2 * q); box.label.setValue('Verse'); box.hue.setValue(120)})
@@ -253,6 +253,10 @@ it('B06 exports independently constructed native markers as literal beat coordin
     expect(marker.getAttribute('name')).toBe('Verse')
     expect(marker.getAttribute('color')).toBe('#33ff33')
     expect(marker.parentElement!.getAttribute('timeUnit')).toBe('beats')
+    const sequence = ['TimeSignatureAutomation', 'TempoAutomation', 'Markers', 'Lanes']
+    const children = Array.from(element.querySelector('Arrangement')!.children, child => child.tagName)
+    expect(children).toContain('Markers')
+    expect(children).toEqual([...children].sort((a, b) => sequence.indexOf(a) - sequence.indexOf(b)))
 })
 it.each([0, 2])('B06 refuses native repeat play count %s before packing resources', async plays => {
     const {skeleton} = await read(source())
