@@ -189,3 +189,8 @@ including after reset; smoothing begins only after actual frames were processed.
 Auxiliary send enable state gates its effective gain while preserving the saved
 level and pan. Disabling and re-enabling use the existing gain ramps. Existing
 projects default auxiliary sends to enabled.
+
+Fold oversampling retains all 31 halfband taps and uses aligned chronological even/odd
+phases at each 2x stage. Real-processor impulse/tone regressions compare 2x/4x/8x
+with direct FIR plus the fold transfer, including uneven nonzero-offset spans.
+The corrected response changes existing projects' Fold sound/latency on rebuild.

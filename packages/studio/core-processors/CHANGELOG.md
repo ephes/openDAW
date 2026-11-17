@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Correct Fold oversampling gain/phase through complete aligned halfband stages; validate real 2x/4x/8x processing against direct FIR.
+
 - Honor disabled auxiliary sends while retaining saved gain and pan, with ramped enable changes.
 
 - Retire all incident graph edges before late edge leases; sort processors with iterative linear graph traversal and explicit cycle detection.

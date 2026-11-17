@@ -164,3 +164,9 @@ before decode.
 The 2x resampler splits all 31 halfband taps into 16 even and 15 odd taps.
 Cascading those stages provides 4x/8x Fold oversampling. Direct zero-insertion FIR
 regressions pin the impulse and DC response, including the complete filter tail.
+
+With zero-filled history, output `2n+p` is `2*sum(h[2j+p]*input[n-j])`.
+Both phases share that origin. Upsampling packs each selected input span at output
+index zero; downsampling writes back to the requested output span. State continues
+across calls, including nonzero input/output offsets. This corrects Fold's phase
+and latency as well as its gain; saved projects can sound different after rebuild.

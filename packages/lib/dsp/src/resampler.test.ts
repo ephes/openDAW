@@ -287,3 +287,21 @@ test.each(["impulse", "dc"])("complete even halfband phase: %s", signal => {
     const expected = upsampleReference(input, 2)
     for (let i = 0; i < actual.length; i += 2) expect(actual[i]).toBeCloseTo(expected[i], 7)
 })
+
+test.each([2, 4, 8] as const)("%ix chronological FIR phases across uneven input spans", factor => {
+    for (const signal of ["impulse", "ramp", "dc"]) {
+        const input = Float32Array.from({length: 128}, (_, i) => signal === "impulse" ? Number(i === 0) : signal === "dc" ? 1 : i / 128)
+        const expected = upsampleReference(input, factor)
+        for (const boundaries of [[0, 128], [0, 1, 7, 38, 39, 94, 128]]) {
+            const resampler = new ResamplerMono(factor)
+            const actual = new Float32Array(128 * factor)
+            for (let b = 1; b < boundaries.length; b++) {
+                const from = boundaries[b - 1], to = boundaries[b]
+                const packed = new Float32Array((to - from) * factor)
+                resampler.upsample(input, packed, from, to)
+                actual.set(packed, from * factor)
+            }
+            actual.forEach((value, i) => expect(value).toBeCloseTo(expected[i], 6))
+        }
+    }
+})

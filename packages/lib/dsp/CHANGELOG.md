@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Align odd/even resampler phases to one chronological FIR stream, with partitioned 2x/4x/8x reference regressions.
+
 - Retain every halfband coefficient in the polyphase resampler used by Fold oversampling.
 
 - Expose allocation-free, format-independent WAV geometry and supported-format inspection; reuse them in float decoding and bounded upload admission.

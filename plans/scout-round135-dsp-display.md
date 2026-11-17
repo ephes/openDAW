@@ -10,3 +10,8 @@ review and integration. No review CLI or remote push runs in this checkout.
 
 The even-phase impulse/DC regression fails when the last four nonzero halfband
 taps are discarded. Both phase lengths now derive from the 31-tap source filter.
+
+The chronological impulse/ramp/DC regression separately fails for the old extra
+source-sample delay on the odd phase. Correcting its origin passes direct FIR
+checks at 2x/4x/8x and real Fold transfer/downsampling comparisons. Existing response
+snapshots are regenerated only after those independent oracle checks pass.

@@ -60,9 +60,10 @@ class Resampler2xMono {
                 sum0 += buffer[(upIndex - j) & UP_BUFFER_MASK] * phase0[j]
             }
             output[outIdx] = sum0 * 2
+            // Output 2n+p = 2 * sum_j h[2j+p] * input[n-j], with input[0] at n=0.
             let sum1 = 0
             for (let j = 0; j < phase1.length; j++) {
-                sum1 += buffer[(upIndex - j - 1) & UP_BUFFER_MASK] * phase1[j]
+                sum1 += buffer[(upIndex - j) & UP_BUFFER_MASK] * phase1[j]
             }
             output[outIdx + 1] = sum1 * 2
             upIndex = (upIndex + 1) & UP_BUFFER_MASK
