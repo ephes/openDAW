@@ -241,8 +241,9 @@ after the root build. Fixtures use synthetic messages/shared buffers.
 Each subscription owns one registration, even for duplicate callbacks. Termination
 is once-only and old handles cannot remove a replacement after clear/reconnect.
 Delivery snapshots registrations for each package: additions wait for the next
-frame; removals take effect on the next frame, so self-unsubscription cannot skip
-unrelated listeners in the current frame. Exception propagation remains unchanged.
+frame, while removals take effect immediately, so a listener terminated earlier in
+the frame receives nothing more and self-unsubscription cannot skip unrelated
+listeners. Exception propagation remains unchanged.
 
 Disconnect/termination clears all typed-array caches as well as subscribers.
 Reconnection starts a fresh payload generation; array identity is reusable only

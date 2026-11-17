@@ -7,7 +7,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Clear per-address typed-array payload caches on stream disconnect and termination.
 
-- Bind stream handles to individual registrations across reconnects and deliver each package to a stable listener snapshot.
+- Bind stream handles to individual registrations across reconnects and deliver each package to a stable listener snapshot that skips listeners removed mid-frame.
 
 - Own preference host sync senders/subscriptions and fence queued updates after sync or host disposal, including failed initial sends.
 

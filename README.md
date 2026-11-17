@@ -512,8 +512,8 @@ See [round 120 contracts and validation](plans/scout-round120-studio-lifecycle.m
 
 Notepad preview saves preserve the original Markdown. Leaving edit mode, blurring
 or closing the panel commits editable text. Local Markdown links keep their query
-strings and fragments through in-app routing without reloading the studio;
-same-page fragments scroll natively and modified clicks retain browser behavior.
+strings and fragments in the URL through in-app routing without reloading the
+studio (the routed page opens at its top); same-page fragments scroll natively and modified clicks retain browser behavior.
 
 Stereo Tool auto gain cancels measurement on pointer cancellation or premature
 capture loss. A normal short release still completes the one-second measurement.

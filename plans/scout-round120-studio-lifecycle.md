@@ -27,7 +27,8 @@ Repeated preview saves and reopened heading/link/code notes have exact-source
 regressions in `NotePadPanel.test.tsx`.
 
 Local links route with their complete path, query and fragment, so destinations
-survive without a full studio reload. Same-page fragments scroll natively.
+survive without a full studio reload; a routed page opens at its top. Same-page
+fragments scroll natively.
 Modified/non-primary clicks, explicit targets and downloads retain browser
 behavior. `MarkdownNavigation.test.ts` covers full-destination routing and native fragments.
 `tests/browser/r120.spec.ts` adds real notes, shortcut and fragment fixtures;
@@ -65,9 +66,9 @@ The browser fixture exercises the same real acquisition entry points with stubs.
 Subscriptions capture their entry and a unique registration token. Repeated
 termination cannot remove another duplicate, and an obsolete handle cannot touch
 a replacement entry after clear/reconnect. Clear releases old listener references.
-The delivery lookup materializes a snapshot in registration order. Self-removal
-and removal of another listener affect the next frame; additions also wait until
-the next frame. Exceptions still stop dispatch under the existing documented rule.
+Delivery iterates a registration-order snapshot and skips any registration
+removed earlier in the frame, so self-removal cannot skip unrelated listeners and a
+terminated listener receives nothing more; additions wait until the next frame. Exceptions still stop dispatch under the existing documented rule.
 `Subscribers.test.ts` and real `LiveStreamReceiver.test.ts` regressions fail on
 the original implementation, covering all five scalar/array package types.
 
@@ -104,6 +105,10 @@ No version bump, push, merge, release, deployment or external agent review occur
   ran. The clerk must run this gate outside the sandbox, including the new notes,
   navigation, pointer capture and microphone fixtures. Dynamic fixture dependencies
   are scanned before serving to avoid a cold-cache optimizer reload during tests.
+- Merge-time `npm run test:browser` outside the sandbox: 29 passed. The notes fixture
+  now types through the keyboard because Playwright `fill()` produces paragraph
+  elements whose `innerText` doubles blank lines. `scripts.spec.ts` ('script-contracts'
+  not defined) fails identically with the trunk configuration and is pre-existing.
 
 Before/after regression outputs and full gate logs are outside the checkout at
 `/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r120-opendaw/`.

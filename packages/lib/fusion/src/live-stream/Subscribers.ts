@@ -1,4 +1,4 @@
-import {Maybe, SortedSet, Subscription, Terminable} from "@opendaw/lib-std"
+import {isDefined, Maybe, Procedure, SortedSet, Subscription, Terminable} from "@opendaw/lib-std"
 import {Address} from "@opendaw/lib-box"
 
 type ListenersEntry<T> = { address: Address, listeners: Map<symbol, T> }
@@ -11,6 +11,14 @@ export class Subscribers<T> implements Terminable {
     getOrNull(address: Address): Maybe<ReadonlyArray<T>> {
         const entry = this.#subscribers.getOrNull(address)
         return entry === null ? undefined : Array.from(entry.listeners.values())
+    }
+
+    forEach(address: Address, procedure: Procedure<T>): void {
+        const entry = this.#subscribers.getOrNull(address)
+        if (!isDefined(entry)) {return}
+        for (const [token, listener] of Array.from(entry.listeners)) {
+            if (entry.listeners.has(token)) {procedure(listener)}
+        }
     }
 
     isEmpty(address: Address): boolean {return !this.#subscribers.hasKey(address)}

@@ -37,7 +37,7 @@ class FloatPackage implements Package<float> {
     }
     dispatch(address: Address, input: ByteArrayInput): void {
         const value = input.readFloat()
-        this.subscribers.getOrNull(address)?.forEach(procedure => procedure(value))
+        this.subscribers.forEach(address, procedure => procedure(value))
     }
     subscribe(address: Address, procedure: Procedure<float>): Subscription {
         return this.subscribers.subscribe(address, procedure)
@@ -55,7 +55,7 @@ class IntegerPackage implements Package<int> {
     }
     dispatch(address: Address, input: ByteArrayInput): void {
         const value = input.readInt()
-        this.subscribers.getOrNull(address)?.forEach(procedure => procedure(value))
+        this.subscribers.forEach(address, procedure => procedure(value))
     }
     subscribe(address: Address, procedure: Procedure<int>): Subscription {
         return this.subscribers.subscribe(address, procedure)
@@ -88,7 +88,7 @@ abstract class ArrayPackage<T extends ArrayTypes> implements Package<T> {
             this.#arrays.add({address, array})
         }
         this.read(input, array, length)
-        this.subscribers.getOrNull(address)?.forEach(procedure => procedure(array))
+        this.subscribers.forEach(address, procedure => procedure(array))
     }
 
     validate(input: ByteArrayInput): void {

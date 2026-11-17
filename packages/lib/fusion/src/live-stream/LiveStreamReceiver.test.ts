@@ -169,7 +169,7 @@ it.each(packageTypes)("delivers a stable frame when its first listener retires i
     expect(deliveries).toEqual(["first", "second", "third", "second", "third"])
 })
 
-it("defers additions and keeps removals from changing the current frame snapshot", () => {
+it("defers additions and skips listeners removed earlier in the current frame", () => {
     const test = fixture()
     const deliveries: string[] = []
     let firstFrame = true
@@ -187,7 +187,7 @@ it("defers additions and keeps removals from changing the current frame snapshot
         test.frame(0, 1, output => output.writeFloat(7))
         test.receiver.dispatch()
     }
-    expect(deliveries).toEqual(["first", "second", "first", "new"])
+    expect(deliveries).toEqual(["first", "first", "new"])
 })
 
 
