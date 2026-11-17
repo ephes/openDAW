@@ -4,6 +4,7 @@ import {UUID} from "@opendaw/lib-std"
 import type {EngineCommands} from "@opendaw/studio-adapters"
 import {installAutoScroll} from "@/ui/AutoScroll"
 import {Surface} from "@/ui/surface/Surface"
+import {AnimationFrame} from "@opendaw/lib-dom"
 
 export const monitoringGraph = async () => {
     const context = new AudioContext()
@@ -63,7 +64,8 @@ export const pointerOwnership = async () => {
         measured++; return {xMin: 0, xMax: 100, yMin: 0, yMax: 100}
     }})
     const pointer = (to: EventTarget, type: string, pointerId: number) => to.dispatchEvent(new PointerEvent(type, {pointerId, clientX: 200}))
-    const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    AnimationFrame.start(window)
     try {
         pointer(target, "pointerdown", 1); pointer(document, "pointermove", 1)
         pointer(document, "pointermove", 2); pointer(document, "pointerup", 2)
@@ -78,5 +80,5 @@ export const pointerOwnership = async () => {
         pointer(document, "pointermove", 1); pointer(target, "pointerdown", 1)
         await frame()
         return {continued, stopped: scrolled === stoppedAt, retired: measured === measuredAt}
-    } finally {owner.terminate(); target.remove(); Surface.get = previous}
+    } finally {owner.terminate(); target.remove(); Surface.get = previous; AnimationFrame.stop()}
 }
