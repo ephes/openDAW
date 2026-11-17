@@ -63,7 +63,11 @@ export class Delay {
     }
 
     #updateDelayTime(): void {
-        if (this.#targetOffset !== this.#currentOffset) {
+        if (this.#targetOffset === this.#currentOffset) {
+            this.#alphaPosition = 0
+            this.#deltaOffset = 0.0
+            this.#interpolating = false
+        } else {
             this.#alphaPosition = this.#interpolationLength
             this.#deltaOffset = (this.#targetOffset - this.#currentOffset) / this.#alphaPosition
             this.#interpolating = true

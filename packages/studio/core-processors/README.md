@@ -189,3 +189,24 @@ including after reset; smoothing begins only after actual frames were processed.
 Auxiliary send enable state gates its effective gain while preserving the saved
 level and pan. Disabling and re-enabling use the existing gain ramps. Existing
 projects default auxiliary sends to enabled.
+
+Fold oversampling retains all 31 halfband taps and uses aligned chronological even/odd
+phases at each 2x stage. Real-processor impulse/tone regressions compare 2x/4x/8x
+with direct FIR plus the fold transfer, including uneven nonzero-offset spans.
+The corrected response changes existing projects' Fold sound/latency on rebuild.
+
+### Compressor sample clock
+
+Automatic attack/release evaluate crest energy and smooth their coefficients once
+per input sample, then smooth that sample's attenuation. Future samples never
+choose earlier coefficients; event/render partitions do not change the output.
+Manual ballistics retain their attack/release values. The CTAG block APIs are
+called with single-sample spans to preserve this causal ordering without allocating
+coefficient buffers on the audio thread.
+
+Automatic makeup also advances per sample from the undelayed smoothed attenuation.
+Its input weight is `1 - 0.97^(1/128)`, preserving the former 0.03-per-render-quantum
+time constant. Each sample keeps its own makeup while lookahead transforms gain
+reduction. The estimator continues tracking when disabled (zero makeup applied),
+and reset retires both estimator and retained sample gains. Empty spans advance
+neither state nor meters. Rebuilds change automatic compressor dynamics/loudness.

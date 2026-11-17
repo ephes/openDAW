@@ -75,7 +75,7 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
     #makeup: number = 0.0
     #mix: number = 1.0
 
-    #autoMakeup: number = 0.0
+    readonly #autoMakeupSignal: Float32Array = new Float32Array(RenderQuantum)
 
     #inpMax: number = 0.0
     #outMax: number = 0.0
@@ -116,7 +116,8 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
         this.#delay = new DelayLine(sampleRate, 0.005, RenderQuantum, 2)
         this.#lookaheadProcessor = new LookAhead(sampleRate, this.#lookaheadDelay, RenderQuantum)
         this.#smoothedAutoMakeup = new SmoothingFilter(sampleRate)
-        this.#smoothedAutoMakeup.setAlpha(0.03)
+        // Preserve the former 0.03-per-quantum time constant on the sample clock.
+        this.#smoothedAutoMakeup.setAlpha(1 - Math.pow(0.97, 1 / RenderQuantum))
 
         this.#sidechainSignal = new Float32Array(RenderQuantum)
         this.#originalSignal = [
@@ -171,7 +172,7 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
         this.#sidechainSignal.fill(0.0)
         this.#originalSignal[0].fill(0.0)
         this.#originalSignal[1].fill(0.0)
-        this.#autoMakeup = 0.0
+        this.#autoMakeupSignal.fill(0.0)
         this.#inpMax = 0.0
         this.#outMax = 0.0
         this.#redMin = 0.0
@@ -194,6 +195,7 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
     handleEvent(_event: Event): void {}
 
     processAudio({s0, s1}: Block): void {
+        if (s0 === s1) {return}
         if (this.#source.isEmpty()) {
             this.#output.clear(s0, s1)
             return
@@ -239,19 +241,24 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
             }
         }
 
-        // Calculate crest factor on max amplitude values
-        this.#ballistics.processCrestFactor(this.#sidechainSignal, s0, s1)
-
-        // Compute attenuation - converts sidechain from linear to logarithmic
-        this.#gainComputer.applyCompressionToBuffer(this.#sidechainSignal, s0, s1)
-
-        // Smooth attenuation - still logarithmic
-        this.#ballistics.applyBallistics(this.#sidechainSignal, s0, s1)
+        // Advance the detector causally: each coefficient sees only this sample's
+        // linear level and prior history, before smoothing its logarithmic attenuation.
+        // Render/event boundaries must not change the control clock.
+        for (let i = s0; i < s1; i++) {
+            this.#ballistics.processCrestFactor(this.#sidechainSignal, i, i + 1)
+            this.#gainComputer.applyCompressionToBuffer(this.#sidechainSignal, i, i + 1)
+            this.#ballistics.applyBallistics(this.#sidechainSignal, i, i + 1)
+        }
 
         this.#redMin = this.#sidechainSignal[s1 - 1]
 
-        // Calculate auto makeup
-        this.#autoMakeup = this.#calculateAutoMakeup(this.#sidechainSignal, s0, s1)
+        // Estimate from each undelayed attenuation sample; retain that sample's
+        // makeup separately while lookahead transforms the reduction buffer.
+        // Keep tracking while disabled, so re-enabling uses the current history.
+        for (let i = s0; i < s1; i++) {
+            this.#smoothedAutoMakeup.process(-this.#sidechainSignal[i])
+            this.#autoMakeupSignal[i] = this.#automakeup ? this.#smoothedAutoMakeup.getState() : 0.0
+        }
 
         // Do lookahead if enabled
         if (this.#lookahead) {
@@ -265,7 +272,7 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
         // Add makeup gain and convert sidechain to a linear domain
         for (let i = s0; i < s1; i++) {
             this.#sidechainSignal[i] = decibelsToGain(
-                this.#sidechainSignal[i] + this.#makeup + this.#autoMakeup
+                this.#sidechainSignal[i] + this.#makeup + this.#autoMakeupSignal[i]
             )
         }
 
@@ -297,15 +304,6 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
 
         this.#peaks.process(outL, outR, s0, s1)
         this.#processing = true
-    }
-
-    #calculateAutoMakeup(src: Float32Array, fromIndex: int, toIndex: int): number {
-        let sum = 0.0
-        for (let i = fromIndex; i < toIndex; i++) {
-            sum += src[i]
-        }
-        this.#smoothedAutoMakeup.process(-sum / (toIndex - fromIndex))
-        return this.#automakeup ? this.#smoothedAutoMakeup.getState() : 0.0
     }
 
     parameterChanged(parameter: AutomatableParameter): void {

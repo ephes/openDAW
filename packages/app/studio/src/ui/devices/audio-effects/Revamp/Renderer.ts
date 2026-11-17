@@ -2,8 +2,12 @@ import {CanvasUnitPainter, Scale} from "@opendaw/studio-core"
 import {int, linear, Nullable, Terminable} from "@opendaw/lib-std"
 import {RevampDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {Bell, CurveRenderer, HighPass, HighShelf, LowPass, LowShelf} from "@/ui/devices/audio-effects/Revamp/Curves.ts"
-import {ColorSets, curveSampleRate} from "./constants.ts"
-import {gainToDb} from "@opendaw/lib-dsp"
+import {ColorSets} from "./constants.ts"
+import {dbToGain, gainToDb} from "@opendaw/lib-dsp"
+
+// Match the spectrum display floor; zero-energy FFT bins are ordinary silence.
+const SPECTRUM_FLOOR_GAIN = dbToGain(-60)
+const spectrumDb = (energy: number): number => gainToDb(Math.max(SPECTRUM_FLOOR_GAIN, energy))
 
 export const plotSpectrum = (context: CanvasRenderingContext2D,
                              xAxis: Scale,
@@ -15,11 +19,12 @@ export const plotSpectrum = (context: CanvasRenderingContext2D,
     const freqStep = sampleRate / (numBins << 1)
     const width = canvas.width = canvas.clientWidth * devicePixelRatio
     const height = canvas.height = canvas.clientHeight * devicePixelRatio
+    if (width === 0 || height === 0 || numBins === 0) {return}
     let x0: int = 0 | 0
     let lastEnergy = spectrum[0]
     let currentEnergy = lastEnergy
     const path2D = new Path2D()
-    path2D.moveTo(0, (1.0 - yAxis.unitToNorm(gainToDb(lastEnergy))) * height)
+    path2D.moveTo(0, (1.0 - yAxis.unitToNorm(spectrumDb(lastEnergy))) * height)
     for (let i = 1; i < numBins; ++i) {
         const energy = spectrum[i]
         if (currentEnergy < energy) {
@@ -33,8 +38,8 @@ export const plotSpectrum = (context: CanvasRenderingContext2D,
         if (x0 < x1) {
             const xn = x1 - x0
             const scale = 1.0 / xn
-            const y1 = yAxis.unitToNorm(gainToDb(lastEnergy))
-            const y2 = yAxis.unitToNorm(gainToDb(currentEnergy))
+            const y1 = yAxis.unitToNorm(spectrumDb(lastEnergy))
+            const y2 = yAxis.unitToNorm(spectrumDb(currentEnergy))
             for (let x = 1; x <= xn; ++x) {
                 path2D.lineTo(x0 + x, (1.0 - linear(y1, y2, x * scale)) * height)
             }
@@ -56,25 +61,27 @@ export const plotSpectrum = (context: CanvasRenderingContext2D,
 export const createCurveRenderer = (canvas: HTMLCanvasElement,
                                     xAxis: Scale,
                                     yAxis: Scale,
-                                    adapter: RevampDeviceBoxAdapter): Terminable => {
+                                    adapter: RevampDeviceBoxAdapter,
+                                    sampleRate: number): Terminable => {
     const {highPass, lowShelf, lowBell, midBell, highBell, highShelf, lowPass} = adapter.namedParameter
     const renderers: ReadonlyArray<CurveRenderer> = [
-        new HighPass(highPass, ColorSets[0], curveSampleRate),
-        new LowShelf(lowShelf, ColorSets[1], curveSampleRate),
-        new Bell(lowBell, ColorSets[2], curveSampleRate),
-        new Bell(midBell, ColorSets[3], curveSampleRate),
-        new Bell(highBell, ColorSets[4], curveSampleRate),
-        new HighShelf(highShelf, ColorSets[5], curveSampleRate),
-        new LowPass(lowPass, ColorSets[6], curveSampleRate)
+        new HighPass(highPass, ColorSets[0], sampleRate),
+        new LowShelf(lowShelf, ColorSets[1], sampleRate),
+        new Bell(lowBell, ColorSets[2], sampleRate),
+        new Bell(midBell, ColorSets[3], sampleRate),
+        new Bell(highBell, ColorSets[4], sampleRate),
+        new HighShelf(highShelf, ColorSets[5], sampleRate),
+        new LowPass(lowPass, ColorSets[6], sampleRate)
     ]
     let responseArrays: Nullable<[Float32Array, Float32Array, Float32Array]> = null
     const canvasPainter = new CanvasUnitPainter(canvas, xAxis, yAxis, painter => {
+        if (painter.actualWidth <= 0 || painter.actualHeight <= 0) {return}
         if (responseArrays === null || responseArrays[0].length !== painter.actualWidth) {
             const n = Math.ceil(painter.actualWidth)
             responseArrays = [new Float32Array(n), new Float32Array(n), new Float32Array(n)]
             const frequencies = responseArrays[0]
             for (let i = 0; i < n; i++) {
-                frequencies[i] = xAxis.normToUnit(i / (n - 1)) / curveSampleRate
+                frequencies[i] = xAxis.normToUnit(n === 1 ? 0 : i / (n - 1)) / sampleRate
             }
         }
         const context = painter.context

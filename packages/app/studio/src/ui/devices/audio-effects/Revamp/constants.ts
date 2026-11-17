@@ -12,9 +12,6 @@ export const symbols = [
     IconSymbol.Peak, IconSymbol.Peak, IconSymbol.Peak,
     IconSymbol.HighShelf, IconSymbol.LowPass
 ]
-// Must be at least twice the highest frequency (nyquist), but the higher, the smoother the response.
-// Although at some point, we might run into float precision issues.
-export const curveSampleRate = 96_000
 const hue = ValueMapping.linear(10.0, 330.0)
 export const ColorSets: ReadonlyArray<ColorSet> = Arrays.create(index => {
     const color = new Color(hue.y(index / 7), 90, 66)
