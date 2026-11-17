@@ -3,8 +3,6 @@ import {RevampDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {createCurveRenderer, plotSpectrum} from "@/ui/devices/audio-effects/Revamp/Renderer"
 import {xAxis, yAxis} from "@/ui/devices/audio-effects/Revamp/constants"
 import {LinearScale} from "@opendaw/studio-core"
-import {RevampDeviceProcessor} from "@processors/devices/audio-effects/RevampDeviceProcessor"
-import {processorFixture, block} from "@processors/devices/processor-test-fixture"
 
 const NativePath = Path2D
 class RecordedPath extends NativePath {
@@ -27,7 +25,11 @@ function canvasFixture(width: number) {
     return {canvas, context, paths}
 }
 export async function response(rate: number, band: "highBell" | "lowPass") {
+    // Processor modules read the AudioWorkletGlobalScope `sampleRate` in static initializers,
+    // so define it before loading them on the window.
     Object.assign(globalThis, {sampleRate: rate})
+    const {RevampDeviceProcessor} = await import("@processors/devices/audio-effects/RevampDeviceProcessor")
+    const {processorFixture, block} = await import("@processors/devices/processor-test-fixture")
     const f = processorFixture()
     const field = (value: number | boolean) => {
         const p = f.field(value)
