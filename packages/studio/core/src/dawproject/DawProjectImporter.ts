@@ -234,6 +234,9 @@ export namespace DawProjectImport {
                 try {
                     const channel = asDefined(track.channel)
                     const regular = channel.role === ChannelRole.REGULAR
+                    // Earlier openDAW exports wrote the structural AudioBusBox of every bus channel as a
+                    // native instrument. Bus channels are rebuilt from their channel role, so skip it.
+                    if (!regular && device.deviceRole === DeviceRole.INSTRUMENT && device.deviceID === "AudioBusBox") {return}
                     assert(device.deviceRole === DeviceRole.AUDIO_FX || regular,
                         "Native device role is unsupported on this channel")
                     assert(device.deviceRole !== DeviceRole.INSTRUMENT

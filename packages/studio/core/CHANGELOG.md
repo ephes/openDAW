@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep native DAWproject device export self-contained: selections, controller mappings and automation lanes no longer travel as device dependencies, so selected devices round-trip. Skip the structural AudioBusBox entries that earlier exports wrote on bus channels instead of refusing those files.
+
 - Refuse explicit DAWproject playStop windows before import and retain validated linear beat-based audio fades; reject unsupported fade units, note fades and invalid extents.
 
 - Restore self-contained native DAWproject device state with destination hosts; refuse unsafe/dependent state and ignored generic parameter lanes before project publication. Stop exporting buses as instrument presets.

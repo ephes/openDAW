@@ -525,7 +525,8 @@ region when the source has a nonzero event offset.
 
 DAWproject channels retain mute and solo independently of clip mute. Auxiliary
 sends retain destination, pre/post routing, gain, pan and enable state; disabled
-sends keep their saved settings while producing silence. Existing projects default
+sends keep their saved settings while producing silence and can be re-enabled from
+the mixer send menu. Existing projects default
 sends to enabled.
 
 DAWproject export refuses nonempty parameter automation regions and launcher
@@ -546,7 +547,11 @@ imported project. Missing/malformed state, wrong device identity/role, external
 pointers, dependent resources, multiple instruments and unsupported native roles
 on bus channels are explicitly refused; these devices require
 rendering or removal before interchange. No replacement instrument is substituted.
-Audio buses are channels, not native instrument presets. Nonempty generic Points
+Audio buses are channels, not native instrument presets. The structural
+`AudioBusBox` instrument entries that earlier openDAW exports wrote on bus
+channels are skipped, so those files still import. Native device state contains
+only the device and the boxes it owns: selections, controller mappings and
+automation lanes that refer to the device are not exported with it. Nonempty generic Points
 parameter lanes are refused before graph construction; dedicated tempo and
 time-signature automation remain supported.
 

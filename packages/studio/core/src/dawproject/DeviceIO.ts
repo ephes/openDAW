@@ -1,11 +1,14 @@
 import {assert, ByteArrayInput, ByteArrayOutput, Option, panic, UUID} from "@opendaw/lib-std"
 import {Address, Box, BoxGraph, Field, PointerField} from "@opendaw/lib-box"
-import {BoxIO} from "@opendaw/studio-boxes"
+import {BoxIO, TrackBox} from "@opendaw/studio-boxes"
 import {DeviceBox, DeviceBoxUtils} from "@opendaw/studio-adapters"
 
 export namespace DeviceIO {
     export const exportDevice = (box: Box): ArrayBufferLike => {
-        const dependencies = Array.from(box.graph.dependenciesOf(box).boxes)
+        // Selections, controller mappings and automation lanes refer to the device but are not its state.
+        const dependencies = Array.from(box.graph.dependenciesOf(box, {
+            excludeBox: dependency => dependency.ephemeral || dependency instanceof TrackBox
+        }).boxes)
 
         const output = ByteArrayOutput.create()
         output.writeString("openDAW:device")

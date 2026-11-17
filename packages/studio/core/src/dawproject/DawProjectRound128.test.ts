@@ -3,7 +3,7 @@ import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema} from "@opendaw/lib-dawproject"
 import {AudioData, FadingEnvelope, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
-import {AudioFileBox, AudioRegionBox, AudioUnitBox, AuxSendBox, DelayDeviceBox, FoldDeviceBox, NanoDeviceBox, PitchDeviceBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
+import {AudioFileBox, AudioRegionBox, AudioUnitBox, AuxSendBox, DelayDeviceBox, SelectionBox, FoldDeviceBox, NanoDeviceBox, PitchDeviceBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {Option, UUID} from "@opendaw/lib-std"
@@ -299,4 +299,29 @@ it("B05 catches parameter Points inside otherwise unread clip lanes", async () =
     await expect(DawProjectImport.read(project(content), resources)).rejects.toThrow(/Unsupported parameter automation lane/)
     expect(begin).not.toHaveBeenCalled()
     expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it("B05 skips the structural AudioBusBox that earlier exports wrote on bus channels", async () => {
+    const legacy = '<BuiltinDevice deviceVendor="openDAW" deviceID="AudioBusBox" deviceRole="instrument"><State path="presets/legacy-bus"/></BuiltinDevice>'
+    const source = xml(project(notes, '', aux)).replace(/<Channel id="master" role="master"\/>/, `<Channel id="master" role="master"><Devices>${legacy}</Devices></Channel>`)
+        .replace(/<Channel([^>]*)id="aux-channel"([^>]*)\/>/, `<Channel$1id="aux-channel"$2><Devices>${legacy}</Devices></Channel>`)
+    expect((source.match(/deviceID="AudioBusBox"/g) ?? [])).toHaveLength(2)
+    const {skeleton} = await DawProjectImport.read(Xml.parse(source, ProjectSchema), resources)
+    expect(resources.fromPath).not.toHaveBeenCalled()
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof AudioUnitBox)).toHaveLength(3)
+})
+it("B05 round-trips a selected native device with an empty automation lane on its parameter", async () => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    const {boxGraph} = skeleton
+    const unit = boxGraph.boxes().find(box => box instanceof AudioUnitBox && box.type.getValue() === AudioUnitType.Instrument) as AudioUnitBox
+    const [user] = skeleton.mandatoryBoxes.userInterfaceBoxes
+    boxGraph.beginTransaction()
+    const delay = DelayDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.index.setValue(0); box.feedback.setValue(0.25)})
+    SelectionBox.create(boxGraph, UUID.generate(), box => {box.selection.refer(user.selection); box.selectable.refer(delay)})
+    TrackBox.create(boxGraph, UUID.generate(), box => {box.tracks.refer(unit.tracks); box.target.refer(delay.feedback); box.index.setValue(1)})
+    boxGraph.endTransaction()
+    const {skeleton: imported} = await DawProjectImport.read(Xml.parse(xml(write(skeleton)), ProjectSchema), resources)
+    const delays = imported.boxGraph.boxes().filter(box => box instanceof DelayDeviceBox)
+    expect(delays.map(box => box.feedback.getValue())).toEqual([0.25])
+    expect(imported.boxGraph.boxes().filter(box => box instanceof SelectionBox)).toHaveLength(0)
+    expect(() => imported.boxGraph.verifyPointers()).not.toThrow()
 })
