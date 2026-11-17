@@ -30,3 +30,12 @@ directly because pointer subscription publication waits for transaction end.
 TimelineEdits covers single/two-owner trims with a shared clip, graph replay/undo,
 serialized content and shared audio warp markers. Preroll tests cover muted-first,
 all-muted and enabled holding values. All six new cases failed on the prior code.
+
+## B03
+
+The adapter owns its pointer listeners and current loader subscription. Each
+transition retires the old subscription and advances a generation; disposal
+retires the whole owner and fences saved callbacks. Synthetic loader tests cover
+pending A to cached B, empty and pending B, old loaded/error/idle callbacks, preset
+selection and repeated disposal with real pointer listener cleanup. Four tests
+failed before the repair. No font downloads or shared-loader disposal is used.

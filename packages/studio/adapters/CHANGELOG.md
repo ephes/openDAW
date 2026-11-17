@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire soundfont loader observations on every transition and release pointer observers on adapter termination; fence stale callbacks.
+
 - Isolate shared note/value and warp-marker content on start trims; ignore muted automation regions in preroll.
 
 - Flatten only supplied note/automation regions over their full union, retaining other overlaps. Preserve ratchet curves when copying note content.

@@ -103,3 +103,11 @@ Each selected region is translated once; other regions and clips retain their
 content. Seconds-based audio trims continue to change only the region offset.
 Automation preroll uses the first unmuted value region; all-muted tracks return
 the supplied fallback. Enabled regions retain their holding-value behavior.
+
+### Soundfont adapter ownership
+
+Every font transition retires the prior loader observation, including switches to
+cached fonts and clearing the file. Only the current loader generation publishes
+font/preset state. Adapter termination releases file/preset pointer observers and
+its loader observation once; queued old callbacks are inert. Shared loaders are
+not invalidated or terminated by an adapter.
