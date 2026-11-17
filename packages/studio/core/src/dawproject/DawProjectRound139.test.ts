@@ -138,3 +138,40 @@ it.each([
     expect((exported.structure[0] as TrackSchema).contentType).toBe('notes')
     expect(xml(write(imported))).toContain('contentType="notes"')
 })
+
+it('B04 traverses nested arrangement lanes with inherited tracks and explicit overrides', async () => {
+    const second = regular.replace('id="track"', 'id="second"').replace('id="channel"', 'id="second-channel"')
+    const clip = `<Clips><Clip time="2" duration="4">${notes}</Clip></Clips>`
+    const nested = `<Lanes track="track"><Lanes><Lanes>${clip}<Lanes track="second">${clip}</Lanes></Lanes></Lanes></Lanes>`
+    const {skeleton} = await read(source(nested, regular + second + master))
+    const regions = skeleton.boxGraph.boxes().filter(box => box instanceof NoteRegionBox)
+    expect(regions).toHaveLength(2)
+    expect(regions.map(box => [box.position.getValue(), box.duration.getValue()])).toEqual([[2 * q, 4 * q], [2 * q, 4 * q]])
+    const hosts = regions.map(box => (box.regions.targetVertex.unwrap().box as TrackBox).tracks.targetVertex.unwrap().box)
+    expect(new Set(hosts).size).toBe(2)
+    const flat = (await read(source(`<Lanes><Lanes track="track">${clip}</Lanes><Lanes track="second">${clip}</Lanes></Lanes>`, regular + second + master))).skeleton
+    expect(flat.boxGraph.boxes().filter(box => box instanceof NoteEventBox).map(box => box.pitch.getValue())).toEqual(
+        skeleton.boxGraph.boxes().filter(box => box instanceof NoteEventBox).map(box => box.pitch.getValue()))
+})
+it('B04 rejects an unknown nested track identity before graph construction', async () => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(read(source(`<Lanes track="track"><Lanes><Lanes track="missing"><Clips><Clip time="0" duration="4">${notes}</Clip></Clips></Lanes></Lanes></Lanes>`))).rejects.toThrow(/track reference/i)
+    expect(begin).not.toHaveBeenCalled()
+})
+it.each([
+    `<Notes id="shared"><Note time="0" duration="1" key="60" channel="0"/></Notes>`,
+    `<Notes id="shared"/><Notes id="shared"/>`,
+    '<Clips id="shared"><Clip reference="shared"/></Clips>',
+    ''
+])('B04 refuses clip references explicitly before publishing a partial arrangement', async shared => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    const clip = `<Clips><Clip time="0" duration="4">${shared}</Clip><Clip time="4" duration="4" reference="shared"/></Clips>`
+    await expect(read(source(`<Lanes><Lanes track="track">${clip}</Lanes></Lanes>`))).rejects.toThrow(/clip reference/i)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it('B04 refuses lanes inside clip content instead of accepting an ignored subtree', async () => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(read(source(lanes('<Lanes><Lanes/></Lanes>')))).rejects.toThrow(/clip lane/i)
+    expect(begin).not.toHaveBeenCalled()
+})

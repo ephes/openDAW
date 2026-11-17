@@ -40,3 +40,12 @@ imported with Undefined track type. Tests now check the full subtree, notes and
 pointers and native factory track-type agreement in import and export. Existing
 dependent-resource refusal regressions remain in the full suite.
 The same build/lint/test and browser commands are run after this bundle.
+
+## B04: lane traversal and clip references
+
+Compare flat and three-level arrangement lanes, inherited/explicit track identities
+and note positions. Unknown nested tracks refuse during preflight. Choose the
+scout's bounded early-refusal option for clip references, including shared notes,
+duplicate IDs, dangling and cyclic declarations. Clip-contained lanes also refuse
+instead of disappearing. All seven new cases fail against B03.
+The same build/lint/test and browser commands are run after this bundle.

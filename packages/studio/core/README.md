@@ -606,3 +606,10 @@ retains its own declared routing and arrangement identity. Native instrument
 track kinds use the instrument's public content tag (audio/notes), including
 MIDIOutput, Apparat and Soundfont. Native state with external/dependent resources
 continues to be refused; another instrument is never substituted.
+
+Arrangement Lanes recurse at every admitted level. A lane inherits its enclosing
+track unless it declares an override, which must identify a known structure track.
+Clip references (shared, dangling, ambiguous or cyclic) are explicitly refused
+before graph construction; supply inline content instead. Lanes nested inside
+clip content are refused because their playback coordinate composition is not
+implemented. Ordinary inline clips and nested arrangement lanes remain supported.

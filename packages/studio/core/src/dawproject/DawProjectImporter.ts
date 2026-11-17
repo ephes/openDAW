@@ -108,7 +108,11 @@ export namespace DawProjectImport {
         if (contentType === "notes") return Option.wrap(CaptureMidiBox.create(boxGraph, UUID.generate()))
         return Option.None
     }
+    const requireInlineClip = (clip: ClipSchema): void => {
+        assert(clip.reference === undefined, "Unsupported clip reference: inline content is required")
+    }
     const clipFades = (clip: ClipSchema) => {
+        requireInlineClip(clip)
         assert(clip.playStop === undefined, "Unsupported clip playStop: explicit source stop windows cannot be imported")
         const fadeIn = clip.fadeInTime ?? 0, fadeOut = clip.fadeOutTime ?? 0
         assert([fadeIn, fadeOut].every(value => Number.isFinite(value) && value >= 0 && value <= (clip.duration ?? 0)),
@@ -177,6 +181,7 @@ export namespace DawProjectImport {
         const unit = content.timeUnit ?? inheritedUnit
         requireBeats(unit)
         if (isInstanceOf(content, ClipsSchema)) {
+            content.clips.forEach(requireInlineClip)
             assert(content.clips.length === 1 && content.clips[0].content?.length === 1,
                 "Unsupported nested Clips: expected one clip with one content")
             // The supported wrapper uses the outer clip's playback coordinates.
@@ -190,7 +195,7 @@ export namespace DawProjectImport {
             assert(fadeIn === 0 && fadeOut === 0, "Unsupported note clip fade")
             noteCoordinates(clip)
         } else if (isInstanceOf(content, LanesSchema)) {
-            validateTimeline(content, unit)
+            panic("Unsupported clip lanes: arrangement lanes must be outside clips")
         } else if (isInstanceOf(content, PointsSchema)) {
             assert((content.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(content, WarpsSchema)) {
@@ -205,14 +210,19 @@ export namespace DawProjectImport {
     }
 
     // Admission happens before creating boxes, so unsupported nesting never imports partially.
-    const validateTimeline = (timeline: TimelineSchema, inheritedUnit = "beats"): void => {
+    const validateTimeline = (timeline: TimelineSchema, inheritedUnit = "beats", inheritedTrack?: string,
+                              trackIds?: ReadonlySet<string>): void => {
         const unit = timeline.timeUnit ?? inheritedUnit
+        const track = timeline.track ?? inheritedTrack
         requireBeats(unit)
+        assert(timeline.track === undefined || trackIds?.has(timeline.track) === true,
+            `Unsupported track reference '${timeline.track}'`)
         if (isInstanceOf(timeline, LanesSchema)) {
-            timeline.lanes?.forEach(child => validateTimeline(child, unit))
+            timeline.lanes?.forEach(child => validateTimeline(child, unit, track, trackIds))
         } else if (isInstanceOf(timeline, PointsSchema)) {
             assert((timeline.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(timeline, ClipsSchema)) {
+            assert(timeline.clips.length === 0 || track !== undefined, "Clips must have a track reference")
             timeline.clips.forEach(clip => {
                 clipFades(clip)
                 const contentUnit = clip.contentTimeUnit ?? unit
@@ -223,10 +233,14 @@ export namespace DawProjectImport {
     }
 
     // Resolve the complete declared route graph before reading native state or allocating boxes.
-    const validateRouting = (tracks: ReadonlyArray<LaneSchema>): void => {
+    const validateRouting = (tracks: ReadonlyArray<LaneSchema>): ReadonlySet<string> => {
+        const trackIds = new Set<string>()
         const channels = new Map<string, ChannelSchema>()
         const collect = (lanes: ReadonlyArray<LaneSchema>): void => lanes.forEach(lane => {
             if (!isInstanceOf(lane, TrackSchema)) {return}
+            const trackId = asDefined(lane.id, "Track must have an Id")
+            assert(!trackIds.has(trackId), `Duplicate track reference '${trackId}'`)
+            trackIds.add(trackId)
             const channel = asDefined(lane.channel, "Track has no Channel")
             const id = asDefined(channel.id, "Channel must have an Id")
             assert(!channels.has(id), `Duplicate routing channel '${id}'`)
@@ -255,11 +269,12 @@ export namespace DawProjectImport {
             visited.add(id)
         }
         channels.forEach((_, id) => visit(id))
+        return trackIds
     }
 
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
-        validateRouting(schema.structure)
-        if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
+        const trackIds = validateRouting(schema.structure)
+        if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes, "beats", undefined, trackIds)}
         if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
         if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
         schema.arrangement?.tempoAutomation?.points?.forEach(point => {
@@ -531,16 +546,16 @@ export namespace DawProjectImport {
                 return Promise.all(clips.map(clip => readAnyRegion(clip, trackBox)))
             }
 
-            const readLane = (lane: LanesSchema): Promise<unknown> => {
-                const track = lane.track // links to track in structure
-                return Promise.all(lane?.lanes?.map(timeline => {
-                    if (isInstanceOf(timeline, ClipsSchema)) {
-                        return readTrackRegions(timeline, asDefined(track, "Region(Clips) must have an id."))
-                    } else if (isInstanceOf(timeline, PointsSchema)) {
-                        // TODO How to get the actual parameter?
-                        // console.debug(timeline.target?.parameter)
-                    }
-                }) ?? [])
+            const readLane = (timeline: TimelineSchema, inheritedTrack?: string): Promise<unknown> => {
+                const track = timeline.track ?? inheritedTrack
+                if (isInstanceOf(timeline, LanesSchema)) {
+                    return Promise.all(timeline.lanes?.map(child => readLane(child, track)) ?? [])
+                } else if (isInstanceOf(timeline, ClipsSchema)) {
+                    if (timeline.clips.length === 0) {return Promise.resolve()}
+                    return readTrackRegions(timeline, asDefined(track, "Clips must have a track reference"))
+                }
+                // Nonempty parameter Points were refused during preflight.
+                return Promise.resolve()
             }
 
             const readAnyRegion = (clip: ClipSchema, trackBox: TrackBox): Promise<unknown> => {
@@ -707,8 +722,7 @@ export namespace DawProjectImport {
 
             ifDefined(arrangement.timeSignatureAutomation, readSignatureAutomation)
 
-            return Promise.all(arrangement?.lanes?.lanes?.filter(timeline => isInstanceOf(timeline, LanesSchema))
-                .map(readLane) ?? [])
+            return arrangement.lanes === undefined ? Promise.resolve() : readLane(arrangement.lanes)
         }
         await ifDefined(schema.arrangement, arrangement => readArrangement(arrangement))
         outputPointers.forEach(({target, pointer}) => {
