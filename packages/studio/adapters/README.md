@@ -125,6 +125,9 @@ Value collections identify points by integer `(position, index)`. Creating the s
 key again in one transaction updates its value/interpolation, including pending
 points and replacements; indices 0 and 1 still represent intentional jumps. The
 lookup follows immediate graph updates rather than scanning notified adapters.
+One shared listener per box graph routes each update only to the collection that
+indexes the box and to the collection a pointer or new box now targets, so the
+cost of an update does not grow with the number of automation collections.
 After an aborted graph transaction, collections rebuild their editor index from
 the restored pointers, including replacement box instances. Editors may still
 remove points temporarily to avoid collisions during promotion and batch moves.

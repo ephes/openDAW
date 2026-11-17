@@ -119,3 +119,38 @@ it("retains identity-mapped parameter interpolation when cutting", () => {
     expect(f.collection.valueAt(25, -1)).toBeCloseTo(0.35)
     expect(f.collection.valueAt(75, -1)).toBeCloseTo(0.65)
 })
+
+it("shares one graph update listener across collections and routes transfers between them", () => {
+    const {boxGraph} = ProjectSkeleton.empty({createDefaultUser: true, createOutputMaximizer: false})
+    const context = {boxGraph} as BoxAdaptersContext
+    Object.assign(context, {boxAdapters: new BoxAdapters(context)})
+    const editing = new BoxEditing(boxGraph)
+    const subscribe = vi.spyOn(boxGraph, "subscribeToAllUpdatesImmediate")
+    const findBox = vi.spyOn(boxGraph, "findBox")
+    const linear = (position: number) => ({position, index: 0, value: 0.5, interpolation: Interpolation.Linear})
+    editing.modify(() => {
+        const [a, b, c] = [0, 1, 2].map(() => ValueEventCollectionBox.create(boxGraph, UUID.generate()))
+        const [left, right, unrelated] = [a, b, c].map(box => context.boxAdapters.adapterFor(box, ValueEventCollectionBoxAdapter))
+        expect(subscribe).toHaveBeenCalledTimes(1)
+        const event = left.createEvent(linear(40))
+        const lookupsPerUpdate = () => {
+            findBox.mockClear()
+            event.box.value.setValue(event.box.value.getValue() + 0.01)
+            return findBox.mock.calls.length
+        }
+        const before = lookupsPerUpdate()
+        const extra = Array.from({length: 20}, () => ValueEventCollectionBox.create(boxGraph, UUID.generate()))
+        extra.forEach(box => context.boxAdapters.adapterFor(box, ValueEventCollectionBoxAdapter))
+        // Unrelated collections are not visited for an update of another collection's event.
+        expect(lookupsPerUpdate()).toBe(before)
+        expect(subscribe).toHaveBeenCalledTimes(1)
+        event.box.events.refer(b.events)
+        expect(left.createEvent(linear(40)).box).not.toBe(event.box)
+        expect(right.createEvent(linear(40)).box).toBe(event.box)
+        event.box.position.setValue(80)
+        expect(right.createEvent(linear(80)).box).toBe(event.box)
+        expect(unrelated.createEvent(linear(80)).box).not.toBe(event.box)
+        boxGraph.boxes().filter(box => box instanceof ValueEventBox).forEach(box => box.delete())
+        ;[a, b, c, ...extra].forEach(box => box.delete())
+    })
+})

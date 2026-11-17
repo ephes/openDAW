@@ -9,7 +9,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Split automation ramps in stored-value space, preserving raw BPM playback and curve slopes when inserting unchanged tempo points.
 
-- Index automation keys across pending graph edits, moves and history without per-insertion scans; rebuild editor event indexes from restored graph pointers on transaction rollback.
+- Index automation keys across pending graph edits, moves and history without per-insertion scans, through one shared update router per graph instead of a listener per collection; rebuild editor event indexes from restored graph pointers on transaction rollback.
 
 - Expose auxiliary send enable state for playback and DAWproject interchange.
 

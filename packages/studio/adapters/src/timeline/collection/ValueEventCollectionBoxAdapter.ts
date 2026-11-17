@@ -15,7 +15,7 @@ import {
     UUID,
     ValueMapping
 } from "@opendaw/lib-std"
-import {Address, Box, Update} from "@opendaw/lib-box"
+import {Address, Box, BoxGraph, Update} from "@opendaw/lib-box"
 import {EventCollection, Interpolation, ppqn, ValueEvent} from "@opendaw/lib-dsp"
 import {Pointers} from "@opendaw/studio-enums"
 import {BoxAdapter} from "../../BoxAdapter"
@@ -30,6 +30,48 @@ type CreateEventParams = {
     interpolation: Interpolation
 }
 
+type IndexListener = {readonly reindex: (uuid: UUID.Bytes, id: string) => void}
+type IndexRouter = {
+    // event box id -> the collection that currently indexes it
+    readonly owners: Map<string, IndexListener>
+    // collection box id -> its adapter in this graph
+    readonly collections: Map<string, IndexListener>
+    readonly subscription: Subscription
+}
+const indexRouters = new WeakMap<BoxGraph, IndexRouter>()
+
+// One immediate update listener per graph routes each update to at most the collection
+// that indexes the box and the collection a pointer/new box now targets, so the cost of
+// an update does not grow with the number of automation collections.
+const indexRouterFor = (graph: BoxGraph): IndexRouter => {
+    const existing = indexRouters.get(graph)
+    if (existing !== undefined) {return existing}
+    const owners = new Map<string, IndexListener>()
+    const collections = new Map<string, IndexListener>()
+    const subscription = graph.subscribeToAllUpdatesImmediate({
+        onUpdate: (update: Update) => {
+            const uuid = update.type === "new" || update.type === "delete" ? update.uuid : update.address.uuid
+            const id = UUID.toString(uuid)
+            const owner = owners.get(id)
+            owner?.reindex(uuid, id)
+            let target: Option<Address> = Option.None
+            if (update.type === "pointer") {
+                target = update.newAddress
+            } else if (update.type === "new") {
+                const box = graph.findBox(uuid).unwrapOrNull()
+                if (box instanceof ValueEventBox) {target = box.events.targetAddress}
+            }
+            target.ifSome(address => {
+                const collection = collections.get(UUID.toString(address.uuid))
+                if (collection !== undefined && collection !== owner) {collection.reindex(uuid, id)}
+            })
+        }
+    })
+    const router: IndexRouter = {owners, collections, subscription}
+    indexRouters.set(graph, router)
+    return router
+}
+
 export class ValueEventCollectionBoxAdapter implements BoxAdapter {
     readonly #terminator: Terminator = new Terminator()
 
@@ -41,10 +83,19 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
     readonly #events: EventCollection<ValueEventBoxAdapter>
     readonly #eventKeys = new Map<string, Set<ValueEventBox>>()
     readonly #indexedBoxes = new Map<string, {box: ValueEventBox, key: string}>()
+    readonly #router: IndexRouter
+    readonly #indexListener: IndexListener
 
     constructor(context: BoxAdaptersContext, box: ValueEventCollectionBox) {
         this.#context = context
         this.#box = box
+        this.#router = indexRouterFor(context.boxGraph)
+        this.#indexListener = {
+            reindex: (uuid: UUID.Bytes, id: string) => {
+                const target = context.boxGraph.findBox(uuid).unwrapOrNull()
+                if (target instanceof ValueEventBox) {this.#indexBox(target)} else {this.#unindexBox(id)}
+            }
+        }
 
         this.#changeNotifier = new Notifier<this>()
         this.#adapters = UUID.newSet(adapter => adapter.uuid)
@@ -70,18 +121,19 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         }))
         // Immediate graph updates include staged boxes before deferred pointer notifications,
         // field moves, transfers, deletion and the inverse updates of an abort.
-        this.#terminator.own(context.boxGraph.subscribeToAllUpdatesImmediate({
-            onUpdate: (update: Update) => {
-                const uuid = update.type === "new" || update.type === "delete" ? update.uuid : update.address.uuid
-                const box = context.boxGraph.findBox(uuid).unwrapOrNull()
-                if (box instanceof ValueEventBox) {
-                    this.#indexBox(box)
-                } else if (box === null && this.#indexedBoxes.size > 0) {
-                    // Only value event boxes are indexed; any other live box is irrelevant here.
-                    this.#unindexBox(UUID.toString(uuid))
+        const collectionId = UUID.toString(this.#box.address.uuid)
+        this.#router.collections.set(collectionId, this.#indexListener)
+        this.#terminator.own({
+            terminate: () => {
+                this.#clearIndex()
+                const {owners, collections, subscription} = this.#router
+                if (collections.get(collectionId) === this.#indexListener) {collections.delete(collectionId)}
+                if (collections.size === 0 && owners.size === 0 && indexRouters.get(context.boxGraph) === this.#router) {
+                    subscription.terminate()
+                    indexRouters.delete(context.boxGraph)
                 }
             }
-        }))
+        })
         this.#terminator.own(context.boxGraph.subscribeTransaction({
             onBeginTransaction: () => {},
             onEndTransaction: rolledBack => {
@@ -91,8 +143,7 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
                 // new box instances under the original UUIDs.
                 this.#adapters.clear()
                 this.#events.clear()
-                this.#eventKeys.clear()
-                this.#indexedBoxes.clear()
+                this.#clearIndex()
                 this.#box.events.pointerHub.incoming().forEach(({box}) => addValueProcedure(box))
                 this.#onEventsChanged()
             }
@@ -228,6 +279,15 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         entries.delete(previous.box)
         if (entries.size === 0) {this.#eventKeys.delete(previous.key)}
         this.#indexedBoxes.delete(id)
+        if (this.#router.owners.get(id) === this.#indexListener) {this.#router.owners.delete(id)}
+    }
+
+    #clearIndex(): void {
+        this.#indexedBoxes.forEach((_, id) => {
+            if (this.#router.owners.get(id) === this.#indexListener) {this.#router.owners.delete(id)}
+        })
+        this.#indexedBoxes.clear()
+        this.#eventKeys.clear()
     }
 
     #indexBox(box: ValueEventBox): void {
@@ -239,6 +299,12 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         entries.add(box)
         this.#eventKeys.set(key, entries)
         this.#indexedBoxes.set(id, {box, key})
+        // A box targets one collection. If another collection still claims it (for example
+        // when this adapter was created while a transfer update was being dispatched), let it
+        // drop its stale entry before taking over the route.
+        const previousOwner = this.#router.owners.get(id)
+        if (previousOwner !== undefined && previousOwner !== this.#indexListener) {previousOwner.reindex(box.address.uuid, id)}
+        this.#router.owners.set(id, this.#indexListener)
     }
 
     #onEventsChanged(): void {this.#changeNotifier.notify(this)}
