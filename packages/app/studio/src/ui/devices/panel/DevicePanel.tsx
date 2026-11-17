@@ -207,12 +207,14 @@ export const DevicePanel = ({lifecycle, service}: Construct) => {
     }
     const freezeLifecycle = lifecycle.own(new Terminator())
     const chainLifeTime = lifecycle.own(new Terminator())
+    const selectionLifecycle = lifecycle.own(new Terminator())
     lifecycle.own(service.projectProfileService.catchupAndSubscribe((option: Option<ProjectProfile>) => {
+            selectionLifecycle.terminate()
             chainLifeTime.terminate()
             freezeLifecycle.terminate()
             option.ifSome(({project}) => {
                 freezeLifecycle.own(project.audioUnitFreeze.subscribe(() => updateFrozenState()))
-                project.userEditingManager.audioUnit.catchupAndSubscribe((target) => {
+                selectionLifecycle.own(project.userEditingManager.audioUnit.catchupAndSubscribe((target) => {
                     chainLifeTime.terminate()
                     if (target.isEmpty()) {return}
                     const editingBox = target.unwrap().box
@@ -224,7 +226,7 @@ export const DevicePanel = ({lifecycle, service}: Construct) => {
                         host: deviceHost
                     }))
                     updateFrozenState()
-                })
+                }))
             })
         })
     )
@@ -275,6 +277,8 @@ export const DevicePanel = ({lifecycle, service}: Construct) => {
             }
         }),
         Events.subscribe(element, "keydown", (event: KeyboardEvent) => {
+            if (event.defaultPrevented || event.isComposing
+                || Events.isTextInput(event.composedPath()[0] ?? event.target)) {return}
             if (Keyboard.isDelete(event)) {
                 const {deviceSelection, editing} = service.project
                 if (deviceSelection.isEmpty()) {return}

@@ -23,6 +23,10 @@ export const ControlValues = ({lifecycle, project, adapter}: Construct) => (
                 lifecycle: Terminable
             }>(({uuid}) => uuid)
             lifecycle.ownAll(
+                Terminable.create(() => {
+                    set.forEach(row => row.lifecycle.terminate())
+                    set.clear()
+                }),
                 adapter.box.parameters.pointerHub.catchupAndSubscribe({
                     onAdded: ({box}) => {
                         const parameterBox = asInstanceOf(box, MIDIOutputParameterBox)

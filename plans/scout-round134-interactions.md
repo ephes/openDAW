@@ -34,3 +34,17 @@ frame callback checks DPR before returning idle: a density-only change resizes
 and draws once. Hidden canvases retain work and retirement stops frames.
 `painter.test.ts` uses recording frame/resize/context seams, including resize,
 reentrant requests, hidden canvases and teardown.
+
+## Device view ownership and deletion (B03)
+
+The panel owns the project-selection subscription separately from its replaceable
+chain. It releases that subscription before switching profiles and at teardown.
+MIDI CC row views are retired on individual removal or parent teardown; cleaning
+up a view does not delete the persisted parameters.
+
+The panel's raw Delete/Backspace handler respects `defaultPrevented`, composition
+and the same composed-origin `Events.isTextInput` policy used by shortcuts.
+Deliberate effect-header deletion remains a single undoable graph edit with
+contiguous surviving effect indexes. Component tests use actual graph boxes,
+BoxEditing and NumberInput, with counted mounts/row subscriptions at the view
+boundary. jsdom's missing contenteditable inheritance is covered by Chromium.
