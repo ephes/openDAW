@@ -31,6 +31,7 @@ import {
     EqualizerSchema,
     LaneSchema,
     LanesSchema,
+    MarkerSchema,
     NotesSchema,
     PointsSchema,
     ProjectSchema,
@@ -53,10 +54,10 @@ import {
     AudioUnitBox,
     AuxSendBox,
     BoxIO,
-    BoxVisitor,
     CaptureAudioBox,
     CaptureMidiBox,
     GrooveShuffleBox,
+    MarkerBox,
     NoteEventBox,
     NoteEventCollectionBox,
     NoteRegionBox,
@@ -83,6 +84,7 @@ import {
     TrackType
 } from "@opendaw/studio-adapters"
 import {DawProject} from "./DawProject"
+import {beatTimeToPulses, requireTempoBpm} from "./DawProjectTiming"
 import {DeviceIO} from "./DeviceIO"
 import {BuiltinDevices} from "./BuiltinDevices"
 import {AudioContentHelpers} from "../project/audio/AudioContentHelpers"
@@ -108,7 +110,11 @@ export namespace DawProjectImport {
         if (contentType === "notes") return Option.wrap(CaptureMidiBox.create(boxGraph, UUID.generate()))
         return Option.None
     }
+    const requireInlineClip = (clip: ClipSchema): void => {
+        assert(clip.reference === undefined, "Unsupported clip reference: inline content is required")
+    }
     const clipFades = (clip: ClipSchema) => {
+        requireInlineClip(clip)
         assert(clip.playStop === undefined, "Unsupported clip playStop: explicit source stop windows cannot be imported")
         const fadeIn = clip.fadeInTime ?? 0, fadeOut = clip.fadeOutTime ?? 0
         assert([fadeIn, fadeOut].every(value => Number.isFinite(value) && value >= 0 && value <= (clip.duration ?? 0)),
@@ -177,10 +183,19 @@ export namespace DawProjectImport {
         const unit = content.timeUnit ?? inheritedUnit
         requireBeats(unit)
         if (isInstanceOf(content, ClipsSchema)) {
+            content.clips.forEach(requireInlineClip)
             assert(content.clips.length === 1 && content.clips[0].content?.length === 1,
                 "Unsupported nested Clips: expected one clip with one content")
-            // The supported wrapper uses the outer clip's playback coordinates.
-            const nestedFades = clipFades(content.clips[0])
+            // Flatten only a transparent source window; the outer clip owns placement/trim.
+            const inner = content.clips[0]
+            const sourceEnd = clip.loopEnd ?? (clip.playStart ?? 0) + asDefined(clip.duration, "Duration not defined")
+            // Independently rounded six-decimal coordinates may disagree by ~1.5 microbeats.
+            const sourceEndTolerance = 1.5e-6 * (1 + 1e-6)
+            assert((inner.time ?? 0) === 0 && (inner.playStart ?? 0) === 0
+                && (inner.loopStart ?? 0) === 0 && inner.loopEnd === undefined && inner.enable !== false
+                && (inner.duration === undefined || (Number.isFinite(inner.duration) && inner.duration >= sourceEnd - sourceEndTolerance)),
+            "Unsupported nested clip coordinates: expected a transparent inner source window")
+            const nestedFades = clipFades(inner)
             assert(nestedFades.fadeIn === 0 && nestedFades.fadeOut === 0, "Unsupported nested clip fades: only the outer playback envelope is supported")
             const nestedUnit = content.clips[0].contentTimeUnit ?? unit
             requireBeats(nestedUnit)
@@ -190,7 +205,7 @@ export namespace DawProjectImport {
             assert(fadeIn === 0 && fadeOut === 0, "Unsupported note clip fade")
             noteCoordinates(clip)
         } else if (isInstanceOf(content, LanesSchema)) {
-            validateTimeline(content, unit)
+            panic("Unsupported clip lanes: arrangement lanes must be outside clips")
         } else if (isInstanceOf(content, PointsSchema)) {
             assert((content.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(content, WarpsSchema)) {
@@ -205,14 +220,19 @@ export namespace DawProjectImport {
     }
 
     // Admission happens before creating boxes, so unsupported nesting never imports partially.
-    const validateTimeline = (timeline: TimelineSchema, inheritedUnit = "beats"): void => {
+    const validateTimeline = (timeline: TimelineSchema, inheritedUnit = "beats", inheritedTrack?: string,
+                              trackIds?: ReadonlySet<string>): void => {
         const unit = timeline.timeUnit ?? inheritedUnit
+        const track = timeline.track ?? inheritedTrack
         requireBeats(unit)
+        assert(timeline.track === undefined || trackIds?.has(timeline.track) === true,
+            `Unsupported track reference '${timeline.track}'`)
         if (isInstanceOf(timeline, LanesSchema)) {
-            timeline.lanes?.forEach(child => validateTimeline(child, unit))
+            timeline.lanes?.forEach(child => validateTimeline(child, unit, track, trackIds))
         } else if (isInstanceOf(timeline, PointsSchema)) {
             assert((timeline.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(timeline, ClipsSchema)) {
+            assert(timeline.clips.length === 0 || track !== undefined, "Clips must have a track reference")
             timeline.clips.forEach(clip => {
                 clipFades(clip)
                 const contentUnit = clip.contentTimeUnit ?? unit
@@ -222,10 +242,108 @@ export namespace DawProjectImport {
         }
     }
 
+    // Resolve the complete declared route graph before reading native state or allocating boxes.
+    // Enabled routes must be acyclic. Bitwig writes disabled send slots between all FX channels
+    // (including self-sends); a disabled send that would close a cycle is dropped, in document order.
+    type Routing = { trackIds: ReadonlySet<string>, sends: ReadonlyMap<ChannelSchema, ReadonlyArray<SendSchema>> }
+    const validateRouting = (tracks: ReadonlyArray<LaneSchema>): Routing => {
+        const trackIds = new Set<string>()
+        const channels = new Map<string, ChannelSchema>()
+        const collect = (lanes: ReadonlyArray<LaneSchema>): void => lanes.forEach(lane => {
+            if (!isInstanceOf(lane, TrackSchema)) {return}
+            const trackId = asDefined(lane.id, "Track must have an Id")
+            assert(!trackIds.has(trackId), `Duplicate track reference '${trackId}'`)
+            trackIds.add(trackId)
+            const channel = asDefined(lane.channel, "Track has no Channel")
+            const id = asDefined(channel.id, "Channel must have an Id")
+            assert(!channels.has(id), `Duplicate routing channel '${id}'`)
+            channels.set(id, channel)
+            collect(lane.tracks ?? [])
+        })
+        collect(tracks)
+        const isEnabled = (send: SendSchema): boolean => send.enable?.value !== false
+        const routes = new Map<string, string[]>()
+        channels.forEach((channel, id) => {
+            const sends = channel.sends ?? []
+            const targets = [channel.destination, ...sends.map(send =>
+                asDefined(send.destination, "Send routing destination is undefined"))].filter(isDefined)
+            targets.forEach(target => {
+                const destination = channels.get(target)
+                assert(destination !== undefined && (destination.role === ChannelRole.EFFECT || destination.role === ChannelRole.MASTER),
+                    `Unsupported routing destination '${target}': expected a declared bus channel`)
+            })
+            routes.set(id, [channel.destination, ...sends.filter(isEnabled).map(send => send.destination)].filter(isDefined))
+        })
+        const visiting = new Set<string>(), visited = new Set<string>()
+        const visit = (id: string): void => {
+            assert(!visiting.has(id), "Unsupported feedback routing")
+            if (visited.has(id)) {return}
+            visiting.add(id)
+            routes.get(id)?.forEach(visit)
+            visiting.delete(id)
+            visited.add(id)
+        }
+        channels.forEach((_, id) => visit(id))
+        const reaches = (from: string, to: string): boolean => {
+            const seen = new Set<string>()
+            const walk = (id: string): boolean => {
+                if (id === to) {return true}
+                if (seen.has(id)) {return false}
+                seen.add(id)
+                return (routes.get(id) ?? []).some(walk)
+            }
+            return walk(from)
+        }
+        const admitted = new Map<ChannelSchema, ReadonlyArray<SendSchema>>()
+        channels.forEach((channel, id) => admitted.set(channel, (channel.sends ?? []).filter(send => {
+            if (isEnabled(send)) {return true}
+            const target = asDefined(send.destination)
+            if (reaches(target, id)) {return false}
+            asDefined(routes.get(id)).push(target)
+            return true
+        })))
+        return {trackIds, sends: admitted}
+    }
+
+    const markerHue = (marker: MarkerSchema): number => {
+        assert(!marker.comment, "Unsupported marker comment: native markers cannot retain comments")
+        if (marker.color === undefined) {return 0}
+        assert(/^#[0-9a-f]{6}$/i.test(marker.color), "Unsupported marker color")
+        // Like clip colors, foreign colors map to the nearest native hue.
+        return Math.round(Color.hexToHsl(marker.color).h) % 360
+    }
+
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
-        if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
+        const markers = schema.arrangement?.markers
+        if (markers !== undefined) {
+            requireBeats(markers.timeUnit ?? "beats")
+            assert(markers.track === undefined, "Unsupported marker track reference: markers belong to the arrangement")
+            markers.marker?.forEach(marker => {beatTimeToPulses(marker.time); markerHue(marker)})
+        }
+        const {trackIds, sends: admittedSends} = validateRouting(schema.structure)
+        if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes, "beats", undefined, trackIds)}
         if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
         if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
+        schema.arrangement?.tempoAutomation?.points?.forEach(point => {
+            assert(isInstanceOf(point, RealPointSchema), "Unsupported tempo point type")
+            beatTimeToPulses(point.time)
+            requireTempoBpm(asInstanceOf(point, RealPointSchema).value)
+        })
+        const signaturePoints = schema.arrangement?.timeSignatureAutomation?.points?.map(point =>
+            asInstanceOf(point, TimeSignaturePointSchema))
+            .sort((a, b) => a.time - b.time) ?? []
+        let previousPosition = 0
+        let numerator = schema.transport?.timeSignature?.numerator ?? 4
+        let denominator = schema.transport?.timeSignature?.denominator ?? 4
+        signaturePoints.forEach((point, index) => {
+            const position = beatTimeToPulses(point.time)
+            const relativeBars = (position - previousPosition) / PPQN.fromSignature(numerator, denominator)
+            assert((index === 0 && position === 0) || (Number.isInteger(relativeBars) && relativeBars >= 1),
+                "Unsupported signature time: expected a whole bar boundary under the preceding signature")
+            previousPosition = position
+            numerator = point.numerator
+            denominator = point.denominator
+        })
         const nativeStates = new Map<DeviceSchema, ArrayBuffer>()
         const validateNative = (tracks: ReadonlyArray<LaneSchema>): void => tracks.forEach(track => {
             if (!isInstanceOf(track, TrackSchema)) {return}
@@ -439,14 +557,14 @@ export namespace DawProjectImport {
                 if (channel.role === ChannelRole.REGULAR) {
                     const {audioUnitBox} = createInstrumentUnit(track, AudioUnitType.Instrument, toAudioUnitCapture(boxGraph, track.contentType))
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
-                    ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
-                    outputPointers.push({target: channel.destination!, pointer: audioUnitBox.output})
+                    createSends(audioUnitBox, admittedSends.get(channel) ?? [])
+                    ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.EFFECT) {
                     const {audioBusBox, audioUnitBox} = createAudioBusUnit(track, AudioUnitType.Aux, IconSymbol.Effects)
                     registerAudioBus(channelId, audioBusBox)
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
-                    ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
-                    outputPointers.push({target: channel.destination!, pointer: audioUnitBox.output})
+                    createSends(audioUnitBox, admittedSends.get(channel) ?? [])
+                    ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.MASTER) {
                     const isMostLikelyPrimaryOutput = primaryAudioBusUnitOption.isEmpty()
                         && depth === 0
@@ -458,6 +576,7 @@ export namespace DawProjectImport {
                         registerAudioBus(channelId, audioBusBox)
                         registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                         audioUnitBox.output.refer(rootBox.outputDevice)
+                        createSends(audioUnitBox, admittedSends.get(channel) ?? [])
                         primaryAudioBusUnitOption = Option.wrap(audioBusUnit)
                     } else {
                         const audioBusUnit = createAudioBusUnit(track, AudioUnitType.Bus, IconSymbol.AudioBus)
@@ -466,16 +585,22 @@ export namespace DawProjectImport {
                         registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                         ifDefined(channel.destination, destination =>
                             outputPointers.push({target: destination, pointer: audioUnitBox.output}))
-                        ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
-                        readTracks(track.tracks ?? [], depth + 1)
+                        createSends(audioUnitBox, admittedSends.get(channel) ?? [])
                     }
                 } else {
                     return panic(`Unknown channel role ('${channel.role}')`)
                 }
+                readTracks(track.tracks ?? [], depth + 1)
             })
         readTracks(schema.structure, 0)
 
         const readArrangement = (arrangement: ArrangementSchema): Promise<unknown> => {
+            arrangement.markers?.marker?.forEach(marker => MarkerBox.create(boxGraph, UUID.generate(), box => {
+                box.track.refer(timelineBox.markerTrack.markers)
+                box.position.setValue(beatTimeToPulses(marker.time))
+                box.label.setValue(marker.name ?? "")
+                box.hue.setValue(markerHue(marker))
+            }))
             const readTrackRegions = ({clips}: ClipsSchema, trackId: string): Promise<unknown> => {
                 const audioUnitBox = asDefined(audioUnits.get(trackId), `Cannot find track for '${trackId}'`)
                 if (audioUnitBox.type.getValue() === AudioUnitType.Output) {return Promise.resolve()}
@@ -490,16 +615,16 @@ export namespace DawProjectImport {
                 return Promise.all(clips.map(clip => readAnyRegion(clip, trackBox)))
             }
 
-            const readLane = (lane: LanesSchema): Promise<unknown> => {
-                const track = lane.track // links to track in structure
-                return Promise.all(lane?.lanes?.map(timeline => {
-                    if (isInstanceOf(timeline, ClipsSchema)) {
-                        return readTrackRegions(timeline, asDefined(track, "Region(Clips) must have an id."))
-                    } else if (isInstanceOf(timeline, PointsSchema)) {
-                        // TODO How to get the actual parameter?
-                        // console.debug(timeline.target?.parameter)
-                    }
-                }) ?? [])
+            const readLane = (timeline: TimelineSchema, inheritedTrack?: string): Promise<unknown> => {
+                const track = timeline.track ?? inheritedTrack
+                if (isInstanceOf(timeline, LanesSchema)) {
+                    return Promise.all(timeline.lanes?.map(child => readLane(child, track)) ?? [])
+                } else if (isInstanceOf(timeline, ClipsSchema)) {
+                    if (timeline.clips.length === 0) {return Promise.resolve()}
+                    return readTrackRegions(timeline, asDefined(track, "Clips must have a track reference"))
+                }
+                // Nonempty parameter Points were refused during preflight.
+                return Promise.resolve()
             }
 
             const readAnyRegion = (clip: ClipSchema, trackBox: TrackBox): Promise<unknown> => {
@@ -607,8 +732,6 @@ export namespace DawProjectImport {
             const readTempoAutomation = (tempoAutomation: PointsSchema): void => {
                 const points = tempoAutomation.points
                 if (!isDefined(points) || points.length === 0) {return}
-                const minBpm = timelineBox.tempoTrack.minBpm.getValue()
-                const maxBpm = timelineBox.tempoTrack.maxBpm.getValue()
                 const collectionBox = ValueEventCollectionBox.create(boxGraph, UUID.generate())
                 timelineBox.tempoTrack.events.refer(collectionBox.owners)
                 timelineBox.tempoTrack.enabled.setValue(true)
@@ -616,9 +739,9 @@ export namespace DawProjectImport {
                     .filter((point): point is RealPointSchema => isInstanceOf(point, RealPointSchema))
                     .forEach(point => {
                         const eventBox = ValueEventBox.create(boxGraph, UUID.generate(), box => {
-                            box.position.setValue(point.time * PPQN.Quarter)
+                            box.position.setValue(beatTimeToPulses(point.time))
                             box.index.setValue(0)
-                            box.value.setValue(TempoAutomationConverter.bpmToNormalized(point.value, minBpm, maxBpm))
+                            box.value.setValue(point.value)
                             box.events.refer(collectionBox.events)
                         })
                         const interpolation = TempoAutomationConverter.fromDawProjectInterpolation(point.interpolation)
@@ -635,9 +758,9 @@ export namespace DawProjectImport {
                     .filter((point): point is TimeSignaturePointSchema => isInstanceOf(point, TimeSignaturePointSchema))
                     .sort((pointA, pointB) => pointA.time - pointB.time)
                 if (signaturePoints.length === 0) {return}
-                // First point at or near time 0 sets the base signature
+                // An exact zero sets the base signature; preflight admitted the other bar boundaries.
                 const firstPoint = signaturePoints[0]
-                const firstPointIsAtStart = Number(firstPoint.time) < 0.001
+                const firstPointIsAtStart = firstPoint.time === 0
                 if (firstPointIsAtStart) {
                     timelineBox.signature.nominator.setValue(firstPoint.numerator)
                     timelineBox.signature.denominator.setValue(firstPoint.denominator)
@@ -650,7 +773,7 @@ export namespace DawProjectImport {
                 let prevNominator = timelineBox.signature.nominator.getValue()
                 let prevDenominator = timelineBox.signature.denominator.getValue()
                 eventsToCreate.forEach((point, index) => {
-                    const currentPpqn = point.time * PPQN.Quarter
+                    const currentPpqn = beatTimeToPulses(point.time)
                     const barDuration = PPQN.fromSignature(prevNominator, prevDenominator)
                     const relativePosition = Math.max(1, Math.round((currentPpqn - prevPpqn) / barDuration))
                     SignatureEventBox.create(boxGraph, UUID.generate(), box => {
@@ -668,16 +791,12 @@ export namespace DawProjectImport {
 
             ifDefined(arrangement.timeSignatureAutomation, readSignatureAutomation)
 
-            return Promise.all(arrangement?.lanes?.lanes?.filter(timeline => isInstanceOf(timeline, LanesSchema))
-                .map(readLane) ?? [])
+            return arrangement.lanes === undefined ? Promise.resolve() : readLane(arrangement.lanes)
         }
         await ifDefined(schema.arrangement, arrangement => readArrangement(arrangement))
         outputPointers.forEach(({target, pointer}) => {
-            const value = audioBusses.get(target)
-            // https://github.com/andremichelle/openDAW/issues/25
-            if (isDefined(value)) {
-                pointer.refer(value.input)
-            }
+            const value = asDefined(audioBusses.get(target), `Unresolved routing destination '${target}'`)
+            pointer.refer(value.input)
         })
         rootBox.audioUnits.pointerHub.incoming().forEach(({box}) => {
             const audioUnitBox = asInstanceOf(box, AudioUnitBox)
@@ -726,13 +845,11 @@ export namespace DawProjectImport {
 
     const readInputTrackType = (audioUnitBox: AudioUnitBox): TrackType => {
         const inputBox = audioUnitBox.input.pointerHub.incoming().at(0)?.box
-        // TODO Can we find a better way to determine the track type?
-        //  Because this would be another location to update when adding new instruments.
-        return inputBox?.accept<BoxVisitor<TrackType>>({
-            visitTapeDeviceBox: () => TrackType.Audio,
-            visitNanoDeviceBox: () => TrackType.Notes,
-            visitPlayfieldDeviceBox: () => TrackType.Notes,
-            visitVaporisateurDeviceBox: () => TrackType.Notes
-        }) ?? TrackType.Undefined
+        if (!isDefined(inputBox) || !DeviceBoxUtils.isInstrumentDeviceBox(inputBox)) {return TrackType.Undefined}
+        switch (inputBox.tags.content) {
+            case "audio": return TrackType.Audio
+            case "notes": return TrackType.Notes
+            default: return panic(`Unsupported instrument content '${inputBox.tags.content}'`)
+        }
     }
 }

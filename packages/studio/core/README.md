@@ -587,3 +587,56 @@ linear path. Rendering never edits events.
 
 Menu population rollback and canvas invalidation contracts are documented in
 [round 134](../../../plans/scout-round134-interactions.md).
+
+### DAWproject timing and traversal
+
+Tempo automation imports and exports native positive finite float32 BPM values.
+The editor's min/max BPM settings affect display only; interchange does not scale
+event values. BPM outside the native finite positive domain is refused before
+graph construction or resource packing.
+
+Every declared channel/send destination must resolve to a bus channel, including
+forward references and primary-output sends. Intentionally absent channel outputs
+remain disconnected. Feedback routing (including a primary send with a return
+path) is refused before native-state reads or graph construction. Bitwig writes
+disabled send slots between all FX/return channels, including self-sends. A
+disabled send that would close a cycle carries no signal and is not imported
+(document order decides which reciprocal slot remains); enabled cycles, including
+enabled self-sends, are refused as feedback. Supported primary sends retain
+enable, pre/post, level and pan.
+
+Child tracks are traversed under regular, effect and master parents. Each child
+retains its own declared routing and arrangement identity. Native instrument
+track kinds use the instrument's public content tag (audio/notes), including
+MIDIOutput, Apparat and Soundfont. Native state with external/dependent resources
+continues to be refused; another instrument is never substituted.
+
+Arrangement Lanes recurse at every admitted level. A lane inherits its enclosing
+track unless it declares an override, which must identify a known structure track.
+Clip references (shared, dangling, ambiguous or cyclic) are explicitly refused
+before graph construction; supply inline content instead. Lanes nested inside
+clip content are refused because their playback coordinate composition is not
+implemented. Ordinary inline clips and nested arrangement lanes remain supported.
+
+Single nested clip wrappers flatten only when the inner source starts at zero,
+has no trim/loop/mute transform and covers the entire outer playback window
+(within 1.5 microbeats, for independently rounded six-decimal coordinates).
+Nontransparent wrappers refuse before graph or asset publication.
+Automation point times must fit nonnegative integer int32 pulses (960 pulses per
+quarter note). Floating-point roundoff and six-decimal beat serializations (as
+Bitwig writes them, e.g. a triplet at `0.333333`) are admitted within half a
+microbeat of a pulse. Sub-pulse coordinates such as `0.0001`, and positive times
+that would collapse to zero, are refused rather than rounded.
+Signature changes must additionally fall on whole bar boundaries under the
+preceding signature; an exact zero sets the base signature.
+
+Ordinary arrangement markers import/export in beats with labels and native hue
+colors, and survive native save/reopen. Native markers keep an integer hue at 100%
+saturation and 60% lightness (for example `#ff3333` and `#33ff33` round-trip
+exactly); other `#rrggbb` colors map to their nearest hue, like clip colors.
+Malformed colors and nonempty comments refuse before graph construction. Empty
+collections are allowed. Marker times use the same integer pulse admission as
+automation; non-beat collections refuse. Markers of a disabled marker track still
+export (the toggle only suspends marker playback actions). Export refuses repeat
+play counts and markers outside the current arrangement track before writing any
+resources.

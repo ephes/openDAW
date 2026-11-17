@@ -10,7 +10,7 @@ export default defineConfig({
     }},
     esbuild: {jsxFactory: "createElement", jsxFragment: "Fragment"},
     // Scan dynamic fixtures too: a cold dependency cache otherwise reloads mid-test.
-    optimizeDeps: {entries: ["index.html", "script-worklet.ts", "r120-studio.ts", "r123-ownership.ts", "r126-editors.ts", "r130-selection.ts", "r130-modular.ts", "r130-opfs.ts", "r134-interactions.ts", "r135-revamp.ts", "r138-contracts.ts"]},
+    optimizeDeps: {entries: ["index.html", "script-worklet.ts", "r120-studio.ts", "r123-ownership.ts", "r126-editors.ts", "r130-selection.ts", "r130-modular.ts", "r130-opfs.ts", "r134-interactions.ts", "r135-revamp.ts", "r138-contracts.ts", "r139-interchange.ts"]},
     // Match the studio's cross-origin isolation so SharedArrayBuffer-backed AudioData works.
     server: {
         host: "127.0.0.1", port: 4179, strictPort: true,

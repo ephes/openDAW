@@ -5,6 +5,18 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Import/export ordinary DAWproject arrangement markers with beat positions, labels and native hue colors (foreign colors map to the nearest hue), exporting markers of a disabled marker track and writing Arrangement children in DAWproject schema order; refuse unsupported attributes and native repeat/track semantics before publication.
+
+- Refuse lossy nested clip coordinate transforms and invalid/unrepresentable automation times before DAWproject graph construction, while admitting six-decimal serializations of pulse times (Bitwig triplets) and wrapper windows; retain transparent wrappers and exact signature bar boundaries.
+
+- Traverse nested DAWproject arrangement lanes with inherited/overridden track identities; refuse unknown tracks, referenced clips and unsupported clip-contained lanes before graph construction.
+
+- Import child tracks under every admitted parent role and classify native DAWproject instrument tracks from their public content tags, including MIDIOutput, Apparat and Soundfont.
+
+- Retain primary-output DAWproject sends; preflight all declared route destinations and refuse feedback instead of dropping connections. Skip disabled sends that would close a cycle (Bitwig's FX self- and reciprocal send slots) so Bitwig projects with return tracks still import.
+
+- Preserve native BPM in DAWproject tempo import/export independently of display bounds; refuse invalid BPM before graph construction or resource packing.
+
 - Bound audio fade path construction by visible device pixels while preserving clipped curve shape and handle placement.
 
 - Roll back failed runtime menu population and restore collection state; preserve canvas redraw requests raised during rendering and redraw idle canvases when device pixel ratio changes.

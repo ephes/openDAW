@@ -19,6 +19,8 @@ import {
     DeviceSchema,
     FileReferenceSchema,
     LanesSchema,
+    MarkerSchema,
+    MarkersSchema,
     NoteSchema,
     NotesSchema,
     ParameterEncoder,
@@ -49,6 +51,7 @@ import {
     AudioUnitBox,
     AuxSendBox,
     BoxVisitor,
+    MarkerBox,
     NoteEventBox,
     NoteEventCollectionBox,
     NoteRegionBox,
@@ -61,6 +64,7 @@ import {
 import {ColorCodes, DeviceBoxUtils, InterpolationFieldAdapter, ProjectSkeleton, SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitExportLayout} from "./AudioUnitExportLayout"
 import {DeviceIO} from "./DeviceIO"
+import {beatTimeToPulses, requireTempoBpm} from "./DawProjectTiming"
 import {WavFile} from "@opendaw/lib-dsp"
 
 export namespace DawProjectExporter {
@@ -73,8 +77,19 @@ export namespace DawProjectExporter {
         const audioUnits: ReadonlyArray<AudioUnitBox> = rootBox.audioUnits.pointerHub.incoming()
             .map(({box}) => asInstanceOf(box, AudioUnitBox))
             .sort((a, b) => a.index.getValue() - b.index.getValue())
+        timelineBox.tempoTrack.events.targetVertex.ifSome(({box}) => {
+            asInstanceOf(box, ValueEventCollectionBox).events.pointerHub.incoming()
+                .forEach(({box}) => requireTempoBpm(asInstanceOf(box, ValueEventBox).value.getValue()))
+        })
         // Admit source coordinates before publishing any media or device state.
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
+            visitMarkerBox: marker => {
+                assert(marker.plays.getValue() === 1, "Unsupported marker repeat: DAWproject cannot encode native play counts")
+                // A disabled marker track only suspends playback actions; its markers still export.
+                assert(marker.track.targetVertex.contains(timelineBox.markerTrack.markers),
+                    "Unsupported marker track: expected the arrangement marker track")
+                beatTimeToPulses(marker.position.getValue() / PPQN.Quarter)
+            },
             visitNoteEventBox: note => {
                 assert(note.playCount.getValue() === 1 && note.playCurve.getValue() === 0
                     && note.cent.getValue() === 0 && note.chance.getValue() === 100
@@ -177,17 +192,11 @@ export namespace DawProjectExporter {
                 const isPrimary = unitType === AudioUnitType.Output
                 const isAux = unitType === AudioUnitType.Aux
                 const inputBox = audioUnitBox.input.pointerHub.incoming().at(0)?.box
-                const contentType = isPrimary ? "audio notes" // we copied that value from bitwig
-                    : isAux ? "audio" : (() =>
-                        // TODO Another location to remember to put devices in...?
-                        //  We could also read the first track type?
-                        inputBox?.accept<BoxVisitor<string>>({
-                            visitTapeDeviceBox: () => "audio",
-                            visitVaporisateurDeviceBox: () => "notes",
-                            visitNanoDeviceBox: () => "notes",
-                            visitPlayfieldDeviceBox: () => "notes",
-                            visitAudioBusBox: () => "tracks"
-                        }))() ?? undefined
+                const instrumentContent = inputBox?.tags.content
+                const contentType = isPrimary ? "audio notes" // follows the common master convention
+                    : isAux ? "audio"
+                        : instrumentContent === "audio" || instrumentContent === "notes" ? instrumentContent
+                            : inputBox?.name === "AudioBusBox" ? "tracks" : undefined
                 return Xml.element({
                     id: ids.getOrCreate(audioUnitBox.address),
                     name: DeviceBoxUtils.lookupLabelField(inputBox).getValue(),
@@ -343,6 +352,22 @@ export namespace DawProjectExporter {
                 }, ClipSchema)]
             }, ClipsSchema)
 
+        const writeMarkers = (): Optional<MarkersSchema> => {
+            const markers = timelineBox.markerTrack.markers.pointerHub.incoming()
+                .map(({box}) => asInstanceOf(box, MarkerBox))
+                .sort((a, b) => a.position.getValue() - b.position.getValue())
+            if (markers.length === 0) {return undefined}
+            return Xml.element({
+                timeUnit: TimeUnit.BEATS,
+                marker: markers.map(marker => Xml.element({
+                    id: ids.getOrCreate(marker.address),
+                    time: marker.position.getValue() / PPQN.Quarter,
+                    name: marker.label.getValue(),
+                    color: Color.hslToHex(marker.hue.getValue(), 1, 0.6)
+                }, MarkerSchema))
+            }, MarkersSchema)
+        }
+
         const writeTempoAutomation = (): Optional<PointsSchema> => {
             const {tempoTrack} = timelineBox
             if (!tempoTrack.enabled.getValue()) {return undefined}
@@ -353,8 +378,6 @@ export namespace DawProjectExporter {
                 .map(({box}) => asInstanceOf(box, ValueEventBox))
                 .sort((eventA, eventB) => eventA.position.getValue() - eventB.position.getValue())
             if (events.length === 0) {return undefined}
-            const minBpm = tempoTrack.minBpm.getValue()
-            const maxBpm = tempoTrack.maxBpm.getValue()
             const tempoParameterId = ids.getOrCreate(timelineBox.bpm.address)
             return Xml.element({
                 unit: Unit.BPM,
@@ -365,7 +388,7 @@ export namespace DawProjectExporter {
                     const interpolation = InterpolationFieldAdapter.read(event.interpolation)
                     return Xml.element({
                         time: event.position.getValue() / PPQN.Quarter,
-                        value: TempoAutomationConverter.normalizedToBpm(event.value.getValue(), minBpm, maxBpm),
+                        value: event.value.getValue(),
                         interpolation: TempoAutomationConverter.toDawProjectInterpolation(interpolation)
                     }, RealPointSchema)
                 })
@@ -432,8 +455,10 @@ export namespace DawProjectExporter {
             transport: writeTransport(),
             structure: writeStructure(),
             arrangement: Xml.element({
-                tempoAutomation: writeTempoAutomation(),
+                // Key order is XML child order: follow the DAWproject Arrangement sequence.
                 timeSignatureAutomation: writeSignatureAutomation(),
+                tempoAutomation: writeTempoAutomation(),
+                markers: writeMarkers(),
                 lanes: Xml.element({
                     lanes: writeLanes(),
                     timeUnit: TimeUnit.BEATS

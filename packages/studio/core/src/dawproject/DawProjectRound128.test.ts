@@ -294,10 +294,10 @@ it("B05 refuses native instruments on bus channels instead of ignoring their sta
     await expect(DawProjectImport.read(Xml.parse(exported, ProjectSchema), resources)).rejects.toThrow(/Unsupported native device state/)
     expect(resources.fromPath).not.toHaveBeenCalled()
 })
-it("B05 catches parameter Points inside otherwise unread clip lanes", async () => {
+it("B05 refuses clip-contained lanes even when they contain parameter Points", async () => {
     const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
     const content = '<Lanes><Points><Target parameter="volume"/><RealPoint time="0" value="0.5"/></Points></Lanes>'
-    await expect(DawProjectImport.read(project(content), resources)).rejects.toThrow(/Unsupported parameter automation lane/)
+    await expect(DawProjectImport.read(project(content), resources)).rejects.toThrow(/Unsupported clip lanes/)
     expect(begin).not.toHaveBeenCalled()
     expect(resources.fromPath).not.toHaveBeenCalled()
 })
