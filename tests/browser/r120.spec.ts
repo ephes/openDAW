@@ -18,8 +18,13 @@ test("notes preserve exact Markdown through preview saves, editing, blur and tea
     expect(await read()).toBe(markdown)
     const checkbox = page.locator("input[type=checkbox]")
     await checkbox.evaluate((input: HTMLInputElement) => {input.checked = true; input.dispatchEvent(new Event("input"))})
-    const edited = markdown + "\nAdditional synthetic note"
-    await page.locator("[contenteditable]").fill(edited)
+    // Type at the document end: Playwright fill() replaces the text node with Chromium
+    // paragraph elements whose innerText doubles blank lines; typed edits keep one text node.
+    const suffix = "\nAdditional synthetic note"
+    const edited = markdown + suffix
+    await page.locator("[contenteditable]").focus()
+    await page.keyboard.press("ControlOrMeta+ArrowDown")
+    await page.keyboard.type(suffix)
     await page.keyboard.press("ControlOrMeta+s")
     expect(await read()).toBe(edited)
     await page.locator("[contenteditable]").evaluate(element => (element as HTMLElement).blur())
@@ -29,9 +34,11 @@ test("notes preserve exact Markdown through preview saves, editing, blur and tea
     await page.locator("input[type=checkbox]").evaluate((input: HTMLInputElement) => {
         input.checked = true; input.dispatchEvent(new Event("input"))
     })
-    await page.locator("[contenteditable]").fill(markdown)
+    await page.locator("[contenteditable]").focus()
+    await page.keyboard.press("ControlOrMeta+ArrowDown")
+    await page.keyboard.type(" before teardown")
     await call("close")
-    expect(await read()).toBe(markdown)
+    expect(await read()).toBe(edited + " before teardown")
 })
 
 test("Markdown keeps native query/fragment destinations and modified clicks", async ({page}) => {
