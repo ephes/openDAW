@@ -56,10 +56,23 @@ export const connectRoom = async (service: StudioService, prefillRoomName?: Opti
             const terminator = project.own(new Terminator())
             reportRoomResult(sessionId, "success")
             const heartbeat = startRoomDurationHeartbeat(sessionId)
-            const pagehideHandler = () => heartbeat.finalize()
-            window.addEventListener("pagehide", pagehideHandler)
-            terminator.own({terminate: () => heartbeat.finalize()})
-            terminator.own({terminate: () => window.removeEventListener("pagehide", pagehideHandler)})
+            let ended = false
+            const finalize = () => {
+                if (ended) {return}
+                ended = true
+                heartbeat.finalize()
+            }
+            terminator.ownAll(
+                {terminate: finalize},
+                Events.subscribe(window, "pagehide", (event: PageTransitionEvent) => {
+                    if (ended) {return}
+                    if (event.persisted) {heartbeat.pause()} else {finalize()}
+                }),
+                Events.subscribe(window, "pageshow", (event: PageTransitionEvent) => {
+                    if (!ended && event.persisted && profileService.getValue()
+                        .map(profile => profile.project).unwrapOrNull() === project) {heartbeat.resume()}
+                })
+            )
             const p2pSession = new P2PSession({
                 chainedSampleProvider: service.chainedSampleProvider,
                 chainedSoundfontProvider: service.chainedSoundfontProvider,

@@ -8,8 +8,8 @@ import {
     panic,
     Procedure,
     RuntimeNotifier,
-    tryCatch,
     TimeSpan,
+    tryCatch,
     unitValue,
     UUID
 } from "@opendaw/lib-std"
@@ -17,6 +17,7 @@ import {IntervalRetryOption, network, Promises} from "@opendaw/lib-runtime"
 import {Sample, SampleMetaData} from "@opendaw/studio-adapters"
 import {SampleAPI} from "@opendaw/studio-core"
 import {base64Credentials, OpenDAWHeaders} from "../OpenDAWHeaders"
+import {SampleUploadRefused} from "./SampleAPI"
 import {z} from "zod"
 import {AudioData, WavFile} from "@opendaw/lib-dsp"
 
@@ -163,40 +164,59 @@ export class OpenSampleAPI implements SampleAPI {
         }
     }
 
-    async upload(arrayBuffer: ArrayBuffer, metaData: SampleMetaData): Promise<void> {
-        const progress = new DefaultObservableValue(0.0)
-        const dialog = RuntimeNotifier.progress({headline: "Uploading", progress})
+    async upload(arrayBuffer: ArrayBuffer, metaData: SampleMetaData, signal?: AbortSignal): Promise<void> {
+        signal?.throwIfAborted()
+        const params = new URLSearchParams(location.search)
+        const accessKey = params.get("access-key")
+        if (!isDefined(accessKey)) {throw new SampleUploadRefused("Cannot upload without access-key.")}
         const formData = new FormData()
         Object.entries(metaData).forEach(([key, value]) => formData.set(key, String(value)))
-        const params = new URLSearchParams(location.search)
-        const accessKey = asDefined(params.get("access-key"), "Cannot upload without access-key.")
         formData.set("key", accessKey)
         formData.append("file", new Blob([arrayBuffer]))
-        console.log("upload data", Array.from(formData.entries()), arrayBuffer.byteLength)
+        const progress = new DefaultObservableValue(0.0)
+        const dialog = RuntimeNotifier.progress({headline: "Uploading", progress})
         const xhr = new XMLHttpRequest()
-        xhr.upload.addEventListener("progress", (event: ProgressEvent) => {
-            if (event.lengthComputable) {
-                progress.setValue(event.loaded / event.total)
-            }
-        })
-        xhr.onreadystatechange = () => {
-            if (xhr.readyState === 4) {
-                dialog.terminate()
-                if (xhr.status === 200) {
-                    RuntimeNotifier.info({message: xhr.responseText})
-                } else {
-                    const {status, value} =
-                        tryCatch(() => JSON.parse(xhr.responseText).message ?? "Unknown error message")
-                    RuntimeNotifier.info({
-                        headline: "Upload Failure",
-                        message: status === "success" ? value : "Unknown error"
-                    })
+        let abort: () => void = () => {}
+        try {
+            await new Promise<void>((resolve, reject) => {
+                abort = () => {
+                    xhr.abort()
+                    reject(new DOMException("Upload cancelled; remote outcome may be uncertain", "AbortError"))
                 }
-            }
+                xhr.upload.addEventListener("progress", (event: ProgressEvent) => {
+                    if (event.lengthComputable) {progress.setValue(event.loaded / event.total)}
+                })
+                xhr.onreadystatechange = () => {
+                    if (xhr.readyState !== 4) {return}
+                    if (signal?.aborted) {
+                        reject(new DOMException("Upload cancelled; remote outcome may be uncertain", "AbortError"))
+                        return
+                    }
+                    if (xhr.status === 200) {resolve()} else if (xhr.status >= 400 && xhr.status < 500) {
+                        reject(new SampleUploadRefused(OpenSampleAPI.#refusalMessage(xhr)))
+                    } else {reject(new Error("Upload failed; remote outcome may be uncertain"))}
+                }
+                xhr.onerror = () => reject(new Error("Upload transport failed; remote outcome may be uncertain"))
+                xhr.ontimeout = () => reject(new Error("Upload timed out; remote outcome may be uncertain"))
+                xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"))
+                xhr.open("POST", `${OpenSampleAPI.ApiRoot}/upload.php`, true)
+                xhr.setRequestHeader("Authorization", `Basic ${base64Credentials}`)
+                signal?.addEventListener("abort", abort, {once: true})
+                signal?.throwIfAborted()
+                xhr.send(formData)
+            })
+            if (!signal?.aborted) {void RuntimeNotifier.info({message: xhr.responseText}).catch(() => {})}
+        } finally {
+            signal?.removeEventListener("abort", abort)
+            xhr.onreadystatechange = xhr.onerror = xhr.ontimeout = xhr.onabort = null
+            dialog.terminate()
         }
-        xhr.open("POST", `${OpenSampleAPI.ApiRoot}/upload.php`, true)
-        xhr.setRequestHeader("Authorization", `Basic ${base64Credentials}`)
-        xhr.send(formData)
+    }
+
+    static #refusalMessage(xhr: XMLHttpRequest): string {
+        const {status, value} = tryCatch(() => JSON.parse(xhr.responseText)?.message)
+        return status === "success" && typeof value === "string" && value.length > 0
+            ? value : `Upload refused (HTTP ${xhr.status})`
     }
 
     allowsUpload(): boolean {return false}

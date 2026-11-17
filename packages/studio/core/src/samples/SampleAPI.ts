@@ -6,6 +6,13 @@ export interface SampleAPI {
     all(): Promise<ReadonlyArray<Sample>>
     get(uuid: UUID.Bytes): Promise<Sample>
     load(uuid: UUID.Bytes, progress: Procedure<unitValue>): Promise<[AudioData, Sample]>
-    upload(arrayBuffer: ArrayBuffer, metaData: SampleMetaData): Promise<void>
+    upload(arrayBuffer: ArrayBuffer, metaData: SampleMetaData, signal?: AbortSignal): Promise<void>
     allowsUpload(): boolean
+}
+
+export class SampleUploadRefused extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = "SampleUploadRefused"
+    }
 }

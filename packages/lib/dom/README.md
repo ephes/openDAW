@@ -101,3 +101,8 @@ terminal events are ignored; errors reject the same promise and later picker
 calls get a fresh input.
 
 Run `npm test -w @opendaw/lib-dom` for synthetic DOM lifecycle regressions.
+
+Shortcut imports resolve only own definition/context keys. Unknown keys are ignored;
+invalid known values or non-object roots/contexts reject the entire import before
+changing working shortcut objects. Missing contexts retain their current values.
+Stored malformed configurations do not prevent installing the default shortcuts.

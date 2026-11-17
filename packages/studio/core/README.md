@@ -498,3 +498,12 @@ preset loads settle as soon as their signal aborts, without waiting for a permit
 starting requests. Cloud read retries stop
 after three transient attempts; permanent HTTP errors, missing files, aborts and
 invalid content stop immediately. Mutations retain explicit approval-based retry.
+
+### Monitoring graph ownership
+
+MonitoringRouter owns exact source/splitter/merger connections and its worklet
+output edge. Replacement prepares a complete generation before publishing its map;
+a failed preparation retains the previous registry and graph. Failed publication
+restores the previous map. If restoration also fails, the router stops, detaches
+its graph and attempts an empty map, then throws an explicit stopped error.
+Termination is idempotent, publishes an empty map and preserves foreign edges.

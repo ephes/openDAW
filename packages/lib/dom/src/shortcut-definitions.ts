@@ -1,5 +1,5 @@
 import {Shortcut} from "./shortcut-manager"
-import {isAbsent, JSONValue} from "@opendaw/lib-std"
+import {JSONValue} from "@opendaw/lib-std"
 
 export type ShortcutDefinition = { shortcut: Shortcut, description: string }
 
@@ -28,13 +28,31 @@ export namespace ShortcutDefinitions {
         return result
     }
 
-    export const fromJSON = (defs: ShortcutDefinitions, values: JSONValue): void => {
-        if (typeof values !== "object" || values === null || Array.isArray(values)) {return}
-        for (const [key, value] of Object.entries(values) as Array<[string, JSONValue]>) {
-            const def = defs[key]
-            if (isAbsent(def)) {continue}
-            Shortcut.fromJSON(value).ifSome(keys => def.shortcut.overrideWith(keys))
+    export const fromJSON = (defs: ShortcutDefinitions, values: JSONValue | undefined): boolean => {
+        if (typeof values !== "object" || values === null || Array.isArray(values)) {return false}
+        const overrides: Array<() => void> = []
+        for (const [key, value] of Object.entries(values)) {
+            if (!Object.hasOwn(defs, key)) {continue}
+            if (value === undefined) {return false}
+            const shortcut = Shortcut.fromJSON(value)
+            if (shortcut.isEmpty()) {return false}
+            overrides.push(() => defs[key].shortcut.overrideWith(shortcut.unwrap()))
         }
+        overrides.forEach(apply => apply())
+        return true
+    }
+
+    export const fromContextsJSON = (target: Record<string, ShortcutDefinitions>, values: JSONValue | undefined): boolean => {
+        if (typeof values !== "object" || values === null || Array.isArray(values)) {return false}
+        const staged: Array<[ShortcutDefinitions, ShortcutDefinitions]> = []
+        for (const [key, value] of Object.entries(values)) {
+            if (!Object.hasOwn(target, key)) {continue}
+            const copy = ShortcutDefinitions.copy(target[key])
+            if (!fromJSON(copy, value)) {return false}
+            staged.push([copy, target[key]])
+        }
+        staged.forEach(([source, destination]) => copyInto(source, destination))
+        return true
     }
 }
 

@@ -152,3 +152,9 @@ edge releases after endpoint removal are harmless; a normal release removes one
 owned duplicate. Topological sorting uses O(V+E) state and work without recursion.
 It preserves insertion-order predecessor traversal, ignores edges within strongly
 connected components and reports cycles (including self-loops) through hasLoops.
+
+`WavFile.geometry` validates RIFF chunk and block geometry for any sample format
+(including WAVE_FORMAT_EXTENSIBLE) and returns channel/frame/rate metadata without
+allocating PCM. `WavFile.inspect` additionally requires the PCM16/24 or float32
+formats that `decodeFloats` supports. Callers impose their own allocation budgets
+before decode.

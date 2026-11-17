@@ -39,3 +39,10 @@ it("keeps complete frames and tolerates a truncated trailing unknown chunk", () 
     tail.setUint32(valid.byteLength + 4, 12, true)
     expect(WavFile.decodeFloats(trailing.buffer).numberOfFrames).toBe(2)
 })
+
+it("separates RIFF geometry from the supported local decode formats", () => {
+    const bytes = WavFile.encodeFloats(AudioData.create(44100, 3, 2))
+    new DataView(bytes).setUint16(20, 0xFFFE, true)
+    expect(WavFile.geometry(bytes)).toMatchObject({numberOfFrames: 3, numberOfChannels: 2, sampleRate: 44100})
+    expect(() => WavFile.inspect(bytes)).toThrow(/Unsupported WAV format/)
+})

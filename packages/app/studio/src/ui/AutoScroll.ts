@@ -11,6 +11,10 @@ export type Options = {
 
 export const installAutoScroll = (target: Element, autoScroller: AutoScroller, options?: Options): Terminable => {
     const lifeTime = new Terminator()
+    let retired = false
+    let attempt = 0
+    let active = false
+    let activePointer = -1
     const measure: Provider<AABB> = options?.measure ?? (() => {
         const {bottom, left, right, top} = target.getBoundingClientRect()
         return {xMin: left, yMin: top, xMax: right, yMax: bottom}
@@ -20,13 +24,17 @@ export const installAutoScroll = (target: Element, autoScroller: AutoScroller, o
     let deltaX: number = 0.0
     let deltaY: number = 0.0
     const moveListener = ({clientX, clientY}: Client) => {
+        if (retired || !active) {return}
         const {xMin, xMax, yMin, yMax} = AABB.padding(measure(), padding)
         deltaX = clientX < xMin ? clientX - xMin : clientX > xMax ? clientX - xMax : 0
         deltaY = clientY < yMin ? clientY - yMin : clientY > yMax ? clientY - yMax : 0
         const inside = deltaX === 0 && deltaY === 0
         if (scrolling.isEmpty()) {
             if (!inside) {
-                scrolling = Option.wrap(AnimationFrame.add(() => autoScroller(deltaX, deltaY)))
+                const generation = attempt
+                scrolling = Option.wrap(AnimationFrame.add(() => {
+                    if (!retired && active && attempt === generation) {autoScroller(deltaX, deltaY)}
+                }))
             }
         } else {
             if (inside) {
@@ -35,19 +43,42 @@ export const installAutoScroll = (target: Element, autoScroller: AutoScroller, o
             }
         }
     }
-    return Events.subscribe(target, "pointerdown", () => {
-        const owner = Surface.get(target).owner.document
+    const finish = () => {
+        active = false
+        attempt++
+        scrolling.ifSome(terminable => terminable.terminate())
+        scrolling = Option.None
         lifeTime.terminate()
-        const upListener = () => {
-            scrolling.ifSome(terminable => terminable.terminate())
-            scrolling = Option.None
-            lifeTime.terminate()
-        }
+    }
+    const start = Events.subscribe(target, "pointerdown", (event: PointerEvent) => {
+        if (retired) {return}
+        if (active && event.pointerId !== activePointer && !event.isPrimary) {return}
+        finish()
+        active = true
+        const pointerId = event.pointerId
+        activePointer = pointerId
+        let nativeDrag = false
+        const owner = Surface.get(target).owner.document
         lifeTime.ownAll(
+            Events.subscribe(owner, "dragstart", () => {nativeDrag = true}, {capture: true}),
             Events.subscribe(owner, "dragover", moveListener, {capture: true}),
-            Events.subscribe(owner, "pointermove", moveListener, {capture: true}),
-            Events.subscribe(owner, "pointerup", upListener),
-            Events.subscribe(owner, "dragend", upListener)
+            Events.subscribe(owner, "pointermove", (event: PointerEvent) => {
+                if (event.pointerId === pointerId) {moveListener(event)}
+            }, {capture: true}),
+            Events.subscribe(owner, "pointerup", (event: PointerEvent) => {
+                if (event.pointerId === pointerId) {finish()}
+            }),
+            Events.subscribe(owner, "pointercancel", (event: PointerEvent) => {
+                if (event.pointerId === pointerId && !nativeDrag) {finish()}
+            }),
+            Events.subscribe(owner, "dragend", finish),
+            Events.subscribe(owner.defaultView ?? window, "blur", finish)
         )
     }, {capture: true})
+    return {terminate: () => {
+        if (retired) {return}
+        retired = true
+        start.terminate()
+        finish()
+    }}
 }

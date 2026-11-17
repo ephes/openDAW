@@ -8,8 +8,10 @@ import {connectRoom} from "./StudioLiveRoomConnect"
 vi.mock("@opendaw/studio-core", () => ({YService: {getOrCreateRoom: vi.fn()}, SampleStorage: {}, SoundfontStorage: {}, Workers: {}}))
 vi.mock("@opendaw/studio-p2p", () => ({P2PSession: class {trafficMeter = {}; terminate = vi.fn()}}))
 vi.mock("./StudioLiveRoomDialog.tsx", () => ({showConnectRoomDialog: vi.fn(async roomName => ({roomName, userName: "Synthetic", userColor: "#123456"}))}))
-vi.mock("./RoomAwareness", () => ({RoomAwareness: class {panel = {setValue() {}}; terminate = vi.fn()}, writeIdentity: vi.fn()}))
-vi.mock("./RoomStatsReporter", () => ({newRoomSessionId: () => "synthetic", reportRoomResult: vi.fn(), startRoomDurationHeartbeat: () => ({finalize: vi.fn()})}))
+vi.mock("./RoomAwareness", async original => ({...await original<object>(),
+    RoomAwareness: class {panel = {setValue() {}}; terminate = vi.fn()}}))
+const heartbeat = vi.hoisted(() => ({finalize: vi.fn(), pause: vi.fn(), resume: vi.fn()}))
+vi.mock("./RoomStatsReporter", () => ({newRoomSessionId: () => "synthetic", reportRoomResult: vi.fn(), startRoomDurationHeartbeat: () => heartbeat}))
 vi.mock("@/chat/ChatService", () => ({ChatService: class {terminate = vi.fn()}}))
 vi.mock("@opendaw/lib-jsx", () => ({RouteLocation: {get: () => ({navigateTo() {}})}}))
 vi.mock("@opendaw/lib-runtime", async original => ({...await original<object>(), Wait: {timeSpan: async () => {}}}))
@@ -48,12 +50,13 @@ const makeService = () => {
 }
 let progress: ReturnType<typeof vi.fn>
 beforeEach(() => {
+    heartbeat.finalize.mockClear(); heartbeat.pause.mockClear(); heartbeat.resume.mockClear()
     progress = vi.fn()
     vi.spyOn(RuntimeNotifier, "progress").mockReturnValue({message: "", terminate: progress})
     vi.spyOn(RuntimeNotifier, "info").mockResolvedValue()
     vi.mocked(YService.getOrCreateRoom).mockReset()
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {vi.restoreAllMocks(); vi.unstubAllGlobals()})
 
 describe("room connection intent", () => {
     it.each([false, true])("retires an older result when the newest attempt fails=%s", async fail => {
@@ -115,4 +118,40 @@ it("lets a replacement service's latest intent invalidate the old service", asyn
     expect(roomA.project.terminate).toHaveBeenCalledOnce()
     replacement.profiles.unwrap().project.terminate()
     old.current.terminate()
+})
+
+it("suspends persisted pages and only resumes the still-owned room", async () => {
+    const {service} = makeService(), room = makeRoom()
+    vi.mocked(YService.getOrCreateRoom).mockResolvedValue(room)
+    await connectRoom(service, "synthetic")
+    window.dispatchEvent(new PageTransitionEvent("pagehide", {persisted: true}))
+    expect(heartbeat.pause).toHaveBeenCalledOnce()
+    expect(heartbeat.finalize).not.toHaveBeenCalled()
+    window.dispatchEvent(new PageTransitionEvent("pageshow", {persisted: true}))
+    expect(heartbeat.resume).toHaveBeenCalledOnce()
+    window.dispatchEvent(new PageTransitionEvent("pagehide", {persisted: true}))
+    room.project.terminate()
+    window.dispatchEvent(new PageTransitionEvent("pageshow", {persisted: true}))
+    expect(heartbeat.resume).toHaveBeenCalledOnce()
+    expect(heartbeat.finalize).toHaveBeenCalledOnce()
+})
+
+it("terminal pagehide prevents subsequent resume", async () => {
+    const {service} = makeService(), room = makeRoom()
+    vi.mocked(YService.getOrCreateRoom).mockResolvedValue(room)
+    await connectRoom(service, "synthetic")
+    window.dispatchEvent(new PageTransitionEvent("pagehide", {persisted: false}))
+    window.dispatchEvent(new PageTransitionEvent("pageshow", {persisted: true}))
+    expect(heartbeat.finalize).toHaveBeenCalledOnce()
+    expect(heartbeat.resume).not.toHaveBeenCalled()
+    room.project.terminate()
+})
+
+it("joins a room when optional identity storage refuses writes", async () => {
+    vi.stubGlobal("localStorage", {setItem: () => {throw new DOMException("Synthetic quota", "QuotaExceededError")}})
+    const {service} = makeService(), room = makeRoom()
+    vi.mocked(YService.getOrCreateRoom).mockResolvedValue(room)
+    await connectRoom(service, "synthetic")
+    expect(service.projectProfileService.setProject).toHaveBeenCalledWith(room.project, "synthetic")
+    room.project.terminate()
 })
