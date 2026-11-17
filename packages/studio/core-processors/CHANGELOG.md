@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Consume one distinct held raw MIDI press per note-off, balancing pending and running same-pitch retriggers without releasing unrelated pitches.
+
 - Estimate and apply compressor automatic makeup causally per sample with a quantum-equivalent smoothing time constant; preserve disabled tracking/reset and empty-span state.
 
 - Advance compressor automatic attack/release causally per sample, independent of render/event partitions.

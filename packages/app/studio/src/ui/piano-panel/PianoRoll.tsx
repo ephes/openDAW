@@ -3,7 +3,7 @@ import {Html} from "@opendaw/lib-dom"
 import {createElement, Group} from "@opendaw/lib-jsx"
 import {PianoRollLayout} from "@/ui/PianoRollLayout.ts"
 import {isDefined, isInstanceOf, Lifecycle, Notifier} from "@opendaw/lib-std"
-import {LoopableRegion, ppqn} from "@opendaw/lib-dsp"
+import {ppqn} from "@opendaw/lib-dsp"
 import {NoteRegionBoxAdapter} from "@opendaw/studio-adapters"
 import {StudioService} from "@/service/StudioService"
 
@@ -19,7 +19,7 @@ export const PianoRoll = ({lifecycle, service, updateNotifier}: Construct) => {
     const {project} = service
     const {engine, rootBoxAdapter: {pianoMode: {keyboard, transpose}}} = project
     const position = engine.position
-    const getPianoLayout = () => PianoRollLayout.Defaults()[keyboard.getValue()]
+    const getPianoLayout = () => PianoRollLayout.getByIndex(keyboard.getValue())
     const createSVG = (): SVGSVGElement => {
         const pianoLayout = getPianoLayout()
         const {sizes: {whiteKeys, blackKeys}} = pianoLayout
@@ -57,19 +57,21 @@ export const PianoRoll = ({lifecycle, service, updateNotifier}: Construct) => {
                     }
                     const collection = region.optCollection.unwrap()
                     const events = collection.events
-                    const loopIterator = LoopableRegion.locateLoops(region, position, position)
-                    for (const {resultStart, resultEnd, rawStart} of loopIterator) {
-                        const searchStart = Math.floor(resultStart - rawStart)
-                        const searchEnd = Math.floor(resultEnd - rawStart)
-                        for (const note of events.iterateRange(searchStart - collection.maxDuration, searchEnd)) {
-                            if (note.position + rawStart <= position && position < note.complete + rawStart) {
-                                const pitch = note.pitch + transpose.getValue()
-                                if (pitch < pianoLayout.min || pitch > pianoLayout.max) {continue}
-                                const rect = svg.querySelector<SVGRectElement>(`[data-key="${pitch}"]`)
-                                if (isDefined(rect)) {
-                                    rect.style.fill = pianoLayout.getFillStyle(region.hue, true)
-                                    rect.classList.add("playing")
-                                }
+                    if (!(region.loopDuration > 0) || !Number.isFinite(region.loopDuration)) {return}
+                    const offset = region.position - region.loopOffset
+                    const cycleStart = offset + Math.floor((position - offset) / region.loopDuration) * region.loopDuration
+                    const localPosition = position - cycleStart
+                    // The event index is half-open. Search through the next integer
+                    // tick, then apply the exact inclusive-onset/exclusive-end test.
+                    for (const note of events.iterateRange(Math.floor(localPosition) - collection.maxDuration,
+                        Math.floor(localPosition) + 1)) {
+                        if (note.position <= localPosition && localPosition < note.complete) {
+                            const pitch = note.pitch + transpose.getValue()
+                            if (pitch < pianoLayout.min || pitch > pianoLayout.max) {continue}
+                            const rect = svg.querySelector<SVGRectElement>(`[data-key="${pitch}"]`)
+                            if (isDefined(rect)) {
+                                rect.style.fill = pianoLayout.getFillStyle(region.hue, true)
+                                rect.classList.add("playing")
                             }
                         }
                     }
@@ -82,6 +84,7 @@ export const PianoRoll = ({lifecycle, service, updateNotifier}: Construct) => {
             svg.remove()
             svg = createSVG()
             placeholder.appendChild(svg)
+            update(position.getValue())
         }),
         updateNotifier.subscribe(() => update(position.getValue()))
     )

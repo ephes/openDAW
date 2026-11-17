@@ -537,3 +537,14 @@ Menu, canvas and device-view interaction contracts and regression notes are in
 [round 134](plans/scout-round134-interactions.md).
 
 The [round 138 contracts](packages/app/studio/README.md) document audio region conversion, live piano controls, recoverable panel bindings and control clipboard admission. Binary16 rounding is specified in [lib-std](packages/lib/std/README.md); meter editing is specified in the [signature track notes](packages/app/studio/src/ui/timeline/tracks/primary/signature/README.md).
+
+### Error recovery, piano boundaries and note gestures
+
+First-party failures retain fatal recovery despite injected scripts. Diagnostic
+extraction survives hostile rejection values with bounded fallbacks. Piano keys
+light at inclusive note onsets and clear at exclusive completions across loops;
+invalid stored keyboard indices display the default without rewriting the project.
+Duration and note-property gestures retain their original surviving notes and base
+values across selection changes, with local cancellation and one undo edit. Raw
+MIDI note-offs each consume one held press, including same-pitch retriggers.
+See the [round 142 contracts and regression notes](plans/scout-round142-studio-boundaries.md).

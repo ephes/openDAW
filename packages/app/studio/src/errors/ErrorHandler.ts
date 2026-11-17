@@ -17,7 +17,7 @@ const IgnoredErrors = [
 const BrowserInternalPatterns = ["feature named", "window.__firefox__"]
 const MonacoPatterns = ["monaco-editor", "vs/base/common/errors"]
 const ThirdPartyAppPatterns = ["_callback_receiveMIDIMessage", "_callback_addSource"]
-const UrlPattern = /https?:\/\/[^\s)]+/g
+const UrlPattern = /(?:https?|chrome-extension|moz-extension|safari-web-extension):\/\/[^\s)]+/g
 
 export class ErrorHandler {
     readonly #terminator = new Terminator()
@@ -31,18 +31,14 @@ export class ErrorHandler {
     }
 
     #looksLikeExtension(error: ErrorInfo): boolean {
-        if (document.scripts.length > 1) {return true}
-        if (ExtensionPatterns.some(pattern =>
-            error.message?.includes(pattern) || error.stack?.includes(pattern))) {return true}
-        // Safari content scripts (Vimari et al.) inject into an isolated world,
-        // so document.scripts.length stays at 1. Their stacks carry function
-        // names but no source URLs — our own minified bundle always emits URLs
-        // in the stack, so a non-empty stack with zero URLs is a reliable
-        // "this didn't come from our code" signal. (UrlPattern has the g flag,
-        // so reuse .match() rather than .test() to avoid the lastIndex gotcha.)
-        const stack = error.stack
-        if (stack !== undefined && stack.trim().length > 0 && stack.match(UrlPattern) === null) {return true}
-        return false
+        return ExtensionPatterns.some(pattern =>
+            error.message?.includes(pattern) || error.stack?.includes(pattern))
+    }
+
+    #hasFirstPartySource(error: ErrorInfo): boolean {
+        return (error.stack?.match(UrlPattern) ?? []).some(url => {
+            try {return new URL(url).origin === window.location.origin} catch {return false}
+        })
     }
 
     #extractForeignOrigin(error: ErrorInfo): string | null {
@@ -52,8 +48,10 @@ export class ErrorHandler {
         const expectedOrigin = window.location.origin
         for (const url of urls) {
             try {
-                const origin = new URL(url).origin
-                if (origin !== expectedOrigin) {return origin}
+                const source = new URL(url)
+                if (source.origin !== expectedOrigin) {
+                    return source.origin === "null" ? `${source.protocol}//${source.host}` : source.origin
+                }
             } catch { /* invalid URL */ }
         }
         return null
@@ -86,13 +84,13 @@ export class ErrorHandler {
             event.preventDefault()
             return true
         }
-        if (event instanceof SecurityPolicyViolationEvent) {
+        if (typeof SecurityPolicyViolationEvent !== "undefined" && event instanceof SecurityPolicyViolationEvent) {
             // Log CSP violations but don't crash - often caused by browser extensions or specific browser configs
             console.warn(`CSP violation: ${event.violatedDirective} blocked ${event.blockedURI}`)
             event.preventDefault()
             return true
         }
-        if (!(event instanceof PromiseRejectionEvent)) {return false}
+        if (typeof PromiseRejectionEvent === "undefined" || !(event instanceof PromiseRejectionEvent)) {return false}
         const {reason} = event
         const reasonMessage = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : undefined
         if (isDefined(reasonMessage) && IgnoredErrors.some(ignored => reasonMessage.includes(ignored))) {
@@ -144,10 +142,13 @@ export class ErrorHandler {
     }
 
     processError(scope: string, event: Event): boolean {
-        if (this.#tryIgnore(event)) {return false}
+        // Ignore rules inspect browser-supplied values too; a hostile rejection
+        // must still reach the terminal recovery path if inspection throws.
+        try {if (this.#tryIgnore(event)) {return false}} catch { /* retain original failure */ }
         const error = ErrorInfo.extract(event)
         const foreignOrigin = this.#extractForeignOrigin(error)
-        const looksLikeExtension = this.#looksLikeExtension(error) || foreignOrigin !== null
+        const looksLikeExtension = !this.#hasFirstPartySource(error)
+            && (this.#looksLikeExtension(error) || foreignOrigin !== null)
         console.warn("[ErrorHandler]", {
             scope,
             error,

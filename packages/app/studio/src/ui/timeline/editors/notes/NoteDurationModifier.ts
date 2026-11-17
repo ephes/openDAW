@@ -1,7 +1,7 @@
 import {Editing, int, Notifier, Observer, Option, Selection, Terminable, unitValue} from "@opendaw/lib-std"
 import {Snapping} from "@/ui/timeline/Snapping.ts"
 import {Line, NoteModifyStrategy} from "./NoteModifyStrategies"
-import {NoteEventBoxAdapter} from "@opendaw/studio-adapters"
+import {NoteEventBoxAdapter, NoteEventCollectionBoxAdapter} from "@opendaw/studio-adapters"
 import {EventCollection, NoteEvent, ppqn} from "@opendaw/lib-dsp"
 import {NoteModifier} from "@/ui/timeline/editors/notes/NoteModifier.ts"
 import {NoteEventOwnerReader} from "@/ui/timeline/editors/EventOwnerReader.ts"
@@ -15,10 +15,7 @@ class SelectedModifyStrategy implements NoteModifyStrategy {
 
     readPosition(adapter: NoteEventBoxAdapter): ppqn {return adapter.position}
     readComplete(adapter: NoteEventBoxAdapter): ppqn {
-        const duration = this.#tool.aligned
-            ? (this.#tool.reference.position + this.#tool.reference.duration + this.#tool.deltaDuration) - adapter.position
-            : adapter.duration + this.#tool.deltaDuration
-        return adapter.position + Math.max(Math.min(this.#tool.snapping.value(adapter.position), adapter.duration), duration)
+        return this.#tool.readComplete(adapter)
     }
     readPitch(adapter: NoteEventBoxAdapter): number {return adapter.pitch}
     readVelocity(adapter: NoteEventBoxAdapter): unitValue {return adapter.velocity}
@@ -26,7 +23,7 @@ class SelectedModifyStrategy implements NoteModifyStrategy {
     readChance(adapter: NoteEventBoxAdapter): number {return adapter.chance}
     iterateRange<R extends NoteEvent>(regions: EventCollection<R>, from: ppqn, to: ppqn): Iterable<R> {
         return regions.iterateRange(
-            this.#tool.selection.selected().reduce((from, adapter) => Math.min(from, adapter.position), from), to)
+            this.#tool.notes.reduce((from, adapter) => Math.min(from, adapter.position), from), to)
     }
 }
 
@@ -46,10 +43,13 @@ export class NoteDurationModifier implements NoteModifier {
 
     readonly #editing: Editing
     readonly #element: Element
-    readonly #selection: Selection<NoteEventBoxAdapter>
+    readonly #notes: ReadonlyMap<NoteEventBoxAdapter, {
+        owner: NoteEventCollectionBoxAdapter, position: ppqn, duration: ppqn
+    }>
+    readonly #referencePosition: ppqn
+    readonly #referenceDuration: ppqn
     readonly #snapping: Snapping
     readonly #pointerPulse: ppqn
-    readonly #reference: NoteEventBoxAdapter
 
     readonly #notifier: Notifier<void>
     readonly #selectedModifyStrategy: NoteModifyStrategy
@@ -60,10 +60,13 @@ export class NoteDurationModifier implements NoteModifier {
     private constructor({editing, element, selection, snapping, pointerPulse, reference}: Construct) {
         this.#editing = editing
         this.#element = element
-        this.#selection = selection
+        this.#notes = new Map(selection.selected()
+            .filter(note => note.box.isAttached() && note.collection.nonEmpty())
+            .map(note => [note, {owner: note.collection.unwrap(), position: note.position, duration: note.duration}]))
+        this.#referencePosition = reference.position
+        this.#referenceDuration = reference.duration
         this.#snapping = snapping
         this.#pointerPulse = pointerPulse
-        this.#reference = reference
 
         this.#notifier = new Notifier<void>()
         this.#selectedModifyStrategy = new SelectedModifyStrategy(this)
@@ -75,10 +78,26 @@ export class NoteDurationModifier implements NoteModifier {
     subscribeUpdate(observer: Observer<void>): Terminable {return this.#notifier.subscribe(observer)}
 
     get aligned(): boolean {return this.#aligned}
-    get reference(): NoteEventBoxAdapter {return this.#reference}
     get snapping(): Snapping {return this.#snapping}
     get deltaDuration(): ppqn {return this.#deltaDuration}
-    get selection(): Selection<NoteEventBoxAdapter> {return this.#selection}
+    get notes(): ReadonlyArray<NoteEventBoxAdapter> {return Array.from(this.#notes.keys()).filter(note => this.owns(note))}
+
+    isSelected(note: UINoteEvent): boolean {return this.owns(note as NoteEventBoxAdapter)}
+
+    owns(note: NoteEventBoxAdapter): boolean {
+        const base = this.#notes.get(note)
+        return base !== undefined && note.box.isAttached() && base.owner.box.isAttached()
+            && note.collection.contains(base.owner) && note.position === base.position && note.duration === base.duration
+    }
+
+    readComplete(note: NoteEventBoxAdapter): ppqn {
+        if (!this.owns(note)) {return note.complete}
+        const base = this.#notes.get(note)!
+        const duration = this.#aligned
+            ? this.#referencePosition + this.#referenceDuration + this.#deltaDuration - base.position
+            : base.duration + this.#deltaDuration
+        return base.position + Math.max(Math.min(this.#snapping.value(base.position), base.duration), duration)
+    }
 
     showOrigin(): boolean {return false}
     showCreation(): Option<UINoteEvent> {return Option.None}
@@ -90,7 +109,7 @@ export class NoteDurationModifier implements NoteModifier {
     update({clientX, ctrlKey: aligned}: Dragging.Event): void {
         const clientRect = this.#element.getBoundingClientRect()
         const deltaDuration: int = this.#snapping
-            .computeDelta(this.#pointerPulse, clientX - clientRect.left, this.#reference.duration)
+            .computeDelta(this.#pointerPulse, clientX - clientRect.left, this.#referenceDuration)
         let change = false
         if (this.#aligned !== aligned) {
             this.#aligned = aligned
@@ -107,17 +126,19 @@ export class NoteDurationModifier implements NoteModifier {
 
     approve(): void {
         if (this.#deltaDuration === 0) {return}
-        const result = this.#selection.selected()
+        const result = this.notes
             .map<{ adapter: NoteEventBoxAdapter, duration: ppqn }>(adapter => ({
                 adapter,
                 duration: this.#selectedModifyStrategy.readComplete(adapter)
                     - this.#selectedModifyStrategy.readPosition(adapter)
             }))
+        if (result.length === 0) {return}
         this.#editing.modify(() => result
             .forEach(({adapter: {box}, duration}) => box.duration.setValue(duration)))
     }
 
     cancel(): void {
+        this.#aligned = false
         this.#deltaDuration = 0
         this.#dispatchChange()
     }
