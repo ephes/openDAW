@@ -82,11 +82,16 @@ export class SignatureTrackAdapter implements Terminable {
     }
 
     * iterateAll(): IterableIterator<SignatureEvent> {
+        if (this.enabled) {yield* this.#iterateStored(); return}
+        const [nominator, denominator] = this.storageSignature
+        yield {index: -1, accumulatedPpqn: 0, accumulatedBars: 0, nominator, denominator}
+    }
+
+    * #iterateStored(): IterableIterator<SignatureEvent> {
         let accumulatedPpqn: ppqn = 0
         let accumulatedBars: int = 0
         let [nominator, denominator]: Readonly<[int, int]> = this.storageSignature
         yield {index: -1, accumulatedPpqn, accumulatedBars, nominator, denominator}
-        if (!this.#signatureTrack.enabled.getValue()) {return}
         for (const adapter of this.#adapters.adapters()) {
             accumulatedPpqn += PPQN.fromSignature(nominator, denominator) * adapter.relativePosition
             accumulatedBars += adapter.relativePosition
@@ -97,7 +102,7 @@ export class SignatureTrackAdapter implements Terminable {
     }
 
     changeSignature(nominator: int, denominator: int): void {
-        const originalEvents = Array.from(this.iterateAll()).slice(1)
+        const originalEvents = Array.from(this.#iterateStored()).slice(1)
         const originalPositions = originalEvents.map(e => e.accumulatedPpqn)
         this.#signature.nominator.setValue(nominator)
         this.#signature.denominator.setValue(denominator)
@@ -158,7 +163,7 @@ export class SignatureTrackAdapter implements Terminable {
     }
 
     createEvent(position: ppqn, nominator: int, denominator: int): void {
-        const allEvents = Array.from(this.iterateAll())
+        const allEvents = Array.from(this.#iterateStored())
         let prevEvent: SignatureEvent = allEvents[0]
         let insertAfterIndex = 0
         for (let i = 1; i < allEvents.length; i++) {
@@ -168,10 +173,13 @@ export class SignatureTrackAdapter implements Terminable {
         }
         const prevBarPpqn = PPQN.fromSignature(prevEvent.nominator, prevEvent.denominator)
         const barsFromPrev = (position - prevEvent.accumulatedPpqn) / prevBarPpqn
+        const snappedPosition = prevEvent.accumulatedPpqn + Math.max(0, Math.round(barsFromPrev)) * prevBarPpqn
         const newRelativePosition = Math.max(1, Math.round(barsFromPrev))
         const newIndex = prevEvent.index + 1
         const successorEvents = allEvents.slice(insertAfterIndex + 1)
         const newEventPpqn = prevEvent.accumulatedPpqn + newRelativePosition * prevBarPpqn
+        if (allEvents.some(event => event.index >= 0
+            && (event.accumulatedPpqn === snappedPosition || event.accumulatedPpqn === newEventPpqn))) {return}
         const newBarPpqn = PPQN.fromSignature(nominator, denominator)
         const adaptersToUpdate = successorEvents
             .map(event => ({event, adapter: this.adapterAt(event.index)}))

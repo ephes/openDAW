@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve stored signature events on base-meter edits while playback is disabled; refuse occupied snapped insertion boundaries without changing the map.
+
 - Order initial timeline track catchup once before construction returns, retaining immediate ordering for subsequent live edits.
 
 - Floor silent Revamp spectrum bins at -60 dB before interpolation and handle empty/one-pixel canvas geometry without nonfinite path coordinates.

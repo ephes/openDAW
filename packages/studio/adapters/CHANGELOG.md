@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve stored signature events on base-meter edits while playback is disabled; refuse inserts at occupied snapped boundaries without changing the map.
+
 - Keep curved equal-BPM tempo automation finite during grid walks and PPQN/seconds conversion.
 
 - Coalesce passive script loads/default initialization with the current device/context installation so editor remounts preserve pending explicit compiles; keep newer requests, external edits and deletion authoritative.
