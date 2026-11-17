@@ -21,7 +21,7 @@ const buffers = new Map<string, ArrayBuffer>()
 const resources = {fromPath: vi.fn((path: string) => ({uuid: UUID.generate(), name: path, path, buffer: buffers.get(path)!})), fromUUID: vi.fn()}
 const packer = {write: vi.fn((path: string, buffer: ArrayBufferLike) => {buffers.set(path, buffer as ArrayBuffer); return Xml.element({path}, FileReferenceSchema)})}
 const samples = {} as SampleLoaderManager
-const read = (text: string) => DawProjectImport.read(parse(text), resources)
+const read = async (text: string) => DawProjectImport.read(parse(text), resources)
 const write = (skeleton: Awaited<ReturnType<typeof read>>['skeleton']) => DawProjectExporter.write(skeleton, samples, packer)
 const tempo = '<TempoAutomation unit="bpm"><RealPoint time="0" value="120" interpolation="hold"/><RealPoint time="4" value="400" interpolation="linear"/></TempoAutomation>'
 afterEach(() => {vi.restoreAllMocks(); vi.clearAllMocks(); buffers.clear()})
@@ -173,5 +173,41 @@ it.each([
 it('B04 refuses lanes inside clip content instead of accepting an ignored subtree', async () => {
     const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
     await expect(read(source(lanes('<Lanes><Lanes/></Lanes>')))).rejects.toThrow(/clip lane/i)
+    expect(begin).not.toHaveBeenCalled()
+})
+
+it.each(['time="12" duration="4"', 'time="0" duration="1"', 'time="0" duration="4" playStart="2"', 'time="0" duration="4" loopEnd="2"', 'time="0" duration="4" enable="false"'])(
+    'B05 refuses nontransparent nested clip coordinates: %s', async attributes => {
+        const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+        await expect(read(source(lanes(`<Clips><Clip ${attributes}>${notes}</Clip></Clips>`)))).rejects.toThrow(/nested clip coordinates/i)
+        expect(begin).not.toHaveBeenCalled()
+        expect(resources.fromPath).not.toHaveBeenCalled()
+    })
+it('B05 retains a transparent nested wrapper at its independent audible position', async () => {
+    const {skeleton} = await read(source(lanes(`<Clips><Clip time="0" duration="4">${notes}</Clip></Clips>`)))
+    const region = skeleton.boxGraph.boxes().find(box => box instanceof NoteRegionBox) as NoteRegionBox
+    const note = skeleton.boxGraph.boxes().find(box => box instanceof NoteEventBox) as NoteEventBox
+    expect(region.position.getValue() + note.position.getValue()).toBe(2 * q)
+    expect(region.duration.getValue()).toBe(4 * q)
+})
+it.each(['', 'time="garbage"', 'time="Infinity"', 'time="NaN"', 'time="1e400"', 'time="3000000"', 'time="-1"', 'time="0.0001"'])(
+    'B05 refuses invalid automation coordinates before construction: %s', async time => {
+        const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+        for (const [tag, point] of [['TempoAutomation', `<RealPoint ${time} value="120"/>`], ['TimeSignatureAutomation', `<TimeSignaturePoint ${time} numerator="3" denominator="4"/>`]]) {
+            await expect(read(source(`<${tag}>${point}</${tag}>`))).rejects.toThrow(/time|coordinate|attribute/i)
+        }
+        expect(begin).not.toHaveBeenCalled()
+        expect(resources.fromPath).not.toHaveBeenCalled()
+    })
+it('B05 stores legitimate zero and fractional pulse-representable point times', async () => {
+    const automation = '<TempoAutomation><RealPoint time="0" value="120"/><RealPoint time="0.5" value="180"/></TempoAutomation><TimeSignatureAutomation><TimeSignaturePoint time="0" numerator="1" denominator="8"/><TimeSignaturePoint time="0.5" numerator="3" denominator="4"/></TimeSignatureAutomation>'
+    const {skeleton} = await read(source(automation))
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof ValueEventBox).map(box => box.position.getValue()).sort((a, b) => a - b)).toEqual([0, q / 2])
+    const exported = write(skeleton).arrangement!
+    expect(exported.timeSignatureAutomation!.points!.map(point => point.time)).toEqual([0, 0.5])
+})
+it('B05 refuses signature times that cannot be represented as native whole bars', async () => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(read(source('<TimeSignatureAutomation><TimeSignaturePoint time="0.5" numerator="3" denominator="4"/></TimeSignatureAutomation>'))).rejects.toThrow(/signature.*time/i)
     expect(begin).not.toHaveBeenCalled()
 })

@@ -49,3 +49,13 @@ scout's bounded early-refusal option for clip references, including shared notes
 duplicate IDs, dangling and cyclic declarations. Clip-contained lanes also refuse
 instead of disappearing. All seven new cases fail against B03.
 The same build/lint/test and browser commands are run after this bundle.
+
+## B05: explicit coordinate admission
+
+Regressions cover nested placement/trim/loop/duration/mute transforms, a positive
+transparent wrapper, missing/malformed/nonfinite/negative/overflow/sub-pulse times,
+and independent zero/fractional tempo and signature positions. Signature timing
+is native bar-relative, so non-bar changes refuse instead of snapping to a later
+bar. All Point XML subtypes share required finite numeric conversion.
+The new failure cases were run red before implementation; positive wrapper and
+valid timing cases retain their prior behavior. The same full gates follow.

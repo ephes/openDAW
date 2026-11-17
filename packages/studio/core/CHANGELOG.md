@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse lossy nested clip coordinate transforms and invalid/unrepresentable automation times before DAWproject graph construction; retain transparent wrappers and exact signature bar boundaries.
+
 - Traverse nested DAWproject arrangement lanes with inherited/overridden track identities; refuse unknown tracks, referenced clips and unsupported clip-contained lanes before graph construction.
 
 - Import child tracks under every admitted parent role and classify native DAWproject instrument tracks from their public content tags, including MIDIOutput, Apparat and Soundfont.

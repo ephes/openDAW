@@ -404,7 +404,7 @@ export class AutomationTargetSchema {
 
 @Xml.Class("Point")
 export class PointSchema {
-    @Xml.Attribute("time")
+    @Xml.Attribute("time", Xml.NumberRequired)
     readonly time!: number
 }
 

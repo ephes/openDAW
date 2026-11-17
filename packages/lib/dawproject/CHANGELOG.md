@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Require finite numeric times for all automation point subtypes instead of retaining unvalidated XML strings.
+
 - Preserve optional Audio display names separately from archive paths.
 
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.

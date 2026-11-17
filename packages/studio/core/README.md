@@ -613,3 +613,11 @@ Clip references (shared, dangling, ambiguous or cyclic) are explicitly refused
 before graph construction; supply inline content instead. Lanes nested inside
 clip content are refused because their playback coordinate composition is not
 implemented. Ordinary inline clips and nested arrangement lanes remain supported.
+
+Single nested clip wrappers flatten only when the inner source starts at zero,
+has no trim/loop/mute transform and covers the entire outer playback window.
+Nontransparent wrappers refuse before graph or asset publication.
+Automation point times must fit nonnegative integer int32 pulses (960 pulses per
+quarter note); sub-pulse coordinates are refused rather than rounded to zero.
+Signature changes must additionally fall on whole bar boundaries under the
+preceding signature; an exact zero sets the base signature.

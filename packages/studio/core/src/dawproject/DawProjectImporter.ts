@@ -82,7 +82,7 @@ import {
     TrackType
 } from "@opendaw/studio-adapters"
 import {DawProject} from "./DawProject"
-import {requireTempoBpm} from "./DawProjectTiming"
+import {beatTimeToPulses, requireTempoBpm} from "./DawProjectTiming"
 import {DeviceIO} from "./DeviceIO"
 import {BuiltinDevices} from "./BuiltinDevices"
 import {AudioContentHelpers} from "../project/audio/AudioContentHelpers"
@@ -184,8 +184,14 @@ export namespace DawProjectImport {
             content.clips.forEach(requireInlineClip)
             assert(content.clips.length === 1 && content.clips[0].content?.length === 1,
                 "Unsupported nested Clips: expected one clip with one content")
-            // The supported wrapper uses the outer clip's playback coordinates.
-            const nestedFades = clipFades(content.clips[0])
+            // Flatten only a transparent source window; the outer clip owns placement/trim.
+            const inner = content.clips[0]
+            const sourceEnd = clip.loopEnd ?? (clip.playStart ?? 0) + asDefined(clip.duration, "Duration not defined")
+            assert((inner.time ?? 0) === 0 && (inner.playStart ?? 0) === 0
+                && (inner.loopStart ?? 0) === 0 && inner.loopEnd === undefined && inner.enable !== false
+                && (inner.duration === undefined || (Number.isFinite(inner.duration) && inner.duration >= sourceEnd)),
+            "Unsupported nested clip coordinates: expected a transparent inner source window")
+            const nestedFades = clipFades(inner)
             assert(nestedFades.fadeIn === 0 && nestedFades.fadeOut === 0, "Unsupported nested clip fades: only the outer playback envelope is supported")
             const nestedUnit = content.clips[0].contentTimeUnit ?? unit
             requireBeats(nestedUnit)
@@ -279,7 +285,23 @@ export namespace DawProjectImport {
         if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
         schema.arrangement?.tempoAutomation?.points?.forEach(point => {
             assert(isInstanceOf(point, RealPointSchema), "Unsupported tempo point type")
+            beatTimeToPulses(point.time)
             requireTempoBpm(asInstanceOf(point, RealPointSchema).value)
+        })
+        const signaturePoints = schema.arrangement?.timeSignatureAutomation?.points?.map(point =>
+            asInstanceOf(point, TimeSignaturePointSchema))
+            .sort((a, b) => a.time - b.time) ?? []
+        let previousPosition = 0
+        let numerator = schema.transport?.timeSignature?.numerator ?? 4
+        let denominator = schema.transport?.timeSignature?.denominator ?? 4
+        signaturePoints.forEach((point, index) => {
+            const position = beatTimeToPulses(point.time)
+            const relativeBars = (position - previousPosition) / PPQN.fromSignature(numerator, denominator)
+            assert((index === 0 && position === 0) || (Number.isInteger(relativeBars) && relativeBars >= 1),
+                "Unsupported signature time: expected a whole bar boundary under the preceding signature")
+            previousPosition = position
+            numerator = point.numerator
+            denominator = point.denominator
         })
         const nativeStates = new Map<DeviceSchema, ArrayBuffer>()
         const validateNative = (tracks: ReadonlyArray<LaneSchema>): void => tracks.forEach(track => {
@@ -670,7 +692,7 @@ export namespace DawProjectImport {
                     .filter((point): point is RealPointSchema => isInstanceOf(point, RealPointSchema))
                     .forEach(point => {
                         const eventBox = ValueEventBox.create(boxGraph, UUID.generate(), box => {
-                            box.position.setValue(point.time * PPQN.Quarter)
+                            box.position.setValue(beatTimeToPulses(point.time))
                             box.index.setValue(0)
                             box.value.setValue(point.value)
                             box.events.refer(collectionBox.events)
@@ -689,9 +711,9 @@ export namespace DawProjectImport {
                     .filter((point): point is TimeSignaturePointSchema => isInstanceOf(point, TimeSignaturePointSchema))
                     .sort((pointA, pointB) => pointA.time - pointB.time)
                 if (signaturePoints.length === 0) {return}
-                // First point at or near time 0 sets the base signature
+                // An exact zero sets the base signature; preflight admitted the other bar boundaries.
                 const firstPoint = signaturePoints[0]
-                const firstPointIsAtStart = Number(firstPoint.time) < 0.001
+                const firstPointIsAtStart = firstPoint.time === 0
                 if (firstPointIsAtStart) {
                     timelineBox.signature.nominator.setValue(firstPoint.numerator)
                     timelineBox.signature.denominator.setValue(firstPoint.denominator)
@@ -704,7 +726,7 @@ export namespace DawProjectImport {
                 let prevNominator = timelineBox.signature.nominator.getValue()
                 let prevDenominator = timelineBox.signature.denominator.getValue()
                 eventsToCreate.forEach((point, index) => {
-                    const currentPpqn = point.time * PPQN.Quarter
+                    const currentPpqn = beatTimeToPulses(point.time)
                     const barDuration = PPQN.fromSignature(prevNominator, prevDenominator)
                     const relativePosition = Math.max(1, Math.round((currentPpqn - prevPpqn) / barDuration))
                     SignatureEventBox.create(boxGraph, UUID.generate(), box => {
