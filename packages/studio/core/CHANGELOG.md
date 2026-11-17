@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve native BPM in DAWproject tempo import/export independently of display bounds; refuse invalid BPM before graph construction or resource packing.
+
 - Bound audio fade path construction by visible device pixels while preserving clipped curve shape and handle placement.
 
 - Roll back failed runtime menu population and restore collection state; preserve canvas redraw requests raised during rendering and redraw idle canvases when device pixel ratio changes.

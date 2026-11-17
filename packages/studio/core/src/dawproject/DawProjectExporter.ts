@@ -61,6 +61,7 @@ import {
 import {ColorCodes, DeviceBoxUtils, InterpolationFieldAdapter, ProjectSkeleton, SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitExportLayout} from "./AudioUnitExportLayout"
 import {DeviceIO} from "./DeviceIO"
+import {requireTempoBpm} from "./DawProjectTiming"
 import {WavFile} from "@opendaw/lib-dsp"
 
 export namespace DawProjectExporter {
@@ -73,6 +74,10 @@ export namespace DawProjectExporter {
         const audioUnits: ReadonlyArray<AudioUnitBox> = rootBox.audioUnits.pointerHub.incoming()
             .map(({box}) => asInstanceOf(box, AudioUnitBox))
             .sort((a, b) => a.index.getValue() - b.index.getValue())
+        timelineBox.tempoTrack.events.targetVertex.ifSome(({box}) => {
+            asInstanceOf(box, ValueEventCollectionBox).events.pointerHub.incoming()
+                .forEach(({box}) => requireTempoBpm(asInstanceOf(box, ValueEventBox).value.getValue()))
+        })
         // Admit source coordinates before publishing any media or device state.
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
             visitNoteEventBox: note => {
@@ -353,8 +358,6 @@ export namespace DawProjectExporter {
                 .map(({box}) => asInstanceOf(box, ValueEventBox))
                 .sort((eventA, eventB) => eventA.position.getValue() - eventB.position.getValue())
             if (events.length === 0) {return undefined}
-            const minBpm = tempoTrack.minBpm.getValue()
-            const maxBpm = tempoTrack.maxBpm.getValue()
             const tempoParameterId = ids.getOrCreate(timelineBox.bpm.address)
             return Xml.element({
                 unit: Unit.BPM,
@@ -365,7 +368,7 @@ export namespace DawProjectExporter {
                     const interpolation = InterpolationFieldAdapter.read(event.interpolation)
                     return Xml.element({
                         time: event.position.getValue() / PPQN.Quarter,
-                        value: TempoAutomationConverter.normalizedToBpm(event.value.getValue(), minBpm, maxBpm),
+                        value: event.value.getValue(),
                         interpolation: TempoAutomationConverter.toDawProjectInterpolation(interpolation)
                     }, RealPointSchema)
                 })

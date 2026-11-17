@@ -83,6 +83,7 @@ import {
     TrackType
 } from "@opendaw/studio-adapters"
 import {DawProject} from "./DawProject"
+import {requireTempoBpm} from "./DawProjectTiming"
 import {DeviceIO} from "./DeviceIO"
 import {BuiltinDevices} from "./BuiltinDevices"
 import {AudioContentHelpers} from "../project/audio/AudioContentHelpers"
@@ -226,6 +227,10 @@ export namespace DawProjectImport {
         if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
         if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
         if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
+        schema.arrangement?.tempoAutomation?.points?.forEach(point => {
+            assert(isInstanceOf(point, RealPointSchema), "Unsupported tempo point type")
+            requireTempoBpm(asInstanceOf(point, RealPointSchema).value)
+        })
         const nativeStates = new Map<DeviceSchema, ArrayBuffer>()
         const validateNative = (tracks: ReadonlyArray<LaneSchema>): void => tracks.forEach(track => {
             if (!isInstanceOf(track, TrackSchema)) {return}
@@ -607,8 +612,6 @@ export namespace DawProjectImport {
             const readTempoAutomation = (tempoAutomation: PointsSchema): void => {
                 const points = tempoAutomation.points
                 if (!isDefined(points) || points.length === 0) {return}
-                const minBpm = timelineBox.tempoTrack.minBpm.getValue()
-                const maxBpm = timelineBox.tempoTrack.maxBpm.getValue()
                 const collectionBox = ValueEventCollectionBox.create(boxGraph, UUID.generate())
                 timelineBox.tempoTrack.events.refer(collectionBox.owners)
                 timelineBox.tempoTrack.enabled.setValue(true)
@@ -618,7 +621,7 @@ export namespace DawProjectImport {
                         const eventBox = ValueEventBox.create(boxGraph, UUID.generate(), box => {
                             box.position.setValue(point.time * PPQN.Quarter)
                             box.index.setValue(0)
-                            box.value.setValue(TempoAutomationConverter.bpmToNormalized(point.value, minBpm, maxBpm))
+                            box.value.setValue(point.value)
                             box.events.refer(collectionBox.events)
                         })
                         const interpolation = TempoAutomationConverter.fromDawProjectInterpolation(point.interpolation)

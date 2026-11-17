@@ -587,3 +587,10 @@ linear path. Rendering never edits events.
 
 Menu population rollback and canvas invalidation contracts are documented in
 [round 134](../../../plans/scout-round134-interactions.md).
+
+### DAWproject timing and traversal
+
+Tempo automation imports and exports native positive finite float32 BPM values.
+The editor's min/max BPM settings affect display only; interchange does not scale
+event values. BPM outside the native finite positive domain is refused before
+graph construction or resource packing.
