@@ -517,3 +517,7 @@ fragments use native navigation; modified clicks retain browser behavior.
 Stereo Tool auto gain cancels measurement on pointer cancellation or premature
 capture loss. A normal short release still completes the one-second measurement.
 Invalid meter frames are ignored and gain edits require finite evidence.
+
+Microphone capture can request permission when the browser lacks microphone
+permission introspection. Explicit input selections require the exact device;
+missing inputs require reselection. See [permission help](packages/app/studio/public/manuals/permissions.md).

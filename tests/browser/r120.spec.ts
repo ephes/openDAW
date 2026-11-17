@@ -74,3 +74,11 @@ for (const cancel of ["pointercancel", "lostpointercapture"]) {
         await page.evaluate(() => (window as unknown as {gain: {close(): void}}).gain.close())
     })
 }
+
+test("unsupported permission query still captures, while a selected missing input is refused", async ({page}) => {
+    const result = await page.evaluate(async () => {
+        // @ts-expect-error Vite serves the synthetic fixture.
+        return (await import("/r120-studio.ts")).microphoneFallback()
+    })
+    expect(result).toEqual({devices: 1, stopped: 1, refused: true, selectors: [null, {exact: "removed"}, null]})
+})

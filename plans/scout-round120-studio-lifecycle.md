@@ -46,3 +46,14 @@ Valid stereo evidence retains the existing target and gain limits.
 `AutoGainButton.test.tsx` covers these paths with fake meters/timers; separate
 cancellation and finite-evidence regressions fail before their respective fixes.
 The browser fixture also drives real mouse capture/release and cancellation.
+
+## B04: deliberate microphone capture
+
+Permissions introspection is advisory: missing, throwing or rejected queries let
+`getUserMedia` request permission. Explicit denial shows help and fails without
+capture; capture refusal resets the shared permission attempt for retry. Temporary
+permission streams stop their tracks. Explicit device IDs use an exact constraint,
+and missing-device errors propagate; an omitted selector keeps the default.
+`AudioDevices.test.ts` uses fake permissions and streams, including a fake browser
+that falls back for ideal selectors. Both regressions fail before their fixes.
+The browser fixture exercises the same real acquisition entry points with stubs.

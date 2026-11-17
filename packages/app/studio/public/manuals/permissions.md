@@ -16,3 +16,13 @@ hidden. This is how browsers are designed. Granting microphone access ensures op
 all connected audio devices properly.
 
 [Lookup 'enumerateDevices'](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/enumerateDevices)
+## Unsupported permission queries and selected inputs
+
+If the browser cannot query microphone permission, openDAW asks through the
+browser's capture request instead. A reported denial remains visible; capture
+refusal can be retried. The temporary stream used to reveal device labels stops
+all its tracks immediately.
+
+Selecting a specific microphone requires that exact device. If it disappears,
+recording setup fails so you can reselect deliberately; it never silently records
+another microphone. Omitting the input selector keeps the browser default.

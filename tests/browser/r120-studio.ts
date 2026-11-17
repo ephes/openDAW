@@ -63,3 +63,28 @@ export const setupGain = async () => {
         peaks: (peaks: number[]) => listeners.forEach(listener => listener(new Float32Array(peaks))),
         close: () => lifecycle.terminate()}
 }
+
+export const microphoneFallback = async () => {
+    const {AudioDevices} = await import("@/audio/AudioDevices")
+    let stopped = 0
+    const constraints: MediaStreamConstraints[] = []
+    const missing = new DOMException("Synthetic removed input", "OverconstrainedError")
+    Object.defineProperty(navigator, "permissions", {configurable: true, value: {
+        query: async () => {throw new TypeError("Synthetic unsupported microphone query")}
+    }})
+    Object.defineProperty(navigator, "mediaDevices", {configurable: true, value: {
+        getUserMedia: async (request: MediaStreamConstraints) => {
+            constraints.push(request)
+            const audio = request.audio as MediaTrackConstraints
+            if (typeof audio.deviceId === "object" && !Array.isArray(audio.deviceId) && audio.deviceId.exact === "removed") {throw missing}
+            return {getTracks: () => [{stop: () => {stopped++}}]}
+        },
+        enumerateDevices: async () => [{kind: "audioinput", deviceId: "synthetic", label: "Synthetic input"}]
+    }})
+    const devices = await AudioDevices.queryListInputDevices()
+    let refused = false
+    try {await AudioDevices.queryAudioInputDeviceStream(48000, "removed")} catch (error) {refused = error === missing}
+    await AudioDevices.queryAudioInputDeviceStream(48000)
+    return {devices: devices.length, stopped, refused,
+        selectors: constraints.map(request => (request.audio as MediaTrackConstraints).deviceId ?? null)}
+}
