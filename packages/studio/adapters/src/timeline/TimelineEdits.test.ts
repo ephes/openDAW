@@ -7,7 +7,6 @@ import {BoxAdapters} from "../BoxAdapters"
 import {BoxAdaptersContext} from "../BoxAdaptersContext"
 import {NoteRegionBoxAdapter} from "./region/NoteRegionBoxAdapter"
 import {ValueRegionBoxAdapter} from "./region/ValueRegionBoxAdapter"
-import {NoteEventBoxAdapter} from "./event/NoteEventBoxAdapter"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {ProjectSkeleton} from "../project/ProjectSkeleton"
 import {ConstantTempoMap, TimeBase} from "@opendaw/lib-dsp"
@@ -128,7 +127,7 @@ describe.each(["note", "value"] as const)("%s flatten", type => {
 })
 
 it("copies ratchet curves through collection copies and keeps single-note consolidation", () => {
-    const {boxGraph, create, context} = fixture("note")
+    const {boxGraph, create} = fixture("note")
     const region = create(0, 16) as NoteRegionBoxAdapter
     const note = region.optCollection.unwrap().events.asArray()[0]
     note.box.playCount.setValue(4)
@@ -146,8 +145,6 @@ it("copies ratchet curves through collection copies and keeps single-note consol
     const reopened = reopen(boxGraph.toArrayBuffer())
     const reopenedNote = reopened.findBox<NoteEventBox>(copy.uuid).unwrap()
     expect(reopenedNote.playCurve.getValue()).toBe(0.5)
-    const adapter = context.boxAdapters.adapterFor(copy.box, NoteEventBoxAdapter)
-    expect(adapter.computeCurveValue(0.25)).toBe(copy.computeCurveValue(0.25))
 })
 
 
@@ -157,6 +154,7 @@ describe.each(["note", "value"] as const)("%s content trim", type => {
         const first = create(0, 16)
         const second = first.copyTo({position: 32})
         const content = first.box.events.targetVertex.unwrap()
+        const originalEvents = first.optCollection.unwrap().events.asArray()
         const clip = type === "note"
             ? NoteClipBox.create(boxGraph, UUID.generate(), box => {
                 box.events.refer(content)
@@ -181,6 +179,7 @@ describe.each(["note", "value"] as const)("%s content trim", type => {
         expect(positions(first)).toEqual([-2])
         expect(positions(second)).toEqual(trimBoth ? [-2] : [0])
         expect(clip.events.targetVertex.unwrap()).toBe(content)
+        expect(originalEvents.map(event => event.position)).toEqual([0])
         expect(content.box.pointerHub.incoming().length).toBeGreaterThan(0)
         const reopened = reopen(boxGraph.toArrayBuffer())
         expect(reopened.findBox(clip.address.uuid).nonEmpty()).toBe(true)

@@ -10,6 +10,7 @@ export interface PointerListener {
 
 export class PointerHub {
     static validate(pointer: PointerField, target: Vertex): Option<string> {
+        if (pointer.graph !== target.graph) {return Option.wrap("Pointer target belongs to a foreign graph")}
         if (pointer.address.equals(target.address)) {
             return Option.wrap(`PointerField cannot point to itself: ${pointer}`)
         }

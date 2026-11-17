@@ -507,3 +507,11 @@ a failed preparation retains the previous registry and graph. Failed publication
 restores the previous map. If restoration also fails, the router stops, detaches
 its graph and attempts an empty map, then throws an explicit stopped error.
 Termination is idempotent, publishes an empty map and preserves foreign edges.
+
+### Recovery update framing
+
+Sync-log replay decodes each complete update payload before opening its graph
+transaction. Unknown tags, incomplete values and trailing bytes are refused
+without applying any update from that commit. This uses the
+[bounded lib-box update decoder](../../lib/box/README.md#recovery-update-payload-admission);
+valid update-log round trips retain their existing wire format.

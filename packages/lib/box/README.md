@@ -261,3 +261,22 @@ undo history. Further local edits are allowed but are not transmitted;
 checksum requests reject with a resynchronization diagnostic. Do not retry that
 sender or assume its failed batch was delivered: replace it and initialize a new
 empty target from a fresh snapshot (`new SyncSource(graph, messenger, true)`).
+
+## Pointer object admission
+
+`refer(vertex)` and `targetVertex` require an exact current vertex of the same
+graph. Foreign vertices are refused even when their UUID/address collides with
+a local vertex. Retired/replaced vertices are refused before changing the pointer
+or emitting updates. A target in the currently executing box constructor remains
+valid; `constructingBox(box)` tests that specific construction owner. Explicit
+address remapping through transfer/serialization APIs remains supported.
+
+## Recovery update payload admission
+
+`Updates.decode` requires a bounded `DataInput` exposing `remaining()`. Counts,
+strings, address paths and attachment lengths must fit the remaining bytes before
+allocation. Only known update and primitive tags and canonical boolean bytes are
+accepted. The entire supplied payload must be consumed; truncation and trailing
+bytes throw `Updates.DecodeError` before the caller can start graph replay.
+This framing admission does not validate box schemas or graph references inside
+a new/delete attachment; those remain the graph/field decoder's responsibility.

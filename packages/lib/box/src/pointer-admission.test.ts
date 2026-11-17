@@ -1,0 +1,70 @@
+import {describe, expect, it} from "vitest"
+import {Option, UUID} from "@opendaw/lib-std"
+import {graph, TestBox} from "./testing/fixtures"
+import {PointerHub} from "./pointer-hub"
+
+describe("pointer vertex admission", () => {
+    it.each([false, true])("refuses foreign vertices even with a local UUID collision (%s)", collision => {
+        const local = graph(), foreign = graph(), uuid = UUID.generate()
+        local.beginTransaction()
+        const owner = TestBox.create(local), target = TestBox.create(local, uuid)
+        owner.getField(2).refer(target)
+        local.endTransaction()
+        foreign.beginTransaction()
+        const other = TestBox.create(foreign, collision ? uuid : UUID.generate())
+        foreign.endTransaction()
+        const before = local.toArrayBuffer()
+        const updates: unknown[] = []
+        local.subscribeToAllUpdates({onUpdate: update => updates.push(update)})
+        local.beginTransaction()
+        expect(PointerHub.validate(owner.getField(2), other).nonEmpty()).toBe(true)
+        expect(() => owner.getField(2).refer(other)).toThrow(/graph/i)
+        expect(() => {owner.getField(2).targetVertex = Option.wrap(other)}).toThrow(/graph/i)
+        local.endTransaction()
+        expect(updates).toEqual([])
+        expect(local.toArrayBuffer()).toEqual(before)
+        expect(owner.getField(2).targetVertex.unwrap()).toBe(target)
+    })
+    it("refuses a detached target after its UUID is reused", () => {
+        const local = graph()
+        local.beginTransaction()
+        const owner = TestBox.create(local), stale = TestBox.create(local)
+        local.endTransaction()
+        local.beginTransaction(); stale.unstage(); local.endTransaction()
+        local.beginTransaction()
+        const replacement = TestBox.create(local, stale.address.uuid)
+        expect(() => owner.getField(2).refer(stale)).toThrow(/target/i)
+        expect(owner.getField(2).isEmpty()).toBe(true)
+        owner.getField(2).refer(replacement)
+        local.endTransaction()
+        expect(owner.getField(2).targetVertex.unwrap()).toBe(replacement)
+    })
+    it("refuses an unstaged duplicate UUID even during its constructor", () => {
+        const local = graph()
+        local.beginTransaction()
+        const owner = TestBox.create(local), existing = TestBox.create(local)
+        local.endTransaction()
+        local.beginTransaction()
+        expect(() => TestBox.create(local, existing.address.uuid, duplicate => {
+            expect(() => owner.getField(2).refer(duplicate)).toThrow(/target/i)
+            throw new Error("retire duplicate construction")
+        })).toThrow("retire duplicate construction")
+        local.endTransaction()
+        expect(owner.getField(2).isEmpty()).toBe(true)
+        expect(local.findBox(existing.address.uuid).unwrap()).toBe(existing)
+    })
+    it("allows the exact target being constructed but rejects a stale target inside another constructor", () => {
+        const local = graph()
+        local.beginTransaction()
+        const owner = TestBox.create(local), stale = TestBox.create(local)
+        local.endTransaction()
+        local.beginTransaction(); stale.unstage(); local.endTransaction()
+        local.beginTransaction()
+        const target = TestBox.create(local, UUID.generate(), constructing => {
+            expect(() => owner.getField(2).refer(stale)).toThrow(/target/i)
+            owner.getField(2).refer(constructing)
+        })
+        local.endTransaction()
+        expect(owner.getField(2).targetVertex.unwrap()).toBe(target)
+    })
+})

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse malformed nested recovery update payloads before opening replay transactions.
+
 - Keep sample upload promises pending until transport completion and support cancellation without automatic replay. Definite refusals (missing access key, HTTP 4xx) reject with `SampleUploadRefused` and the server reason.
 
 - Retire all monitoring graph edges and preserve the previous route and registry on failed rebuilds; stop explicitly if map restoration fails.

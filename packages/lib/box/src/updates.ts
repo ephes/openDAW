@@ -1,47 +1,99 @@
 import {PrimitiveField, PrimitiveType, PrimitiveValues, ValueSerialization} from "./primitive"
 import {Address} from "./address"
 import {PointerField} from "./pointer"
-import {Arrays, ByteArrayInput, DataInput, DataOutput, Option, UUID} from "@opendaw/lib-std"
+import {ByteArrayInput, DataInput, DataOutput, Option, UUID} from "@opendaw/lib-std"
 import {BoxGraph} from "./graph"
 
 export type Update = NewUpdate | PrimitiveUpdate | PointerUpdate | DeleteUpdate
 
 export namespace Updates {
+    export class DecodeError extends Error {}
     export const decode = (input: DataInput): ReadonlyArray<Update> => {
-        const numBlocks = input.readInt()
-        return Arrays.create(() => {
-            const type = input.readString() as Update["type"]
+        const remaining = (): number => {
+            if (typeof input.remaining !== "function") {throw new DecodeError("Bounded update input required")}
+            const bytes = input.remaining()
+            if (!Number.isSafeInteger(bytes) || bytes < 0) {throw new DecodeError("Invalid update input size")}
+            return bytes
+        }
+        const requireBytes = (count: number): void => {
+            if (count < 0 || count > remaining()) {throw new DecodeError("Incomplete update payload")}
+        }
+        const readLength = (stride: number): number => {
+            requireBytes(4)
+            const length = input.readInt()
+            if (length < 0 || length > Math.floor(remaining() / stride)) {throw new DecodeError("Invalid update length")}
+            return length
+        }
+        const readString = (): string => {
+            const length = readLength(2)
+            let value = ""
+            for (let index = 0; index < length; index++) {value += String.fromCharCode(input.readShort())}
+            return value
+        }
+        const readBytes = (): Int8Array => {
+            const bytes = new Int8Array(readLength(1))
+            input.readBytes(bytes)
+            return bytes
+        }
+        const readAddress = (): Address => {
+            requireBytes(17)
+            const uuid = UUID.fromDataInput(input)
+            const count = input.readByte()
+            if (count < 0 || count > Math.floor(remaining() / 2)) {throw new DecodeError("Invalid update address")}
+            const keys = new Int16Array(count)
+            for (let index = 0; index < count; index++) {keys[index] = input.readShort()}
+            return new Address(uuid, keys)
+        }
+        const readBoolean = (): boolean => {
+            requireBytes(1)
+            const value = input.readByte()
+            if (value !== 0 && value !== 1) {throw new DecodeError("Invalid update boolean")}
+            return value === 1
+        }
+        const readValue = (type: PrimitiveType): PrimitiveValues => {
             switch (type) {
+                case PrimitiveType.Boolean: return readBoolean()
+                case PrimitiveType.Int32: requireBytes(4); return input.readInt()
+                case PrimitiveType.Float32: requireBytes(4); return input.readFloat()
+                case PrimitiveType.String: return readString()
+                case PrimitiveType.Bytes: return readBytes()
+            }
+        }
+        const readUpdate = (): Update => {
+            switch (readString()) {
                 case "new": {
+                    requireBytes(16)
                     const uuid = UUID.fromDataInput(input)
-                    const name = input.readString()
-                    const settings = new Int8Array(input.readInt())
-                    input.readBytes(settings)
-                    return new NewUpdate(uuid, name, settings.buffer)
+                    const name = readString()
+                    return new NewUpdate(uuid, name, readBytes().buffer)
                 }
                 case "pointer": {
-                    const address = Address.read(input)
-                    const oldAddress = input.readBoolean() ? Option.wrap(Address.read(input)) : Option.None
-                    const newAddress = input.readBoolean() ? Option.wrap(Address.read(input)) : Option.None
+                    const address = readAddress()
+                    const oldAddress = readBoolean() ? Option.wrap(readAddress()) : Option.None
+                    const newAddress = readBoolean() ? Option.wrap(readAddress()) : Option.None
                     return new PointerUpdate(address, oldAddress, newAddress)
                 }
                 case "primitive": {
-                    const address = Address.read(input)
-                    const type: PrimitiveType = input.readString() as PrimitiveType
-                    const serializer: ValueSerialization = ValueSerialization[type]
-                    const oldValue = serializer.decode(input)
-                    const newValue = serializer.decode(input)
-                    return new PrimitiveUpdate(address, serializer, oldValue, newValue)
+                    const address = readAddress()
+                    const tag = readString()
+                    if (!Object.hasOwn(ValueSerialization, tag)) {throw new DecodeError("Unknown update primitive type")}
+                    const type = tag as PrimitiveType
+                    return new PrimitiveUpdate(address, ValueSerialization[type], readValue(type), readValue(type))
                 }
                 case "delete": {
+                    requireBytes(16)
                     const uuid = UUID.fromDataInput(input)
-                    const name = input.readString()
-                    const settings = new Int8Array(input.readInt())
-                    input.readBytes(settings)
-                    return new DeleteUpdate(uuid, name, settings.buffer)
+                    const name = readString()
+                    return new DeleteUpdate(uuid, name, readBytes().buffer)
                 }
+                default: throw new DecodeError("Unknown update type")
             }
-        }, numBlocks)
+        }
+        const count = readLength(4)
+        const updates: Update[] = []
+        for (let index = 0; index < count; index++) {updates.push(readUpdate())}
+        if (remaining() !== 0) {throw new DecodeError("Unconsumed update payload")}
+        return updates
     }
 }
 
