@@ -51,6 +51,12 @@ describe("fatal error provenance", () => {
         expect(mocks.stop).not.toHaveBeenCalled()
         expect(mocks.info).toHaveBeenCalledOnce()
     })
+    it.each(["QuotaExceededError: The quota has been exceeded.", "AbortError: The user aborted a request."])("keeps header-only browser stacks fatal: %s", stack => {
+        const error = new Error("browser failure")
+        error.stack = stack
+        expect(handler().processError("test", new ErrorEvent("error", {error}))).toBe(true)
+        expect(mocks.stop).toHaveBeenCalledOnce()
+    })
     it.each([1, 2])("makes one terminal decision for a source-less failure with %s scripts", scripts => {
         document.head.innerHTML = "<script></script>".repeat(scripts)
         expect(handler().processError("test", new Event("processorerror"))).toBe(true)

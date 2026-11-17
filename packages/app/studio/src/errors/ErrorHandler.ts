@@ -17,6 +17,7 @@ const IgnoredErrors = [
 const BrowserInternalPatterns = ["feature named", "window.__firefox__"]
 const MonacoPatterns = ["monaco-editor", "vs/base/common/errors"]
 const ThirdPartyAppPatterns = ["_callback_receiveMIDIMessage", "_callback_addSource"]
+const UrlLessSafariFrame = /^[^@\n]*@\s*$/m
 const UrlPattern = /(?:https?|chrome-extension|moz-extension|safari-web-extension):\/\/[^\s)]+/g
 
 export class ErrorHandler {
@@ -34,10 +35,10 @@ export class ErrorHandler {
         if (ExtensionPatterns.some(pattern =>
             error.message?.includes(pattern) || error.stack?.includes(pattern))) {return true}
         // Safari content scripts (Vimari et al.) run in an isolated world: their
-        // stacks carry function names but no source URLs, while our bundle always
-        // emits URLs. A non-empty URL-less stack therefore points to foreign code.
+        // frames read `fn@` with no source URL, while our bundle always emits URLs.
+        // Header-only stacks of browser-created DOMExceptions carry no frames at all.
         const stack = error.stack
-        return stack !== undefined && stack.trim().length > 0 && stack.match(UrlPattern) === null
+        return stack !== undefined && stack.match(UrlPattern) === null && UrlLessSafariFrame.test(stack)
     }
 
     #hasFirstPartySource(error: ErrorInfo): boolean {
