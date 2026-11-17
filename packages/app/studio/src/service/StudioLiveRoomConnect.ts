@@ -1,13 +1,13 @@
-import {OpfsProtocol} from "@opendaw/lib-fusion"
 import {Errors, Optional, RuntimeNotifier, Terminable, Terminator, TimeSpan, UUID} from "@opendaw/lib-std"
 import {Promises, Wait} from "@opendaw/lib-runtime"
-import {SampleStorage, SoundfontStorage, Workers, YService} from "@opendaw/studio-core"
+import {YService} from "@opendaw/studio-core"
 import {P2PSession, type SignalingSocket} from "@opendaw/studio-p2p"
 import {StudioService} from "@/service/StudioService"
 import {showConnectRoomDialog} from "@/service/StudioLiveRoomDialog.tsx"
 import {RoomAwareness, writeIdentity} from "@/service/RoomAwareness"
 import {newRoomSessionId, reportRoomResult, RoomResultStatus, startRoomDurationHeartbeat} from "@/service/RoomStatsReporter"
 import {ChatService} from "@/chat/ChatService"
+import {createRoomAssetReader} from "@/service/RoomAssetReader"
 import {Events} from "@opendaw/lib-dom"
 import {RouteLocation} from "@opendaw/lib-jsx"
 
@@ -78,19 +78,7 @@ export const connectRoom = async (service: StudioService, prefillRoomName?: Opti
                 chainedSoundfontProvider: service.chainedSoundfontProvider,
                 createSocket: url => new WebSocket(url) as SignalingSocket,
                 localPeerId: UUID.toString(UUID.generate()),
-                assetReader: {
-                    hasSample: uuid => SampleStorage.get().exists(uuid),
-                    hasSoundfont: uuid => Workers.Opfs.exists(`${SoundfontStorage.Folder}/${UUID.toString(uuid)}`),
-                    readSample: async uuid => {
-                        const path = `${SampleStorage.Folder}/${UUID.toString(uuid)}`
-                        const [wavBytes, metaBytes] = await Promise.all([
-                            Workers.Opfs.read(`${path}/audio.wav`, OpfsProtocol.ReadLimits.Media),
-                            Workers.Opfs.read(`${path}/meta.json`, OpfsProtocol.ReadLimits.Metadata)
-                        ])
-                        return [wavBytes.buffer as ArrayBuffer, JSON.parse(new TextDecoder().decode(metaBytes))]
-                    },
-                    readSoundfont: uuid => SoundfontStorage.get().load(uuid)
-                }
+                assetReader: createRoomAssetReader(project.boxGraph)
             }, roomName, "wss://live.opendaw.studio")
             project.own(p2pSession)
             const roomAwareness = new RoomAwareness(provider.awareness, roomName, userName, userColor)

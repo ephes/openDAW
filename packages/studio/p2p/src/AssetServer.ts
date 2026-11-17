@@ -94,19 +94,30 @@ export class AssetServer {
         console.debug("[P2P:Server] data channel established with", peerId)
         channel.onmessage = (event: MessageEvent) => {
             console.debug("[P2P:Server] data channel message received from", peerId)
-            this.#onChannelMessage(connection, channel, event.data as string)
+            this.#onChannelMessage(connection, channel, event.data)
+                .catch(error => console.warn("[P2P:Server] refused transfer-request:", error))
         }
     }
 
-    async #onChannelMessage(connection: AssetPeerConnection, channel: RTCDataChannel, data: string): Promise<void> {
-        const request = JSON.parse(data)
-        if (request.type !== "transfer-request") {
-            console.debug("[P2P:Server] unknown channel message type:", request.type)
+    async #onChannelMessage(connection: AssetPeerConnection, channel: RTCDataChannel, data: unknown): Promise<void> {
+        if (typeof data !== "string") {throw new Error("Invalid transfer-request")}
+        const request: unknown = JSON.parse(data)
+        if (request === null || typeof request !== "object") {throw new Error("Invalid transfer-request")}
+        const {type, uuid: uuidString, assetType} = request as Record<string, unknown>
+        if (type !== "transfer-request") {
+            console.debug("[P2P:Server] unknown channel message type:", type)
             return
         }
-        console.debug("[P2P:Server] transfer-request for", request.uuid, request.assetType)
-        const uuid = UUID.parse(request.uuid) as UUID.Bytes
-        const assetType = request.assetType as string
+        if (typeof uuidString !== "string" || (assetType !== "sample" && assetType !== "soundfont")) {
+            throw new Error("Invalid transfer-request")
+        }
+        console.debug("[P2P:Server] transfer-request for", uuidString, assetType)
+        const uuid = UUID.parse(uuidString) as UUID.Bytes
+        // The reader decides which assets this session shares; never read anything else for a peer.
+        const shared = assetType === "sample"
+            ? await this.#assetReader.hasSample(uuid)
+            : await this.#assetReader.hasSoundfont(uuid)
+        if (!shared) {throw new Error("Asset is not shared in this session")}
         let zipBytes: ArrayBuffer
         if (assetType === "sample") {
             console.debug("[P2P:Server] reading sample from OPFS...")
@@ -127,23 +138,23 @@ export class AssetServer {
         }))
         if (!await connection.sendWithBackpressure(channel,
             ChunkProtocol.encode(ChunkProtocol.MsgType.TransferStart, uuid, 0, startPayload))) {
-            console.debug("[P2P:Server] channel closed before transfer started for", request.uuid)
+            console.debug("[P2P:Server] channel closed before transfer started for", uuidString)
             return
         }
         for (let index = 0; index < chunks.length; index++) {
             const encoded = ChunkProtocol.encode(ChunkProtocol.MsgType.ChunkData, uuid, index, chunks[index])
             if (!await connection.sendWithBackpressure(channel, encoded)) {
-                console.debug("[P2P:Server] channel closed at chunk", index, "of", chunks.length, "for", request.uuid)
+                console.debug("[P2P:Server] channel closed at chunk", index, "of", chunks.length, "for", uuidString)
                 return
             }
             this.#trafficMeter.recordUpload(encoded.byteLength)
         }
         if (!await connection.sendWithBackpressure(channel,
             ChunkProtocol.encode(ChunkProtocol.MsgType.TransferComplete, uuid, 0, new Uint8Array(0)))) {
-            console.debug("[P2P:Server] channel closed before transfer-complete for", request.uuid)
+            console.debug("[P2P:Server] channel closed before transfer-complete for", uuidString)
             return
         }
-        console.debug("[P2P:Server] transfer complete for", request.uuid)
+        console.debug("[P2P:Server] transfer complete for", uuidString)
     }
 
     async #onIceCandidate(message: SignalingMessage): Promise<void> {

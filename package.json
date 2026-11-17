@@ -44,5 +44,8 @@
   "packageManager": "npm@11.4.2",
   "workspaces": [
     "packages/**/*"
-  ]
+  ],
+  "overrides": {
+    "dompurify": "^3.4.18"
+  }
 }

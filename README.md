@@ -304,7 +304,10 @@ slope edits retire when their source segment changes. See the
 
 Room joins preserve shared map identities and unwind failed setup. Only the latest
 connection intent can install a room; unused results and retired room projects
-close their transport/document. Recovery-log failures stop capture visibly, and
+close their transport/document. Peer asset transfers serve only samples and
+soundfonts that the room project references (`RoomAssetReader`); requests for other
+local assets, unknown asset types or malformed requests are refused without
+disturbing the serving studio. Recovery-log failures stop capture visibly, and
 commit counts advance only after file closure succeeds. See the
 [core contracts](packages/studio/core/README.md#live-room-admission-and-ownership)
 and [round 98 validation plan](plans/scout-round98-room-lifecycle.md).
@@ -470,6 +473,18 @@ tooling: tar, nx, sigstore, pacote, node-gyp, js-yaml, minimatch), vitest 5
 (tinypool, vite) and monaco-editor 0.57 (dompurify). `npm audit fix` would
 also clear `@nx/devkit`, but only by moving lerna's nx toolchain back from 20
 to 18/19, so that one is left as is.
+
+On 2026-11-17 a root `overrides` entry pins every DOMPurify copy to `^3.4.18`.
+Monaco does not import the npm package; it ships a vendored DOMPurify 3.1.7 at
+`monaco-editor/esm/vs/base/browser/dompurify/dompurify.js` (monaco-editor 0.57
+still vendors 3.4.15). The studio build plugin
+`packages/app/studio/src/build/MonacoDompurify.ts` resolves that vendored import to
+the overridden package, so the shipped editor uses the patched sanitizer.
+`src/build/MonacoDompurify.test.ts` asserts the lock floor and bundles Monaco's
+sanitizer to check the embedded DOMPurify version. After this change
+`npm audit --omit=dev` reports no DOMPurify finding; the remaining runtime-graph
+entries (picomatch, minimatch, fast-glob, micromatch via ts-morph in
+`lib-box-forge`) are build-time code generation only.
 
 ### MIDI and file boundaries
 
