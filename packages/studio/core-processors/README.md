@@ -210,3 +210,11 @@ time constant. Each sample keeps its own makeup while lookahead transforms gain
 reduction. The estimator continues tracking when disabled (zero makeup applied),
 and reset retires both estimator and retained sample gains. Empty spans advance
 neither state nor meters. Rebuilds change automatic compressor dynamics/loudness.
+
+### Raw MIDI press balance
+
+A raw note-off consumes one oldest still-held matching pitch, skipping already
+closed gates. Pending presses released before the next render never start a
+voice. Multiple same-pitch releases in one block stop distinct running voices;
+unmatched releases leave other pitches untouched. Lifecycle regressions live in
+`src/NoteSequencer.test.ts`.

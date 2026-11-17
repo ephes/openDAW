@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep first-party failures fatal despite injected scripts and preserve bounded diagnostics/recovery for hostile rejection values.
+
+- Light piano notes at exact onsets and loop boundaries; render invalid saved keyboard layouts with the existing default without changing project data.
+
+- Keep duration and velocity/chance/cent gestures on their original surviving notes and base values across selection changes; preserve cancellation and one undo edit.
+
 - Admit only typed, bounded control clipboard payloads and keep text controls synchronized with their models without replacing unchanged editable text.
 
 - Unwind failed panel factories and popout reconstruction (retiring the previous content before its replacement is built and rebuilding embedded content once a failed popout window has unloaded); make retired binding handles inert and termination idempotent.

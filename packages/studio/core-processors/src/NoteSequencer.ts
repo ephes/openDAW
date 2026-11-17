@@ -82,14 +82,14 @@ export class NoteSequencer implements NoteEventSource, Terminable {
 
     pushRawNoteOff(pitch: byte): void {
         for (const entry of this.#rawNotes) {
-            if (entry.pitch !== pitch) {continue}
+            if (entry.pitch !== pitch || !entry.gate) {continue}
             if (entry.running.isEmpty()) {
                 // never started
                 this.#rawNotes.delete(entry)
             } else {
                 entry.gate = false
-                return
             }
+            return // one release consumes one held press, pending or running
         }
     }
 

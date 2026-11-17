@@ -37,6 +37,39 @@ describe("NoteSequencer live and clip boundaries", () => {
         expect(Array.from(s.processNotes(1, 2, 0))).toEqual([NoteLifecycleEvent.stop(running[0] as ReturnType<typeof NoteLifecycleEvent.start>, 1)])
         expect(Array.from(s.processNotes(2, 3, 0))).toEqual([])
     })
+    it.each([2, 3])("consumes distinct running presses for %s same-pitch releases in one block", count => {
+        const s = fixture()
+        for (let i = 0; i < count; i++) {s.pushRawNoteOn(60, 1)}
+        s.pushRawNoteOn(64, 0.5)
+        const on = Array.from(s.processNotes(0, 1, 0)).filter(NoteLifecycleEvent.isStart)
+        for (let i = 0; i < count; i++) {s.pushRawNoteOff(60)}
+        s.pushRawNoteOff(60); s.pushRawNoteOff(61) // unmatched releases
+        const off = Array.from(s.processNotes(1, 2, 0)).filter(NoteLifecycleEvent.isStop)
+        expect(off.map(n => n.id)).toEqual(on.filter(n => n.pitch === 60).map(n => n.id))
+        expect(Array.from(s.iterateActiveNotesAt(2, true)).map(n => n.pitch)).toEqual([64])
+        s.pushRawNoteOff(64)
+        expect(Array.from(s.processNotes(2, 3, 0)).filter(NoteLifecycleEvent.isStop).map(n => n.id))
+            .toEqual(on.filter(n => n.pitch === 64).map(n => n.id))
+        expect(Array.from(s.iterateActiveNotesAt(3, true))).toEqual([])
+        expect(Array.from(s.processNotes(3, 4, 0))).toEqual([])
+    })
+    it("consumes one pending press per release without dropping other presses", () => {
+        const s = fixture()
+        s.pushRawNoteOn(60, 0.25); s.pushRawNoteOn(60, 0.75); s.pushRawNoteOn(64, 1)
+        s.pushRawNoteOff(60)
+        const on = Array.from(s.processNotes(0, 1, 0)).filter(NoteLifecycleEvent.isStart)
+        expect(on.map(n => [n.pitch, n.velocity])).toEqual([[60, 0.75], [64, 1]])
+        s.pushRawNoteOn(60, 0.5) // one running and one pending press
+        s.pushRawNoteOff(60); s.pushRawNoteOff(60)
+        const off = Array.from(s.processNotes(1, 2, 0))
+        expect(off.filter(NoteLifecycleEvent.isStart)).toEqual([])
+        expect(off.filter(NoteLifecycleEvent.isStop).map(n => n.id)).toEqual([on[0].id])
+        s.pushRawNoteOff(64)
+        Array.from(s.processNotes(2, 3, 0))
+        expect(Array.from(s.iterateActiveNotesAt(3, true))).toEqual([])
+        s.pushRawNoteOn(60, 1); s.pushRawNoteOff(60)
+        expect(Array.from(s.processNotes(3, 4, 0))).toEqual([])
+    })
     it.each([0, -0.5, 0.5])("caps every curved repeat at the clip end (%s)", playCurve => {
         const s = fixture(4, true, [note({playCount: 2, playCurve})])
         const events = Array.from(s.processNotes(0, 4, flags))

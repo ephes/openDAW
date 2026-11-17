@@ -66,3 +66,19 @@ ordinary clipboard fallback. Numeric guards still run on accepted values.
 Text controls follow external model changes and accepted application pastes;
 unchanged editable text retains its text node and selection. Closing the control
 retires the model subscription.
+
+### Recovery, piano timing and owned note edits
+
+First-party stack/source evidence keeps an error fatal despite injected scripts;
+unknown rejection values yield bounded diagnostics even when their getters or
+proxies throw. Source-less failures alone do not establish extension provenance;
+stacks whose frames carry no source URL (Safari isolated-world `fn@` frames)
+stay nonfatal unless first-party evidence is present; header-only stacks stay fatal.
+Piano keys include exact note onsets and exclude completions in the current loop
+cycle. Invalid stored keyboard layouts use the existing default without changing
+the saved index, including live layout changes and undo.
+
+Duration and velocity/chance/cent drags preview and commit the original surviving
+note set and captured base values. New selections cannot redirect an active edit;
+detached, reparented or conflicting targets are excluded. Escape discards preview
+and approval remains one undo transaction. See [round 142](../../../plans/scout-round142-studio-boundaries.md).

@@ -11,7 +11,7 @@ import {
     ValueAxis
 } from "@opendaw/lib-std"
 import {Line, NoteModifyStrategy} from "../NoteModifyStrategies.ts"
-import {NoteEventBoxAdapter} from "@opendaw/studio-adapters"
+import {NoteEventBoxAdapter, NoteEventCollectionBoxAdapter} from "@opendaw/studio-adapters"
 import {EventCollection, NoteEvent, ppqn} from "@opendaw/lib-dsp"
 import {NoteModifier} from "@/ui/timeline/editors/notes/NoteModifier.ts"
 import {
@@ -42,8 +42,8 @@ class SelectedModifyStrategy implements NoteModifyStrategy {
 
     modifyProperty(propertyAccessor: PropertyAccessor, event: UINoteEvent): number {
         const toolProperty = this.#tool.property
-        const rawValue = propertyAccessor.readRawValue(event)
-        if (propertyAccessor === toolProperty) {
+        const rawValue = this.#tool.readBaseValue(propertyAccessor, event)
+        if (propertyAccessor === toolProperty && this.#tool.isSelected(event)) {
             const {valueMapping} = toolProperty
             return valueMapping.y(clamp(valueMapping.x(rawValue) + this.#tool.deltaProperty, 0.0, 1.0))
         } else {
@@ -68,7 +68,7 @@ export class PropertyNodeModifier implements NoteModifier {
 
     readonly #editing: Editing
     readonly #element: Element
-    readonly #selection: Selection<NoteEventBoxAdapter>
+    readonly #notes: ReadonlyMap<NoteEventBoxAdapter, {owner: NoteEventCollectionBoxAdapter, value: number}>
     readonly #property: PropertyAccessor
     readonly #valueAxis: ValueAxis
     readonly #pointerValue: number
@@ -81,7 +81,9 @@ export class PropertyNodeModifier implements NoteModifier {
     private constructor({editing, element, selection, property, valueAxis, pointerValue}: Construct) {
         this.#editing = editing
         this.#element = element
-        this.#selection = selection
+        this.#notes = new Map(selection.selected()
+            .filter(note => note.box.isAttached() && note.collection.nonEmpty())
+            .map(note => [note, {owner: note.collection.unwrap(), value: property.readRawValue(note)}]))
         this.#property = property
         this.#valueAxis = valueAxis
         this.#pointerValue = pointerValue
@@ -96,6 +98,19 @@ export class PropertyNodeModifier implements NoteModifier {
 
     get property(): PropertyAccessor {return this.#property}
     get deltaProperty(): ppqn {return this.#deltaProperty}
+
+    isSelected(note: UINoteEvent): boolean {return this.owns(note as NoteEventBoxAdapter)}
+
+    owns(note: NoteEventBoxAdapter): boolean {
+        const base = this.#notes.get(note)
+        return base !== undefined && note.box.isAttached() && base.owner.box.isAttached()
+            && note.collection.contains(base.owner) && this.#property.readRawValue(note) === base.value
+    }
+
+    readBaseValue(property: PropertyAccessor, note: UINoteEvent): number {
+        return property === this.#property && this.isSelected(note)
+            ? this.#notes.get(note as NoteEventBoxAdapter)!.value : property.readRawValue(note)
+    }
 
     showOrigin(): boolean {return false}
     showCreation(): Option<UINoteEvent> {return Option.None}
@@ -114,9 +129,10 @@ export class PropertyNodeModifier implements NoteModifier {
     }
 
     approve(): void {
-        if (this.#deltaProperty === 0.0 || this.#selection.isEmpty()) {return}
-        const result: ReadonlyArray<{ adapter: NoteEventBoxAdapter, value: number }> = this.#selection.selected()
+        if (this.#deltaProperty === 0.0) {return}
+        const result: ReadonlyArray<{ adapter: NoteEventBoxAdapter, value: number }> = Array.from(this.#notes.keys()).filter(note => this.owns(note))
             .map(adapter => ({adapter, value: this.#selectedModifyStrategy.modifyProperty(this.#property, adapter)}))
+        if (result.length === 0) {return}
         this.#editing.modify(() => result.forEach(({adapter: {box}, value}) =>
             this.#property.writeValue(box, value)))
     }
