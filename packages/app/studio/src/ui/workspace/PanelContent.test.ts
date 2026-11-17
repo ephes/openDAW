@@ -45,27 +45,75 @@ it("unwinds factory resources and binding reservation before retry", () => {
     expect(cleanup).toHaveBeenCalledTimes(2)
 })
 
-it("closes failed popout candidates and retains the embedded owner", () => {
+it("closes failed popout candidates and rebuilds the embedded owner", () => {
     const cleanup = vi.fn()
-    let fail = false
+    let failures = 0
     const content = new PanelContent({create: lifecycle => {
         lifecycle.own({terminate: cleanup})
-        if (fail) {throw new Error("synthetic reconstruction failure")}
+        if (failures > 0) {failures--; throw new Error("synthetic reconstruction failure")}
         return document.createElement("article")
     }}, PanelType.Notepad)
+    const panelState = state()
     const container = document.createElement("div")
-    const handle = content.bind(state(), container, listener())
+    const panelListener = listener()
+    const handle = content.bind(panelState, container, panelListener)
     const embedded = container.firstChild
-    fail = true
+    failures = 1
     expect(() => handle.togglePopout()).toThrow("synthetic reconstruction failure")
     expect(windows.active).toBe(false)
-    expect(container.firstChild).toBe(embedded)
-    expect(cleanup).toHaveBeenCalledTimes(1)
-    fail = false
+    expect(container.children).toHaveLength(1)
+    expect(container.firstChild).not.toBe(embedded)
+    expect(panelState.isMinimized).toBe(false)
+    expect(cleanup).toHaveBeenCalledTimes(2)
     handle.togglePopout()
     expect(handle.isPopout()).toBe(true)
     handle.togglePopout()
     expect(handle.isPopout()).toBe(false)
+    handle.terminate()
+    expect(cleanup).toHaveBeenCalledTimes(5)
+    expect(panelListener.onMinimized).not.toHaveBeenCalled()
+})
+
+it("minimizes when neither the popout nor the embedded owner can be rebuilt", () => {
+    const cleanup = vi.fn()
+    let fail = false
+    const content = new PanelContent({create: lifecycle => {
+        lifecycle.own({terminate: cleanup})
+        if (fail) {throw new Error("persistent failure")}
+        return document.createElement("article")
+    }}, PanelType.Notepad)
+    const panelState = state()
+    const container = document.createElement("div")
+    const panelListener = listener()
+    const handle = content.bind(panelState, container, panelListener)
+    fail = true
+    expect(() => handle.togglePopout()).toThrow("persistent failure")
+    expect(windows.active).toBe(false)
+    expect(container.children).toHaveLength(0)
+    expect(panelState.isMinimized).toBe(true)
+    expect(panelListener.onMinimized).toHaveBeenCalledTimes(1)
+    expect(cleanup).toHaveBeenCalledTimes(3)
+    fail = false
+    handle.toggleMinimize()
+    expect(container.children).toHaveLength(1)
+    handle.terminate()
+    expect(cleanup).toHaveBeenCalledTimes(4)
+})
+
+it("retires the embedded owner before the popout factory reads its flushed state", () => {
+    let stored = "stale", pending = "fresh"
+    const reads: Array<string> = []
+    const content = new PanelContent({create: lifecycle => {
+        reads.push(stored)
+        lifecycle.own({terminate: () => {stored = pending}})
+        return document.createElement("article")
+    }}, PanelType.Notepad)
+    const handle = content.bind(state(), document.createElement("div"), listener())
+    handle.togglePopout()
+    expect(reads).toEqual(["stale", "fresh"])
+    pending = "popout"
+    handle.togglePopout()
+    expect(reads).toEqual(["stale", "fresh", "popout"])
     handle.terminate()
 })
 

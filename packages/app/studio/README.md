@@ -47,10 +47,12 @@ unit label and numbered suffix convention.
 
 ### Panel binding ownership
 
-Panel factories create content under a candidate lifecycle. Failed creation
-retires candidate resources and allows retry. Failed popout creation closes the
-candidate window and keeps embedded content; a failed return to embedded content
-leaves the panel minimized so it can be reopened. Binding handles act only on
+Panel factories create content under a candidate lifecycle. The previous
+content is retired first, so state it flushes on termination is visible to the
+new content. Failed creation retires candidate resources and allows retry.
+Failed popout creation closes the candidate window and rebuilds the embedded
+content (or minimizes the panel if that also fails); a failed return to embedded
+content leaves the panel minimized so it can be reopened. Binding handles act only on
 their own placeholder and can be terminated repeatedly.
 
 ### Control clipboard payloads

@@ -7,7 +7,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Admit only typed, bounded control clipboard payloads and keep text controls synchronized with their models without replacing unchanged editable text.
 
-- Unwind failed panel factories and popout reconstruction; make retired binding handles inert and termination idempotent.
+- Unwind failed panel factories and popout reconstruction (retiring the previous content before its replacement is built and rebuilding embedded content after a failed popout); make retired binding handles inert and termination idempotent.
 
 - Follow current piano track/unit membership and order, retiring current controls and subscriptions on replacement and close.
 
