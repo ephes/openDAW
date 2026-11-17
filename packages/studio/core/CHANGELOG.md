@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse lossy expressive-note and audio-gain/shaped-fade exports; serialize supported linear audio fades in explicit beats.
+
 - Refuse unsupported parameter automation regions and launcher clips before DAWproject export packing instead of silently dropping content.
 
 - Round-trip channel mute/solo and auxiliary send routing, gain, pan and enable state through DAWproject.

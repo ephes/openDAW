@@ -530,3 +530,9 @@ DAWproject export refuses nonempty parameter automation regions and launcher
 clips (note, audio or value), before packing samples or presets. Move launcher
 content to the arrangement for interchange. Empty launcher rows and dedicated
 tempo/time-signature automation remain supported.
+
+DAWproject export refuses expressive notes with ratchets/play curves, cent detune,
+chance or repeat features. Audio region gain must be 0 dB. Linear fades (slope
+0.5) are exported in explicit beat units, with finite nonnegative extents no
+greater than the region duration. Shaped fades require rendering before export;
+inactive fade slopes do not affect admission.

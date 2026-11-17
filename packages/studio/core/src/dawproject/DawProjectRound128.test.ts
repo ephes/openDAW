@@ -2,7 +2,7 @@ import {afterEach, expect, it, vi} from "vitest"
 import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema} from "@opendaw/lib-dawproject"
-import {AudioData, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
+import {AudioData, FadingEnvelope, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
 import {AudioRegionBox, AudioUnitBox, AuxSendBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
@@ -146,4 +146,43 @@ it("B03 refuses launcher clips even without arrangement regions", async () => {
     boxGraph.endTransaction()
     expect(() => write(skeleton)).toThrow(/Unsupported launcher clip/)
     expect(packer.write).not.toHaveBeenCalled()
+})
+
+it.each([['playCount', 2], ['playCurve', 0.5], ['cent', 12], ['chance', 50]] as const)("B04 refuses expressive note %s before packing", async (field, value) => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    skeleton.boxGraph.beginTransaction()
+    const note = skeleton.boxGraph.boxes().find(box => box instanceof NoteEventBox) as NoteEventBox
+    note[field].setValue(value)
+    skeleton.boxGraph.endTransaction()
+    expect(() => write(skeleton)).toThrow(/Unsupported expressive note/)
+    expect(packer.write).not.toHaveBeenCalled()
+})
+it.each(['gain', 'inSlope', 'outSlope'] as const)("B04 refuses unsupported audio %s before packing", async field => {
+    const {skeleton} = await DawProjectImport.read(project(audio), resources)
+    skeleton.boxGraph.beginTransaction()
+    const region = skeleton.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
+    if (field === 'gain') {region.gain.setValue(-6)} else {
+        region.fading.in.setValue(q)
+        region.fading.out.setValue(q)
+        region.fading.inSlope.setValue(0.5)
+        region.fading.outSlope.setValue(0.5)
+        region.fading[field].setValue(0.25)
+    }
+    skeleton.boxGraph.endTransaction()
+    expect(() => write(skeleton)).toThrow(/Unsupported audio (gain|fade curve)/)
+    expect(packer.write).not.toHaveBeenCalled()
+})
+it("B04 exports linear fades in explicit beat units", async () => {
+    const {skeleton} = await DawProjectImport.read(project(audio), resources)
+    skeleton.boxGraph.beginTransaction()
+    const region = skeleton.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
+    region.fading.in.setValue(q)
+    region.fading.out.setValue(2 * q)
+    region.fading.inSlope.setValue(0.5)
+    region.fading.outSlope.setValue(0.5)
+    skeleton.boxGraph.endTransaction()
+    const exported = xml(write(skeleton))
+    expect(exported).toContain('fadeTimeUnit="beats"')
+    expect(exported).toContain('fadeInTime="1"')
+    expect(exported).toContain('fadeOutTime="2"')
 })

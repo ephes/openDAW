@@ -75,6 +75,12 @@ export namespace DawProjectExporter {
             .sort((a, b) => a.index.getValue() - b.index.getValue())
         // Admit source coordinates before publishing any media or device state.
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
+            visitNoteEventBox: note => {
+                assert(note.playCount.getValue() === 1 && note.playCurve.getValue() === 0
+                    && note.cent.getValue() === 0 && note.chance.getValue() === 100
+                    && !note.pointerHub.incoming().some(({box}) => box.name === "NoteEventRepeatBox"),
+                "Unsupported expressive note: ratchets, detune, chance or repeat features cannot be exported")
+            },
             visitValueRegionBox: region => {
                 assert(region.events.targetVertex.mapOr(vertex =>
                     asInstanceOf(vertex.box, ValueEventCollectionBox).events.pointerHub.incoming().length === 0, true),
@@ -89,6 +95,16 @@ export namespace DawProjectExporter {
                     "Unsupported note export playback window")
             },
             visitAudioRegionBox: region => {
+                assert(region.gain.getValue() === 0, "Unsupported audio gain: render region gain before export")
+                const fadeIn = region.fading.in.getValue(), fadeOut = region.fading.out.getValue()
+                const duration = region.timeBase.getValue() === TimeBase.Seconds
+                    ? PPQN.secondsToPulses(region.duration.getValue(), timelineBox.bpm.getValue())
+                    : region.duration.getValue()
+                assert([fadeIn, fadeOut].every(value => Number.isFinite(value) && value >= 0 && value <= duration),
+                    "Unsupported audio fade extent")
+                assert((fadeIn === 0 || region.fading.inSlope.getValue() === 0.5)
+                    && (fadeOut === 0 || region.fading.outSlope.getValue() === 0.5),
+                "Unsupported audio fade curve: only linear fades can be exported")
                 const start = region.loopOffset.getValue(), span = region.loopDuration.getValue()
                 assert(Number.isFinite(start) && Number.isFinite(span) && span > 0 && start >= 0 && start < span,
                     "Unsupported audio export playback window")
@@ -263,6 +279,9 @@ export namespace DawProjectExporter {
                     duration,
                     contentTimeUnit: TimeUnit.BEATS,
                     playStart: toBeats(region.loopOffset.getValue()),
+                    fadeTimeUnit: TimeUnit.BEATS,
+                    fadeInTime: region.fading.in.getValue() / PPQN.Quarter,
+                    fadeOutTime: region.fading.out.getValue() / PPQN.Quarter,
                     loopStart: 0.0,
                     loopEnd: toBeats(region.loopDuration.getValue()),
                     enable: !region.mute.getValue(),

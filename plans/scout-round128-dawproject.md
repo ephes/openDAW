@@ -13,3 +13,6 @@ Channel solo uses the schema boolean attribute; mute uses BooleanParameterSchema
 
 B03: preflight owned content before any packer writes. Retain the existing
 tempo/signature paths and arrangement-only projects.
+
+B04: reject unsupported expressive state before packing; admit linear zero-gain
+audio envelopes and serialize their PPQN extents as beats.
