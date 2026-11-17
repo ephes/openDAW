@@ -515,3 +515,8 @@ transaction. Unknown tags, incomplete values and trailing bytes are refused
 without applying any update from that commit. This uses the
 [bounded lib-box update decoder](../../lib/box/README.md#recovery-update-payload-admission);
 valid update-log round trips retain their existing wire format.
+
+DAWproject export preserves note loop offsets and converts seconds-based audio
+source trims to beats at constant tempo. Nonzero note event offsets and invalid
+source loop windows are refused before media packing; consolidate note regions
+with event offsets before interchange.

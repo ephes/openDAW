@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve DAWproject note loop offsets and convert absolute audio source trims to beats; refuse unsupported event offsets and invalid playback windows before packing.
+
 - Refuse malformed nested recovery update payloads before opening replay transactions.
 
 - Keep sample upload promises pending until transport completion and support cancellation without automatic replay. Definite refusals (missing access key, HTTP 4xx) reject with `SampleUploadRefused` and the server reason.

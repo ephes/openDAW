@@ -70,6 +70,19 @@ export namespace DawProjectExporter {
         const audioUnits: ReadonlyArray<AudioUnitBox> = rootBox.audioUnits.pointerHub.incoming()
             .map(({box}) => asInstanceOf(box, AudioUnitBox))
             .sort((a, b) => a.index.getValue() - b.index.getValue())
+        // Admit source coordinates before publishing any media or device state.
+        boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
+            visitNoteRegionBox: region => {
+                assert(region.eventOffset.getValue() === 0, "Unsupported note event offset: consolidate the region before export")
+                assert(region.loopOffset.getValue() >= 0 && region.loopOffset.getValue() < region.loopDuration.getValue(),
+                    "Unsupported note export playback window")
+            },
+            visitAudioRegionBox: region => {
+                const start = region.loopOffset.getValue(), span = region.loopDuration.getValue()
+                assert(Number.isFinite(start) && Number.isFinite(span) && span > 0 && start >= 0 && start < span,
+                    "Unsupported audio export playback window")
+            }
+        }))
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
             visitAudioFileBox: (box: AudioFileBox): void => {
                 const path = `samples/${UUID.toString(box.address.uuid)}.wav`
@@ -225,7 +238,7 @@ export namespace DawProjectExporter {
                     time: region.position.getValue() / PPQN.Quarter,
                     duration,
                     contentTimeUnit: TimeUnit.BEATS,
-                    playStart: region.loopOffset.getValue() / PPQN.Quarter,
+                    playStart: toBeats(region.loopOffset.getValue()),
                     loopStart: 0.0,
                     loopEnd: toBeats(region.loopDuration.getValue()),
                     enable: !region.mute.getValue(),
@@ -248,7 +261,7 @@ export namespace DawProjectExporter {
                     time: region.position.getValue() / PPQN.Quarter,
                     duration: region.duration.getValue() / PPQN.Quarter,
                     contentTimeUnit: TimeUnit.BEATS,
-                    playStart: 0.0,
+                    playStart: region.loopOffset.getValue() / PPQN.Quarter,
                     loopStart: 0.0,
                     loopEnd: region.loopDuration.getValue() / PPQN.Quarter,
                     enable: !region.mute.getValue(),
