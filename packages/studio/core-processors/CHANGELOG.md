@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Honor disabled auxiliary sends while retaining saved gain and pan, with ramped enable changes.
+
 - Retire all incident graph edges before late edge leases; sort processors with iterative linear graph traversal and explicit cycle detection.
 
 - Preserve Delay and pre-delay state on empty spans; prepare input/frozen replacements before retiring the last working source and unwind failed processor/edge registrations through `EngineContext.constructAtomically`.

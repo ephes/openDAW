@@ -3,7 +3,7 @@ import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema} from "@opendaw/lib-dawproject"
 import {AudioData, FadingEnvelope, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
-import {AudioFileBox, AudioRegionBox, AudioUnitBox, AuxSendBox, DelayDeviceBox, NanoDeviceBox, PitchDeviceBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
+import {AudioFileBox, AudioRegionBox, AudioUnitBox, AuxSendBox, DelayDeviceBox, FoldDeviceBox, NanoDeviceBox, PitchDeviceBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {Option, UUID} from "@opendaw/lib-std"
@@ -196,7 +196,7 @@ it("B05 restores native Nano and ordered effect parameters with valid hosts", as
     unit.input.pointerHub.incoming().forEach(({box}) => box.delete())
     NanoDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.input); box.release.setValue(0.75); box.volume.setValue(-9)})
     DelayDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.index.setValue(1); box.feedback.setValue(0.25)})
-    DelayDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.index.setValue(0); box.feedback.setValue(0.75)})
+    FoldDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.index.setValue(0); box.drive.setValue(12)})
     PitchDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.midiEffects); box.index.setValue(0)})
     boxGraph.endTransaction()
     const packed = new Map<string, ArrayBuffer>()
@@ -209,7 +209,10 @@ it("B05 restores native Nano and ordered effect parameters with valid hosts", as
     expect(nano.volume.getValue()).toBe(-9)
     const host = nano.host.targetVertex.unwrap().box as AudioUnitBox
     const delays = imported.boxGraph.boxes().filter(box => box instanceof DelayDeviceBox).sort((a, b) => a.index.getValue() - b.index.getValue())
-    expect(delays.map(box => box.feedback.getValue())).toEqual([0.75, 0.25])
+    expect(delays.map(box => box.feedback.getValue())).toEqual([0.25])
+    const chain = host.audioEffects.pointerHub.incoming().map(({box}) => box as DelayDeviceBox | FoldDeviceBox).sort((a, b) => a.index.getValue() - b.index.getValue())
+    expect(chain.map(box => box.name)).toEqual(['FoldDeviceBox', 'DelayDeviceBox'])
+    expect((chain[0] as FoldDeviceBox).drive.getValue()).toBe(12)
     expect(delays.every(box => box.host.targetVertex.unwrap().box === host)).toBe(true)
     expect(imported.boxGraph.boxes().filter(box => box instanceof PitchDeviceBox)).toHaveLength(1)
     expect(() => imported.boxGraph.verifyPointers()).not.toThrow()
@@ -242,4 +245,58 @@ it("B05 refuses native dependent resources instead of substituting a sampler", a
     await expect(DawProjectImport.read(exported, resources)).rejects.toThrow(/Unsupported native device state/)
     expect(resources.fromPath).toHaveBeenCalledTimes(1)
     expect(resources.fromPath.mock.calls[0][0]).toMatch(/^presets\//)
+})
+
+it.each([notes, audio])("B06 refuses an explicit source playStop before graph allocation", async content => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(DawProjectImport.read(project(content, 'playStop="1"'), resources)).rejects.toThrow(/Unsupported clip playStop/)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it("B06 imports and round-trips linear audio fades with the same edge envelope", async () => {
+    const {skeleton} = await DawProjectImport.read(project(audio, 'fadeTimeUnit="beats" fadeInTime="1" fadeOutTime="2"'), resources)
+    const region = skeleton.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
+    const fading = (box: AudioRegionBox) => ({in: box.fading.in.getValue(), out: box.fading.out.getValue(), inSlope: box.fading.inSlope.getValue(), outSlope: box.fading.outSlope.getValue()})
+    expect(fading(region)).toEqual({in: q, out: 2 * q, inSlope: 0.5, outSlope: 0.5})
+    const {skeleton: imported} = await DawProjectImport.read(Xml.parse(xml(write(skeleton)), ProjectSchema), resources)
+    const result = imported.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
+    const edge = [0, 0.5, 1, 6, 7, 8].map(at => FadingEnvelope.gainAt(at * q, result.duration.getValue(), fading(result)))
+    expect(edge).toEqual([0, 0.5, 1, 1, 0.5, 0])
+})
+it.each([
+    'fadeTimeUnit="seconds" fadeInTime="1"', 'fadeInTime="1"',
+    'fadeTimeUnit="beats" fadeInTime="-1"', 'fadeTimeUnit="beats" fadeOutTime="9"'
+])("B06 refuses unsupported or invalid fades before graph/assets: %s", async attributes => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(DawProjectImport.read(project(audio, attributes), resources)).rejects.toThrow(/Unsupported clip fade/)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it("B06 refuses note fades rather than ignoring them", async () => {
+    await expect(DawProjectImport.read(project(notes, 'fadeTimeUnit="beats" fadeInTime="1"'), resources)).rejects.toThrow(/Unsupported note clip fade/)
+})
+
+it.each(['fadeInTime="NaN"', 'fadeOutTime="Infinity"'])("B06 rejects nonfinite fades at XML admission: %s", attributes => {
+    expect(() => project(audio, attributes)).toThrow(/Invalid XML attribute 'fade/)
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it("B06 refuses envelope state on the otherwise supported inner wrapper", async () => {
+    const content = `<Clips><Clip time="0" duration="8" fadeTimeUnit="beats" fadeInTime="1">${audio}</Clip></Clips>`
+    await expect(DawProjectImport.read(project(content), resources)).rejects.toThrow(/Unsupported nested clip fades/)
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+
+it("B05 refuses native instruments on bus channels instead of ignoring their state", async () => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    const exported = xml(write(skeleton)).replace('role="regular"', 'role="effect"')
+    resources.fromPath.mockClear()
+    await expect(DawProjectImport.read(Xml.parse(exported, ProjectSchema), resources)).rejects.toThrow(/Unsupported native device state/)
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it("B05 catches parameter Points inside otherwise unread clip lanes", async () => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    const content = '<Lanes><Points><Target parameter="volume"/><RealPoint time="0" value="0.5"/></Points></Lanes>'
+    await expect(DawProjectImport.read(project(content), resources)).rejects.toThrow(/Unsupported parameter automation lane/)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
 })

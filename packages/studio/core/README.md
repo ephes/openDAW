@@ -516,10 +516,12 @@ without applying any update from that commit. This uses the
 [bounded lib-box update decoder](../../lib/box/README.md#recovery-update-payload-admission);
 valid update-log round trips retain their existing wire format.
 
+### DAWproject playback preservation and refusals
+
 DAWproject export preserves note loop offsets and converts seconds-based audio
 source trims to beats at constant tempo. Nonzero note event offsets and invalid
-source loop windows are refused before media packing; consolidate note regions
-with event offsets before interchange.
+source loop windows are refused before media packing; copy notes to a new
+region when the source has a nonzero event offset.
 
 DAWproject channels retain mute and solo independently of clip mute. Auxiliary
 sends retain destination, pre/post routing, gain, pan and enable state; disabled
@@ -541,8 +543,16 @@ Native openDAW DAWproject devices with self-contained state are restored with ne
 IDs and a host in the destination graph, preserving parameters, enabled state and
 effect order. State is checked in a temporary graph before constructing the
 imported project. Missing/malformed state, wrong device identity/role, external
-pointers and dependent resources are explicitly refused; these devices require
+pointers, dependent resources, multiple instruments and unsupported native roles
+on bus channels are explicitly refused; these devices require
 rendering or removal before interchange. No replacement instrument is substituted.
 Audio buses are channels, not native instrument presets. Nonempty generic Points
 parameter lanes are refused before graph construction; dedicated tempo and
 time-signature automation remain supported.
+
+Explicit clip playStop windows are not representable by the current import path
+and are refused before graph construction or asset requests. Audio fades accept
+finite nonnegative extents up to the clip duration, with explicit fadeTimeUnit=beats
+for nonzero fades, and become linear region envelopes. Nonzero fades without a
+unit or in seconds, note fades and inner-wrapper fades are refused. Overlapping
+linear fades use the quieter envelope, matching local playback.

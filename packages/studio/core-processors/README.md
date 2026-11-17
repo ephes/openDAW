@@ -185,3 +185,7 @@ the previous source once.
 An empty Delay span touches neither output nor DSP/pre-delay history. Changing
 controls after an empty first call initializes the delay just like a fresh network,
 including after reset; smoothing begins only after actual frames were processed.
+
+Auxiliary send enable state gates its effective gain while preserving the saved
+level and pan. Disabling and re-enabling use the existing gain ramps. Existing
+projects default auxiliary sends to enabled.

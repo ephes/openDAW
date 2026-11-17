@@ -90,7 +90,7 @@ export namespace DawProjectExporter {
             visitAudioClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
             visitValueClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
             visitNoteRegionBox: region => {
-                assert(region.eventOffset.getValue() === 0, "Unsupported note event offset: consolidate the region before export")
+                assert(region.eventOffset.getValue() === 0, "Unsupported note event offset: copy notes to a new region before export")
                 assert(region.loopOffset.getValue() >= 0 && region.loopOffset.getValue() < region.loopDuration.getValue(),
                     "Unsupported note export playback window")
             },

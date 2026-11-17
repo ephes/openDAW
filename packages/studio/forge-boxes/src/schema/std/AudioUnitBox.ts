@@ -94,7 +94,6 @@ export const AuxSendBox: BoxSchema<Pointers> = {
     class: {
         name: "AuxSendBox",
         fields: {
-            7: {type: "boolean", name: "enabled", value: true},
             1: {type: "pointer", name: "audio-unit", pointerType: Pointers.AuxSend, mandatory: true},
             2: {type: "pointer", name: "target-bus", pointerType: Pointers.AudioOutput, mandatory: true},
             3: {type: "int32", name: "index", constraints: "index", unit: ""},
@@ -111,7 +110,8 @@ export const AuxSendBox: BoxSchema<Pointers> = {
             5: {
                 type: "float32", name: "send-gain", pointerRules: ParameterPointerRules,
                 constraints: "decibel", unit: "dB"
-            }
+            },
+            7: {type: "boolean", name: "enabled", value: true}
         }
     }, pointerRules: {accepts: [Pointers.SideChain], mandatory: false}
 }

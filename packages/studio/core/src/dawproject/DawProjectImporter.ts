@@ -108,6 +108,15 @@ export namespace DawProjectImport {
         if (contentType === "notes") return Option.wrap(CaptureMidiBox.create(boxGraph, UUID.generate()))
         return Option.None
     }
+    const clipFades = (clip: ClipSchema) => {
+        assert(clip.playStop === undefined, "Unsupported clip playStop: explicit source stop windows cannot be imported")
+        const fadeIn = clip.fadeInTime ?? 0, fadeOut = clip.fadeOutTime ?? 0
+        assert([fadeIn, fadeOut].every(value => Number.isFinite(value) && value >= 0 && value <= (clip.duration ?? 0)),
+            "Unsupported clip fade extent: expected finite nonnegative durations within the clip")
+        assert((fadeIn === 0 && fadeOut === 0) || clip.fadeTimeUnit === "beats",
+            "Unsupported clip fade time unit: nonzero fades require explicit beats")
+        return {fadeIn, fadeOut}
+    }
     const noteCoordinates = (clip: ClipSchema) => {
         const position = asDefined(clip.time, "Time not defined")
         const duration = asDefined(clip.duration, "Duration not defined")
@@ -171,11 +180,17 @@ export namespace DawProjectImport {
             assert(content.clips.length === 1 && content.clips[0].content?.length === 1,
                 "Unsupported nested Clips: expected one clip with one content")
             // The supported wrapper uses the outer clip's playback coordinates.
+            const nestedFades = clipFades(content.clips[0])
+            assert(nestedFades.fadeIn === 0 && nestedFades.fadeOut === 0, "Unsupported nested clip fades: only the outer playback envelope is supported")
             const nestedUnit = content.clips[0].contentTimeUnit ?? unit
             requireBeats(nestedUnit)
             validateContent(clip, asDefined(content.clips[0].content)[0], nestedUnit)
         } else if (isInstanceOf(content, NotesSchema)) {
+            const {fadeIn, fadeOut} = clipFades(clip)
+            assert(fadeIn === 0 && fadeOut === 0, "Unsupported note clip fade")
             noteCoordinates(clip)
+        } else if (isInstanceOf(content, LanesSchema)) {
+            validateTimeline(content, unit)
         } else if (isInstanceOf(content, PointsSchema)) {
             assert((content.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(content, WarpsSchema)) {
@@ -199,6 +214,7 @@ export namespace DawProjectImport {
             assert((timeline.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(timeline, ClipsSchema)) {
             timeline.clips.forEach(clip => {
+                clipFades(clip)
                 const contentUnit = clip.contentTimeUnit ?? unit
                 requireBeats(contentUnit)
                 clip.content?.forEach(content => validateContent(clip, content, contentUnit))
@@ -216,6 +232,13 @@ export namespace DawProjectImport {
             track.channel?.devices?.forEach(device => {
                 if (device.deviceVendor !== "openDAW") {return}
                 try {
+                    const channel = asDefined(track.channel)
+                    const regular = channel.role === ChannelRole.REGULAR
+                    assert(device.deviceRole === DeviceRole.AUDIO_FX || regular,
+                        "Native device role is unsupported on this channel")
+                    assert(device.deviceRole !== DeviceRole.INSTRUMENT
+                        || channel.devices?.filter(entry => entry.deviceRole === DeviceRole.INSTRUMENT).length === 1,
+                    "Multiple native instruments are unsupported")
                     const path = asDefined(device.state?.path, "Missing native state")
                     const buffer = resources.fromPath(path).buffer
                     const temporary = ProjectSkeleton.empty({createOutputMaximizer: false, createDefaultUser: true})
@@ -283,7 +306,7 @@ export namespace DawProjectImport {
         const createEffect = (device: DeviceSchema,
                               field: Field<Pointers.MIDIEffectHost> | Field<Pointers.AudioEffectHost>,
                               index: int): unknown => {
-            const {deviceRole, deviceVendor, deviceID, deviceName, state} = device
+            const {deviceRole, deviceVendor, deviceID, deviceName} = device
             assert(deviceRole === DeviceRole.NOTE_FX || deviceRole === DeviceRole.AUDIO_FX, "Device is not an effect")
             const native = nativeStates.get(device)
             if (native !== undefined) {
@@ -566,6 +589,11 @@ export namespace DawProjectImport {
                     box.label.setValue(clip.name ?? "")
                     box.loopOffset.setValue(playStart * PPQN.Quarter)
                     box.loopDuration.setValue(loopDurationInPulses)
+                    const {fadeIn, fadeOut} = clipFades(clip)
+                    box.fading.in.setValue(fadeIn * PPQN.Quarter)
+                    box.fading.out.setValue(fadeOut * PPQN.Quarter)
+                    box.fading.inSlope.setValue(0.5)
+                    box.fading.outSlope.setValue(0.5)
                     box.mute.setValue(clip.enable === false)
                     box.regions.refer(trackBox.regions)
                     box.file.refer(audioFileBox)

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse explicit DAWproject playStop windows before import and retain validated linear beat-based audio fades; reject unsupported fade units, note fades and invalid extents.
+
 - Restore self-contained native DAWproject device state with destination hosts; refuse unsafe/dependent state and ignored generic parameter lanes before project publication. Stop exporting buses as instrument presets.
 
 - Refuse lossy expressive-note and audio-gain/shaped-fade exports; serialize supported linear audio fades in explicit beats.
