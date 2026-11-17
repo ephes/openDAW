@@ -61,3 +61,15 @@ invalidates immediately, releases the previous loader and observes loaded peaks
 for another draw. Teardown releases the loader without changing sample data.
 The component regressions cover both handle sides, reverse ranges, near markers,
 resize, cancel/approve and out-of-order A/B completion with counted observers.
+
+## Pad navigation and MIDI presentation (B05)
+
+Octave hover owns a single timeout and generation. A new enter retires the old
+attempt; leave, drop, completion and component teardown clear its timer and
+visual state. Only the current uninterrupted one-second hover changes octave.
+
+The MIDI selector observes granted access and the current access's port state
+changes. Availability requires the saved ID to identify a connected output.
+Refreshing presentation never rewrites the ID or adds an undo operation. Access
+replacement and selector teardown remove the statechange listener. Regressions
+use fake timers, nested SVG events and synthetic MIDIAccess with no hardware.

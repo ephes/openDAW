@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cancel obsolete Playfield octave-hover timers on replacement, leave, drop and teardown; refresh saved MIDI-output availability after permission and port state changes without changing routing.
+
 - Preserve signed grab offsets when dragging sample endpoints; repaint the sample editor when its current file finishes loading and retire replaced loader subscriptions.
 
 - Retire DevicePanel selection and MIDI CC row subscriptions with their views; preserve parameter text editing, composition and handled key events when effects are selected.
