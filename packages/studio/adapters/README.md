@@ -134,3 +134,18 @@ curve slopes there. The optional historical display-mapping argument to `cut`
 is accepted for compatibility and does not affect interpolation. Logarithmic
 tempo display changes neither BPM playback nor the tempo-map time conversion
 when inserting an unchanged point (within Float32 storage precision).
+
+### Script initialization across editor remounts
+
+`ScriptCompiler.initialize(context, editing, device, defaultCode)` loads saved
+code or compiles the default with creation-history append semantics. Both it and
+passive `load` join a current pending installation for the same device object and
+audio context, even when another compiler/editor instance owns that operation.
+Closing an editor retires UI callbacks, not the device's pending compile.
+
+Explicit `compile` always claims a newer request. External source edits (including
+edit/undo), device replacement/deletion and a different context cannot reuse an
+obsolete pending owner. Publication-triggered reloads join the publishing owner
+without installing saved old code over it. Pending owners/subscriptions are
+released on success or failure, and a later explicit retry starts a fresh attempt.
+The existing worklet activation fence and graph rollback remain in force.

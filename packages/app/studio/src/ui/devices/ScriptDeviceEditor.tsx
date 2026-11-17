@@ -15,7 +15,6 @@ import {
     asInstanceOf,
     Color,
     Editing,
-    EmptyExec,
     isDefined,
     Lifecycle,
     MutableObservableValue,
@@ -27,7 +26,6 @@ import {
     Terminator,
     UUID
 } from "@opendaw/lib-std"
-import {Promises} from "@opendaw/lib-runtime"
 import {createElement} from "@opendaw/lib-jsx"
 import {Colors, IconSymbol} from "@opendaw/studio-enums"
 import {DeviceEditor} from "@/ui/devices/DeviceEditor.tsx"
@@ -92,30 +90,27 @@ export const ScriptDeviceEditor = ({lifecycle, service, adapter, deviceHost, con
     const {editing, midiLearning} = project
     const compiler = ScriptCompiler.create(config.compiler)
     const box = adapter.box
-    const storedCode = box.code.getValue()
-    const userCode = storedCode.length > 0 ? compiler.stripHeader(storedCode) : config.defaultCode
-    let compiling = false
-    const compile = async (code: string) => {
-        compiling = true
+    let active = true
+    let request = 0
+    lifecycle.own({terminate: () => {active = false; request++}})
+    const showError = (message: string) => {
+        lastErrorMessage = message
+        errorIcon.classList.toggle("hidden", message.length === 0)
+        errorIcon.title = message
+    }
+    const settle = async (operation: () => Promise<void>, propagate = false): Promise<void> => {
+        if (!active) {return}
+        const ticket = ++request
         try {
-            const result = await Promises.tryCatch(compiler.compile(service.audioContext, editing, box, code))
-            if (result.status === "resolved") {
-                errorIcon.classList.add("hidden")
-                errorIcon.title = ""
-            } else {
-                errorIcon.classList.remove("hidden")
-                errorIcon.title = String(result.error)
-                throw result.error
-            }
-        } finally {
-            compiling = false
+            await operation()
+            if (active && ticket === request) {showError("")}
+        } catch (error) {
+            if (active && ticket === request) {showError(String(error))}
+            if (propagate) {throw error}
         }
     }
-    if (storedCode.length > 0) {
-        compiler.load(service.audioContext, box).finally(EmptyExec)
-    } else {
-        compiler.compile(service.audioContext, editing, box, userCode, true).finally(EmptyExec)
-    }
+    const compile = (code: string) => settle(() => compiler.compile(service.audioContext, editing, box, code), true)
+    const load = () => settle(() => compiler.load(service.audioContext, box))
     const toggleEditor = () => {
         const isActive = service.activeCodeEditor
             .map(state => UUID.equals(state.handler.uuid, adapter.uuid)).unwrapOrElse(false)
@@ -313,9 +308,7 @@ export const ScriptDeviceEditor = ({lifecycle, service, adapter, deviceHost, con
     }
     lifecycle.ownAll(
         service.engine.subscribeDeviceMessage(UUID.toString(adapter.uuid), message => {
-            lastErrorMessage = message
-            errorIcon.classList.remove("hidden")
-            errorIcon.title = message
+            if (active) {showError(message)}
         }),
         {
             terminate: () => {
@@ -324,9 +317,7 @@ export const ScriptDeviceEditor = ({lifecycle, service, adapter, deviceHost, con
                 if (isActive) {service.closeCodeEditor()}
             }
         },
-        adapter.codeChanged.subscribe(() => {
-            if (!compiling) {compiler.load(service.audioContext, box).finally(EmptyExec)}
-        }),
+        adapter.codeChanged.subscribe(() => {void load()}),
         service.activeCodeEditor.catchupAndSubscribe(option => {
             const isActive = option.map(state => UUID.equals(state.handler.uuid, adapter.uuid)).unwrapOrElse(false)
             toggleEditorButton.classList.toggle("active", isActive)
@@ -336,6 +327,9 @@ export const ScriptDeviceEditor = ({lifecycle, service, adapter, deviceHost, con
         box.code.subscribe(scheduleRebuild)
     )
     scheduleRebuild()
+    // Initialization belongs to this UI's error/lifetime owner. Background failures
+    // are consumed; explicit compile still rejects to the code editor for retry.
+    void settle(() => compiler.initialize(service.audioContext, editing, box, config.defaultCode))
     return (
         <DeviceEditor lifecycle={lifecycle}
                       service={service}
