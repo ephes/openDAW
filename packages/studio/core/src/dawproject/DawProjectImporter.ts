@@ -241,6 +241,13 @@ export namespace DawProjectImport {
     }
 
     // Resolve the complete declared route graph before reading native state or allocating boxes.
+    // Bitwig writes a disabled send slot from every FX/return channel to itself. It carries
+    // no signal, and a native self-send would be feedback once enabled, so it is not imported.
+    // Enabled self-sends and every other cycle are still refused as feedback routing.
+    const admittedSends = (channel: ChannelSchema): ReadonlyArray<SendSchema> =>
+        (channel.sends ?? []).filter(send => !(send.destination !== undefined
+            && send.destination === channel.id && send.enable?.value === false))
+
     const validateRouting = (tracks: ReadonlyArray<LaneSchema>): ReadonlySet<string> => {
         const trackIds = new Set<string>()
         const channels = new Map<string, ChannelSchema>()
@@ -258,7 +265,7 @@ export namespace DawProjectImport {
         collect(tracks)
         const routes = new Map<string, string[]>()
         channels.forEach((channel, id) => {
-            const targets = [channel.destination, ...(channel.sends ?? []).map(send =>
+            const targets = [channel.destination, ...admittedSends(channel).map(send =>
                 asDefined(send.destination, "Send routing destination is undefined"))].filter(isDefined)
             targets.forEach(target => {
                 const destination = channels.get(target)
@@ -284,10 +291,9 @@ export namespace DawProjectImport {
         assert(!marker.comment, "Unsupported marker comment: native markers cannot retain comments")
         if (marker.color === undefined) {return 0}
         assert(/^#[0-9a-f]{6}$/i.test(marker.color), "Unsupported marker color")
-        const hue = Math.round(Color.hexToHsl(marker.color).h)
-        assert(Color.hslToHex(hue, 1, 0.6).toLowerCase() === marker.color.toLowerCase(),
-            "Unsupported marker color: native markers retain integer hue at full saturation and 60% lightness")
-        return hue
+        // Native markers keep only an integer hue (full saturation, 60% lightness). Like clip
+        // colors, other DAWs' colors map to their nearest hue instead of refusing the project.
+        return Math.round(Color.hexToHsl(marker.color).h) % 360
     }
 
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
@@ -534,13 +540,13 @@ export namespace DawProjectImport {
                 if (channel.role === ChannelRole.REGULAR) {
                     const {audioUnitBox} = createInstrumentUnit(track, AudioUnitType.Instrument, toAudioUnitCapture(boxGraph, track.contentType))
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
-                    ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
+                    createSends(audioUnitBox, admittedSends(channel))
                     ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.EFFECT) {
                     const {audioBusBox, audioUnitBox} = createAudioBusUnit(track, AudioUnitType.Aux, IconSymbol.Effects)
                     registerAudioBus(channelId, audioBusBox)
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
-                    ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
+                    createSends(audioUnitBox, admittedSends(channel))
                     ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.MASTER) {
                     const isMostLikelyPrimaryOutput = primaryAudioBusUnitOption.isEmpty()
@@ -553,7 +559,7 @@ export namespace DawProjectImport {
                         registerAudioBus(channelId, audioBusBox)
                         registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                         audioUnitBox.output.refer(rootBox.outputDevice)
-                        ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
+                        createSends(audioUnitBox, admittedSends(channel))
                         primaryAudioBusUnitOption = Option.wrap(audioBusUnit)
                     } else {
                         const audioBusUnit = createAudioBusUnit(track, AudioUnitType.Bus, IconSymbol.AudioBus)
@@ -562,7 +568,7 @@ export namespace DawProjectImport {
                         registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                         ifDefined(channel.destination, destination =>
                             outputPointers.push({target: destination, pointer: audioUnitBox.output}))
-                        ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
+                        createSends(audioUnitBox, admittedSends(channel))
                     }
                 } else {
                     return panic(`Unknown channel role ('${channel.role}')`)

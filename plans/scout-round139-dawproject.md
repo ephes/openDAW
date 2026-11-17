@@ -83,3 +83,20 @@ Final local validation passes locked installation, full build, lint and tests;
 Chromium remains blocked by sandbox Mach-port registration. Browser fixture lint
 and standalone TypeScript checks also pass. The outside clerk owns browser
 execution and cross-family review; no subscription review agent was run here.
+
+## Merge review amendments
+
+Review of the merged bundle reversed four refusals that blocked real projects:
+
+- The EQ fixture is an unmodified Bitwig Studio export. Bitwig writes a disabled,
+  zero-gain self-send slot on every FX/return channel, so refusing it blocked every
+  Bitwig project with return tracks. Disabled self-sends are now dropped before
+  route accounting; enabled self-sends and all other cycles still refuse.
+- Bitwig writes beat times with six decimals. Admission now tolerates half a
+  microbeat around a pulse (triplets such as `0.333333`) and still refuses real
+  sub-pulse offsets and positive times collapsing to zero.
+- Marker colors outside the native palette map to the nearest hue, like clip
+  colors, instead of refusing the whole project.
+- A disabled marker track only suspends marker playback actions, so its markers
+  export. Repeat play counts still refuse.
+- Export writes Arrangement children in DAWproject schema order.

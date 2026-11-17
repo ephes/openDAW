@@ -85,9 +85,10 @@ export namespace DawProjectExporter {
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
             visitMarkerBox: marker => {
                 assert(marker.plays.getValue() === 1, "Unsupported marker repeat: DAWproject cannot encode native play counts")
-                assert(timelineBox.markerTrack.enabled.getValue()
-                    && marker.track.targetVertex.contains(timelineBox.markerTrack.markers),
-                "Unsupported marker track: expected the enabled arrangement marker track")
+                // A disabled marker track only suspends marker playback actions; its markers are
+                // still arrangement data and export (single-play markers have no playback action).
+                assert(marker.track.targetVertex.contains(timelineBox.markerTrack.markers),
+                    "Unsupported marker track: expected the arrangement marker track")
                 beatTimeToPulses(marker.position.getValue() / PPQN.Quarter)
             },
             visitNoteEventBox: note => {

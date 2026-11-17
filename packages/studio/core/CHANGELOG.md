@@ -5,15 +5,15 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Import/export ordinary DAWproject arrangement markers with beat positions, labels and representable native hue colors, writing Arrangement children in DAWproject schema order; refuse unsupported attributes and native repeat/track semantics before publication.
+- Import/export ordinary DAWproject arrangement markers with beat positions, labels and native hue colors (foreign colors map to the nearest hue), exporting markers of a disabled marker track and writing Arrangement children in DAWproject schema order; refuse unsupported attributes and native repeat/track semantics before publication.
 
-- Refuse lossy nested clip coordinate transforms and invalid/unrepresentable automation times before DAWproject graph construction; retain transparent wrappers and exact signature bar boundaries.
+- Refuse lossy nested clip coordinate transforms and invalid/unrepresentable automation times before DAWproject graph construction, while admitting six-decimal serializations of pulse times (Bitwig triplets); retain transparent wrappers and exact signature bar boundaries.
 
 - Traverse nested DAWproject arrangement lanes with inherited/overridden track identities; refuse unknown tracks, referenced clips and unsupported clip-contained lanes before graph construction.
 
 - Import child tracks under every admitted parent role and classify native DAWproject instrument tracks from their public content tags, including MIDIOutput, Apparat and Soundfont.
 
-- Retain primary-output DAWproject sends; preflight all declared route destinations and refuse feedback instead of dropping connections.
+- Retain primary-output DAWproject sends; preflight all declared route destinations and refuse feedback instead of dropping connections. Skip Bitwig's disabled FX self-send slot so Bitwig projects with return tracks still import.
 
 - Preserve native BPM in DAWproject tempo import/export independently of display bounds; refuse invalid BPM before graph construction or resource packing.
 

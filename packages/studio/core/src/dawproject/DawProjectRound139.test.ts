@@ -91,6 +91,17 @@ it('B02 refuses primary feedback routing before constructing a graph', async () 
     expect(begin).not.toHaveBeenCalled()
     expect(resources.fromPath).not.toHaveBeenCalled()
 })
+const selfSend = (enable: string) => aux.replace('role="effect"/>', `role="effect" destination="master"><Sends><Send destination="aux-channel" type="post"><Enable value="${enable}"/><Volume value="0" unit="linear"/></Send></Sends></Channel>`)
+it('B02 drops the disabled self-send slot that Bitwig writes for FX channels', async () => {
+    const {skeleton} = await read(source('', regular + master + selfSend('false')))
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof AuxSendBox)).toHaveLength(0)
+    skeleton.boxGraph.verifyPointers()
+})
+it('B02 refuses an enabled self-send as feedback routing before construction', async () => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(read(source('', regular + master + selfSend('true')))).rejects.toThrow(/feedback routing/i)
+    expect(begin).not.toHaveBeenCalled()
+})
 it.each([
     regular.replace('destination="master"', 'destination="missing"'),
     regular.replace('destination="master"', 'destination="channel"'),
@@ -206,6 +217,13 @@ it('B05 stores legitimate zero and fractional pulse-representable point times', 
     const exported = write(skeleton).arrangement!
     expect(exported.timeSignatureAutomation!.points!.map(point => point.time)).toEqual([0, 0.5])
 })
+it('B05 admits six-decimal serializations of triplet pulse times', async () => {
+    const automation = '<TempoAutomation unit="bpm"><RealPoint time="0.000000" value="120"/><RealPoint time="0.333333" value="140"/><RealPoint time="1.666667" value="160"/><RealPoint time="2.041667" value="180"/></TempoAutomation>'
+    const {skeleton} = await read(source(automation + '<Markers><Marker time="0.666667" name="Triplet"/></Markers>'))
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof ValueEventBox).map(box => box.position.getValue()).sort((a, b) => a - b))
+        .toEqual([0, q / 3, q * 5 / 3, q * 49 / 24])
+    expect(markerValues(skeleton).map(([position]) => position)).toEqual([q * 2 / 3])
+})
 it('B05 refuses signature times that cannot be represented as native whole bars', async () => {
     const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
     await expect(read(source('<TimeSignatureAutomation><TimeSignaturePoint time="0.5" numerator="3" denominator="4"/></TimeSignatureAutomation>'))).rejects.toThrow(/signature.*time/i)
@@ -224,7 +242,6 @@ it('B06 imports labeled beat markers and preserves their native state on save/re
 it.each([
     '<Markers timeUnit="seconds"><Marker time="2" name="Verse"/></Markers>',
     '<Markers><Marker time="2" comment="cannot retain"/></Markers>',
-    '<Markers><Marker time="2" color="#abcdef"/></Markers>',
     '<Markers><Marker time="2" color="garbage"/></Markers>',
     '<Markers><Marker time="-1"/></Markers>',
     '<Markers><Marker time="3000000"/></Markers>',
@@ -268,15 +285,20 @@ it.each([0, 2])('B06 refuses native repeat play count %s before packing resource
     expect(() => write(skeleton)).toThrow(/marker.*repeat/i)
     expect(packer.write).not.toHaveBeenCalled()
 })
-it('B06 refuses a disabled nonempty native marker track before packing', async () => {
+it('B06 exports the markers of a disabled native marker track', async () => {
     const {skeleton} = await read(source())
     const {boxGraph, mandatoryBoxes: {timelineBox}} = skeleton
     boxGraph.beginTransaction()
     timelineBox.markerTrack.enabled.setValue(false)
-    MarkerBox.create(boxGraph, UUID.generate(), box => box.track.refer(timelineBox.markerTrack.markers))
+    MarkerBox.create(boxGraph, UUID.generate(), box => {box.track.refer(timelineBox.markerTrack.markers); box.position.setValue(4 * q); box.label.setValue('Bridge')})
     boxGraph.endTransaction()
-    expect(() => write(skeleton)).toThrow(/marker track/i)
-    expect(packer.write).not.toHaveBeenCalled()
+    const markers = write(skeleton).arrangement!.markers!.marker!
+    expect(markers.map(marker => [marker.time, marker.name])).toEqual([[4, 'Bridge']])
+})
+it('B06 maps marker colors outside the native palette to their nearest hue', async () => {
+    const {skeleton} = await read(source('<Markers><Marker time="2" name="Foreign" color="#abcdef"/><Marker time="3" color="#ff0001"/></Markers>'))
+    expect(markerValues(skeleton)).toEqual([[2 * q, 'Foreign', 210, 1], [3 * q, '', 0, 1]])
+    expect(write(skeleton).arrangement!.markers!.marker!.map(marker => marker.color)).toEqual(['#3399ff', '#ff3333'])
 })
 
 it('B05/B06 retains native integer pulses through floating beat serialization', async () => {

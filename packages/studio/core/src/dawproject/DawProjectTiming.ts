@@ -7,14 +7,19 @@ export const requireTempoBpm = (value: number): void => {
         "Unsupported tempo BPM: expected positive finite native BPM")
 }
 
+// Half a unit in the sixth decimal of a beat, plus slack for binary rounding.
+const DECIMAL_BEAT_PRECISION = 0.5e-6 * (1 + 1e-6)
+
 export const beatTimeToPulses = (time: number): number => {
     const scaled = time * PPQN.Quarter
     const pulses = Math.round(scaled)
-    // Native integer / PPQN / XML number / PPQN may differ by a couple of ulps.
-    // A relative tolerance still refuses tiny positive sub-pulse times near zero.
-    const roundoff = Number.EPSILON * Math.abs(scaled) * 2
+    // Native integer / PPQN / XML number / PPQN may differ by a couple of ulps, and
+    // DAWs such as Bitwig write beat times with six fixed decimals (a triplet pulse
+    // becomes "0.333333"). Admit both within half a microbeat of a pulse. Real
+    // sub-pulse offsets ("0.0001") and positive times collapsing to zero are refused.
+    const tolerance = Math.max(Number.EPSILON * Math.abs(scaled) * 2, DECIMAL_BEAT_PRECISION * PPQN.Quarter)
     assert(Number.isFinite(time) && time >= 0 && pulses <= 0x7fffffff
-        && Math.abs(scaled - pulses) <= roundoff,
+        && Math.abs(scaled - pulses) <= tolerance && (pulses > 0 || time === 0),
         "Unsupported timeline coordinate: time must fit nonnegative native integer pulses")
     return pulses
 }
