@@ -9,8 +9,9 @@ vi.mock("@opendaw/lib-dom", async original => {
     const module = await original<typeof import("@opendaw/lib-dom")>()
     return {...module, Html: {...module.Html, adoptStyleSheet: () => "sample-upload-test"}}
 })
-const mocks = vi.hoisted(() => ({upload: vi.fn(), info: vi.fn()}))
-vi.mock("@opendaw/studio-core", () => ({FilePickerAcceptTypes: {WavFiles: {}}, OpenSampleAPI: {get: () => ({upload: mocks.upload})}}))
+const mocks = vi.hoisted(() => ({upload: vi.fn(), info: vi.fn(), Refused: class extends Error {}}))
+vi.mock("@opendaw/studio-core", () => ({FilePickerAcceptTypes: {WavFiles: {}}, SampleUploadRefused: mocks.Refused,
+    OpenSampleAPI: {get: () => ({upload: mocks.upload})}}))
 vi.mock("@/ui/components/dialogs.tsx", () => ({Dialogs: {info: mocks.info}}))
 const flush = async () => {for (let i = 0; i < 20; i++) {await Promise.resolve()}}
 const wav = () => WavFile.encodeFloats(AudioData.create(48000, 2, 1))
@@ -85,4 +86,12 @@ describe("sample upload attempt lifetime", () => {
         lifecycle.terminate(); upload.reject(new Error("late failure")); await flush()
         expect(signal?.aborted).toBe(true); expect(mocks.info).not.toHaveBeenCalled()
     })
+    it.each([[true, "Synthetic duplicate"], [false, "Upload outcome is uncertain. Check the sample catalog before trying again."]])(
+        "reports definite refusal %s distinctly from uncertain outcomes", async (refused, message) => {
+            vi.spyOn(Files, "open").mockResolvedValue([file()])
+            mocks.upload.mockRejectedValue(refused ? new mocks.Refused("Synthetic duplicate") : new Error("Synthetic transport"))
+            const {button, lifecycle} = setup(); button.click(); await flush()
+            expect(mocks.info).toHaveBeenCalledWith(expect.objectContaining({message}))
+            lifecycle.terminate()
+        })
 })

@@ -7,7 +7,7 @@ export namespace WavFile {
     const MAGIC_FMT = 0x20746d66
     const MAGIC_DATA = 0x61746164
 
-    export const inspect = (buffer: ArrayBuffer) => {
+    export const geometry = (buffer: ArrayBuffer) => {
         const view = new DataView(buffer)
         if (view.byteLength < 12 || view.getUint32(0, true) !== MAGIC_RIFF
             || view.getUint32(8, true) !== MAGIC_WAVE) {
@@ -42,17 +42,23 @@ export namespace WavFile {
         const sampleRate = view.getUint32(fmtOffset + 4, true)
         const blockAlign = view.getUint16(fmtOffset + 12, true)
         const bitsPerSample = view.getUint16(fmtOffset + 14, true)
-        const bytesPerSample = bitsPerSample / 8
+        const bytesPerSample = Math.ceil(bitsPerSample / 8)
         if (numberOfChannels === 0 || sampleRate === 0 || blockAlign === 0
             || blockAlign !== numberOfChannels * bytesPerSample) {
             return panic("Invalid block alignment")
         }
+        const numberOfFrames = Math.floor(dataSize / blockAlign)
+        return {sampleRate, numberOfFrames, numberOfChannels, audioFormat, bitsPerSample, dataOffset}
+    }
+
+    export const inspect = (buffer: ArrayBuffer) => {
+        const result = geometry(buffer)
+        const {audioFormat, bitsPerSample} = result
         if (!((audioFormat === 3 && bitsPerSample === 32)
             || (audioFormat === 1 && (bitsPerSample === 16 || bitsPerSample === 24)))) {
             return panic(`Unsupported WAV format: ${audioFormat}, ${bitsPerSample}-bit`)
         }
-        const numberOfFrames = Math.floor(dataSize / blockAlign)
-        return {sampleRate, numberOfFrames, numberOfChannels, audioFormat, bitsPerSample, dataOffset}
+        return result
     }
 
     export const decodeFloats = (buffer: ArrayBuffer): AudioData => {

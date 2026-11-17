@@ -9,3 +9,10 @@ export interface SampleAPI {
     upload(arrayBuffer: ArrayBuffer, metaData: SampleMetaData, signal?: AbortSignal): Promise<void>
     allowsUpload(): boolean
 }
+
+export class SampleUploadRefused extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = "SampleUploadRefused"
+    }
+}

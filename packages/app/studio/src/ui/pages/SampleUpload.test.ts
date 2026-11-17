@@ -41,4 +41,14 @@ describe("upload allocation boundaries", () => {
             await expect(decode()).rejects.toThrow(/PCM/)
         }
     })
+    it("admits valid WAV layouts beyond the local decoder before browser decoding", async () => {
+        const extensible = bytes(); new DataView(extensible).setUint16(20, 0xFFFE, true)
+        const pcm8 = bytes(), view = new DataView(pcm8)
+        view.setUint16(20, 1, true); view.setUint16(32, 2, true); view.setUint16(34, 8, true); view.setUint32(40, 4, true)
+        for (const source of [extensible, pcm8]) {
+            const {decode, context} = run(source)
+            expect(await decode()).toBe(buffer)
+            expect(context.decodeAudioData).toHaveBeenCalledOnce()
+        }
+    })
 })

@@ -9,6 +9,7 @@ import {
     Procedure,
     RuntimeNotifier,
     TimeSpan,
+    tryCatch,
     unitValue,
     UUID
 } from "@opendaw/lib-std"
@@ -16,6 +17,7 @@ import {IntervalRetryOption, network, Promises} from "@opendaw/lib-runtime"
 import {Sample, SampleMetaData} from "@opendaw/studio-adapters"
 import {SampleAPI} from "@opendaw/studio-core"
 import {base64Credentials, OpenDAWHeaders} from "../OpenDAWHeaders"
+import {SampleUploadRefused} from "./SampleAPI"
 import {z} from "zod"
 import {AudioData, WavFile} from "@opendaw/lib-dsp"
 
@@ -165,7 +167,8 @@ export class OpenSampleAPI implements SampleAPI {
     async upload(arrayBuffer: ArrayBuffer, metaData: SampleMetaData, signal?: AbortSignal): Promise<void> {
         signal?.throwIfAborted()
         const params = new URLSearchParams(location.search)
-        const accessKey = asDefined(params.get("access-key"), "Cannot upload without access-key.")
+        const accessKey = params.get("access-key")
+        if (!isDefined(accessKey)) {throw new SampleUploadRefused("Cannot upload without access-key.")}
         const formData = new FormData()
         Object.entries(metaData).forEach(([key, value]) => formData.set(key, String(value)))
         formData.set("key", accessKey)
@@ -185,7 +188,9 @@ export class OpenSampleAPI implements SampleAPI {
                 })
                 xhr.onreadystatechange = () => {
                     if (xhr.readyState !== 4) {return}
-                    if (xhr.status === 200) {resolve()} else {reject(new Error("Upload failed; remote outcome may be uncertain"))}
+                    if (xhr.status === 200) {resolve()} else if (xhr.status >= 400 && xhr.status < 500) {
+                        reject(new SampleUploadRefused(OpenSampleAPI.#refusalMessage(xhr)))
+                    } else {reject(new Error("Upload failed; remote outcome may be uncertain"))}
                 }
                 xhr.onerror = () => reject(new Error("Upload transport failed; remote outcome may be uncertain"))
                 xhr.ontimeout = () => reject(new Error("Upload timed out; remote outcome may be uncertain"))
@@ -202,6 +207,12 @@ export class OpenSampleAPI implements SampleAPI {
             xhr.onreadystatechange = xhr.onerror = xhr.ontimeout = xhr.onabort = null
             dialog.terminate()
         }
+    }
+
+    static #refusalMessage(xhr: XMLHttpRequest): string {
+        const {status, value} = tryCatch(() => JSON.parse(xhr.responseText)?.message)
+        return status === "success" && typeof value === "string" && value.length > 0
+            ? value : `Upload refused (HTTP ${xhr.status})`
     }
 
     allowsUpload(): boolean {return false}

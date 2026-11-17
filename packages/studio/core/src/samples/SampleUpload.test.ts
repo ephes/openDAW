@@ -1,6 +1,7 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {RuntimeNotifier} from "@opendaw/lib-std"
 import {OpenSampleAPI} from "./OpenSampleAPI"
+import {SampleUploadRefused} from "./SampleAPI"
 const meta = {name: "Synthetic", bpm: 0, duration: 1, sample_rate: 48000, origin: "openDAW" as const}
 class XHR {
     upload = new EventTarget()
@@ -42,4 +43,21 @@ it.each(["abort", "error", "http"])("settles %s without replay", async kind => {
     if (kind === "abort") {controller.abort()} else if (kind === "error") {xhr.onerror?.()} else {xhr.complete(500)}
     await rejection
     expect(xhr.send).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce()
+})
+
+it("reports definite HTTP refusals with the server reason", async () => {
+    const {xhr} = setup()
+    const result = OpenSampleAPI.get().upload(new ArrayBuffer(4), meta)
+    const rejection = expect(result).rejects.toThrow(new SampleUploadRefused("Synthetic duplicate"))
+    xhr.responseText = JSON.stringify({message: "Synthetic duplicate"}); xhr.complete(409)
+    await rejection
+})
+it("keeps server failures uncertain and refuses a missing access key before sending", async () => {
+    const {xhr} = setup()
+    const result = OpenSampleAPI.get().upload(new ArrayBuffer(4), meta)
+    const rejection = expect(result).rejects.not.toBeInstanceOf(SampleUploadRefused)
+    xhr.complete(503); await rejection
+    history.replaceState(null, "", "/")
+    await expect(OpenSampleAPI.get().upload(new ArrayBuffer(4), meta)).rejects.toBeInstanceOf(SampleUploadRefused)
+    expect(xhr.send).toHaveBeenCalledOnce()
 })

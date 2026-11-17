@@ -4,7 +4,7 @@ import {StudioService} from "@/service/StudioService.ts"
 import {Files, Html} from "@opendaw/lib-dom"
 import {Dialogs} from "@/ui/components/dialogs.tsx"
 import {estimateBpm, WavFile} from "@opendaw/lib-dsp"
-import {FilePickerAcceptTypes, OpenSampleAPI} from "@opendaw/studio-core"
+import {FilePickerAcceptTypes, OpenSampleAPI, SampleUploadRefused} from "@opendaw/studio-core"
 
 import {decodeSampleUpload} from "./SampleUpload"
 
@@ -46,6 +46,8 @@ export const SampleUploadPage: PageFactory<StudioService> = ({service, lifecycle
                         if (!isCurrent()) {return}
                         if (error instanceof DOMException && error.name === "AbortError") {
                             console.debug("Caught an AbortError")
+                        } else if (error instanceof SampleUploadRefused) {
+                            void Dialogs.info({headline: "Upload Failure", message: error.message}).catch(() => {})
                         } else {
                             void Dialogs.info({message: publishing
                                 ? "Upload outcome is uncertain. Check the sample catalog before trying again."

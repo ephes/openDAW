@@ -56,17 +56,18 @@ export const installAutoScroll = (target: Element, autoScroller: AutoScroller, o
         const pointerId = event.pointerId
         let nativeDrag = false
         const owner = Surface.get(target).owner.document
-        const finishPointer = (event: PointerEvent) => {
-            if (event.pointerId === pointerId && !nativeDrag) {finish()}
-        }
         lifeTime.ownAll(
             Events.subscribe(owner, "dragstart", () => {nativeDrag = true}, {capture: true}),
             Events.subscribe(owner, "dragover", moveListener, {capture: true}),
             Events.subscribe(owner, "pointermove", (event: PointerEvent) => {
                 if (event.pointerId === pointerId) {moveListener(event)}
             }, {capture: true}),
-            Events.subscribe(owner, "pointerup", finishPointer),
-            Events.subscribe(owner, "pointercancel", finishPointer),
+            Events.subscribe(owner, "pointerup", (event: PointerEvent) => {
+                if (event.pointerId === pointerId) {finish()}
+            }),
+            Events.subscribe(owner, "pointercancel", (event: PointerEvent) => {
+                if (event.pointerId === pointerId && !nativeDrag) {finish()}
+            }),
             Events.subscribe(owner, "dragend", finish),
             Events.subscribe(owner.defaultView ?? window, "blur", finish)
         )

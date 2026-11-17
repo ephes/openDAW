@@ -153,6 +153,8 @@ owned duplicate. Topological sorting uses O(V+E) state and work without recursio
 It preserves insertion-order predecessor traversal, ignores edges within strongly
 connected components and reports cycles (including self-loops) through hasLoops.
 
-`WavFile.inspect` validates supported RIFF PCM16/24 or float32 chunk geometry and
-returns channel/frame/rate metadata without allocating PCM. It shares the parser
-used by `decodeFloats`; callers impose their own allocation budgets before decode.
+`WavFile.geometry` validates RIFF chunk and block geometry for any sample format
+(including WAVE_FORMAT_EXTENSIBLE) and returns channel/frame/rate metadata without
+allocating PCM. `WavFile.inspect` additionally requires the PCM16/24 or float32
+formats that `decodeFloats` supports. Callers impose their own allocation budgets
+before decode.

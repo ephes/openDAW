@@ -30,7 +30,7 @@ export const decodeSampleUpload = async (file: File,
     if (bytes.byteLength <= 0 || bytes.byteLength > limits.sourceBytes) {
         throw new Error("Sample exceeds the source byte upload limit")
     }
-    const {numberOfFrames, numberOfChannels, sampleRate} = WavFile.inspect(bytes)
+    const {numberOfFrames, numberOfChannels, sampleRate} = WavFile.geometry(bytes)
     admitSamplePCM(numberOfFrames, numberOfChannels, sampleRate, limits)
     // decodeAudioData resamples to the context rate; bound that allocation too.
     admitSamplePCM(Math.ceil(numberOfFrames * context.sampleRate / sampleRate), numberOfChannels, context.sampleRate, limits)
