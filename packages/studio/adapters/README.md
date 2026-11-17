@@ -87,3 +87,12 @@ are checked per call, so validation adds constant work on the audio thread.
 Signature moves to occupied bars are refused without graph edits. Other moves
 retain the absolute bar positions of every untouched signature event; undo/redo
 restores the original order and relative distances.
+
+### Flattening selected regions
+
+Note and automation flattening replaces exactly the supplied selected regions on
+one track. Other overlapping regions, including selected regions outside that
+source list, keep their boxes and content. The replacement spans the earliest
+start through the greatest complete endpoint, including nested and disjoint
+regions. Copied notes retain their ratchet count and curve; explicit ratchet
+consolidation still produces single notes.

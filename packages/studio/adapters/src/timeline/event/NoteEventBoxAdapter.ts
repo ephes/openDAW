@@ -96,6 +96,7 @@ export class NoteEventBoxAdapter implements NoteEvent, BoxAdapter, Selectable {
             box.duration.setValue(options?.duration ?? this.duration)
             box.pitch.setValue(options?.pitch ?? this.pitch)
             box.playCount.setValue(options?.playCount ?? this.playCount)
+            box.playCurve.setValue(this.playCurve)
             box.events.refer(options?.events ?? this.collection.unwrap().box.events)
             box.velocity.setValue(this.velocity)
             box.cent.setValue(this.cent)

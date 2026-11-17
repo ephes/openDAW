@@ -229,15 +229,12 @@ export class ValueRegionBoxAdapter
         const graph = this.#context.boxGraph
         const sorted = regions.toSorted(RegionCollection.Comparator)
         const first = Arrays.getFirst(sorted, "Internal error (no first)")
-        const last = Arrays.getLast(sorted, "Internal error (no last)")
         const rangeMin = first.position
-        const rangeMax = last.position + last.duration
+        const rangeMax = sorted.reduce((end, region) => Math.max(end, region.position + region.duration), rangeMin)
         const trackBoxAdapter = first.trackBoxAdapter.unwrap()
-        const overlapping = Array.from(trackBoxAdapter.regions.collection.iterateRange(rangeMin, rangeMax))
         type Entry = { position: ppqn, value: unitValue, interpolation: Interpolation }
         const entries: Array<Entry> = []
-        overlapping
-            .filter(region => region.isSelected)
+        sorted
             .forEach(anyRegion => {
                 const region = anyRegion as ValueRegionBoxAdapter
                 const collection = region.optCollection.unwrap()
@@ -330,7 +327,7 @@ export class ValueRegionBoxAdapter
             }
             idx = end
         }
-        overlapping.forEach(({box}) => box.delete())
+        sorted.forEach(({box}) => box.delete())
         return Option.wrap(ValueRegionBox.create(graph, UUID.generate(), box => {
             box.position.setValue(rangeMin)
             box.duration.setValue(rangeMax - rangeMin)
