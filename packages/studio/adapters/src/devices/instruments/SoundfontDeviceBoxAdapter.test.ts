@@ -72,6 +72,12 @@ describe("soundfont loader ownership", () => {
         adapter.terminate()
         expect(second.observers.size).toBe(0)
     })
+    it("fences a pointer callback queued before retirement", () => {
+        const {box, adapter, secondFile, getOrCreate, change} = fixture()
+        const calls = getOrCreate.mock.calls.length
+        change(() => {box.file.refer(secondFile); adapter.terminate()})
+        expect(getOrCreate).toHaveBeenCalledTimes(calls)
+    })
     it("retires pointer observers and makes late callbacks inert without retiring shared loaders", () => {
         const {box, adapter, first, second, secondFile, getOrCreate, change, retireFile, retirePreset} = fixture()
         const preset = vi.fn(), soundfont = vi.fn()

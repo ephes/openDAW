@@ -53,13 +53,18 @@ export class SoundfontDeviceBoxAdapter implements InstrumentDeviceBoxAdapter {
 
         this.#terminator.ownAll(
             this.#loader.subscribe(this.#loaderObserver),
-            this.#box.file.catchupAndSubscribe(({targetVertex}) =>
+            this.#box.file.catchupAndSubscribe(({targetVertex}) => {
+                if (this.#terminated) {return}
                 this.#loader.wrapOption(targetVertex.map(({box}) =>
-                    context.soundfontManager.getOrCreate(box.address.uuid)))),
-            this.#box.presetIndex.catchupAndSubscribe(owner => this.#soundfont.match({
-                none: () => this.#preset.clear(),
-                some: soundfont => this.#preset.wrap(soundfont.presets[owner.getValue()] ?? soundfont.presets[0])
-            }))
+                    context.soundfontManager.getOrCreate(box.address.uuid)))
+            }),
+            this.#box.presetIndex.catchupAndSubscribe(owner => {
+                if (this.#terminated) {return}
+                this.#soundfont.match({
+                    none: () => this.#preset.clear(),
+                    some: soundfont => this.#preset.wrap(soundfont.presets[owner.getValue()] ?? soundfont.presets[0])
+                })
+            })
         )
     }
     get loader(): ObservableOption<SoundfontLoader> {return this.#loader}
