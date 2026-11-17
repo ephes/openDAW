@@ -25,6 +25,8 @@ export class ClipReader<CONTENT> implements EventOwnerReader<CONTENT> {
         return new class extends ClipReader<never> implements AudioEventOwnerReader {
             constructor(clip: AudioClipBoxAdapter) {super(clip, timelineBoxAdapter)}
             get audioContent(): AudioContentBoxAdapter {return clip}
+            get contentDuration(): ppqn {return clip.duration}
+            set contentDuration(value: ppqn) {if (value > 0) {clip.duration = value}}
         }(clip)
     }
 

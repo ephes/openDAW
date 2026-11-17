@@ -16,7 +16,7 @@ import {
     ValueEventOwnerReader
 } from "@/ui/timeline/editors/EventOwnerReader.ts"
 import {PPQN, ppqn} from "@opendaw/lib-dsp"
-import {mod, Observer, Option, Subscription} from "@opendaw/lib-std"
+import {mod, Observer, Option, Subscription, Terminable} from "@opendaw/lib-std"
 import {Propagation} from "@opendaw/lib-box"
 import {TimelineRange} from "@opendaw/studio-core"
 import {deferNextFrame} from "@opendaw/lib-dom"
@@ -74,7 +74,7 @@ export class RegionReader<REGION extends LoopableRegionBoxAdapter<CONTENT>, CONT
             }
             range.moveToUnit(unit)
         })
-        return region.box.subscribe(Propagation.Children, update => {
+        return Terminable.many(run, region.box.subscribe(Propagation.Children, update => {
             if (update.type === "primitive") {
                 switch (true) {
                     case update.matches(region.box.position):
@@ -85,7 +85,7 @@ export class RegionReader<REGION extends LoopableRegionBoxAdapter<CONTENT>, CONT
                     }
                 }
             }
-        })
+        }))
     }
     mapPlaybackCursor(value: ppqn): ppqn {
         if (value < this.position || value >= this.complete) {

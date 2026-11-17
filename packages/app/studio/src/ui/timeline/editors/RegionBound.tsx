@@ -1,5 +1,5 @@
 import css from "./RegionBound.sass?inline"
-import {Lifecycle, Option, Terminable, Terminator} from "@opendaw/lib-std"
+import {Lifecycle, Option, Terminator} from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
 import {StudioService} from "@/service/StudioService.ts"
 import {CanvasPainter, TimelineRange} from "@opendaw/studio-core"
@@ -8,6 +8,7 @@ import {AnyRegionBoxAdapter, RegionAdapters, UnionBoxTypes} from "@opendaw/studi
 import {createRegionCapturing} from "@/ui/timeline/editors/RegionCapturingTarget.ts"
 import {installCursor} from "@/ui/hooks/cursor.ts"
 import {Context2d, Html} from "@opendaw/lib-dom"
+import {listenToRegionTrack} from "@/ui/timeline/editors/RegionTrackListener.ts"
 
 const className = Html.adoptStyleSheet(css, "RegionBound")
 
@@ -61,16 +62,6 @@ export const RegionBound = ({lifecycle, service, range}: Construct) => {
         context.strokeRect(x0, 1, x1 - x0, (height - 1) * devicePixelRatio)
     }))
 
-    const listenToRegion = (region: AnyRegionBoxAdapter): Terminable => {
-        return Terminable.many(
-            region.trackBoxAdapter.unwrap().regions.subscribeChanges(requestUpdate),
-            region.box.regions.subscribe(() => {
-                if (region.trackBoxAdapter.nonEmpty()) {
-                    listenToRegion(region)
-                }
-            })
-        )
-    }
     lifecycle.ownAll(
         range.subscribe(requestUpdate),
         editingRegion.catchupAndSubscribe(option => {
@@ -83,7 +74,7 @@ export const RegionBound = ({lifecycle, service, range}: Construct) => {
                 }
             })
             if (current.nonEmpty()) {
-                regionSubscriber.own(listenToRegion(current.unwrap()))
+                regionSubscriber.own(listenToRegionTrack(current.unwrap(), requestUpdate))
             }
             requestUpdate()
         }),

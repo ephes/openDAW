@@ -38,6 +38,33 @@ source waveform offset, file and playback mode. It does not convert an already
 native seconds value a second time. Existing saved conversions are not migrated;
 region-only fades and loop offset are outside this operation.
 
+### Audio editor loop and slip gestures
+
+Loop-length resizing and waveform slipping in the audio editor write the clip or
+region live while dragging. Releasing the pointer commits the gesture as one undo
+step. Escape, pointer cancellation, lost capture and closing the editor restore the
+original value: without other edits in between, the gesture leaves no history entry;
+otherwise (or after a save marked it) one compensating step restores only the
+gesture's own field and keeps the other edits. A field that another editor changed
+or deleted during the drag is no longer written or restored by the gesture.
+
+Audio clip loop lengths are written through the clip's time base (PPQN or
+seconds). A resize never drops below a sixteenth note, or below the length the
+clip had when the gesture started if that was already shorter; the audio clip
+reader ignores nonpositive lengths. Audio regions keep the existing sixteenth-note
+floor of the region reader.
+
+### Content editor subscriptions
+
+The region bound strip above a content editor watches the edited region's track
+pointer once and keeps exactly one listener on the region's current track; moving
+the region retires the previous track listener and repaints once, and a detached
+region binds none. `EventOwnerReader.keeoOverlapping` returns one terminable that
+owns both the box subscription and the frame-deferred range follow-up: terminating
+it (closing or switching the editor) also drops an already queued follow-up, so a
+previous region cannot move the next editor's viewport. Active readers still
+coalesce several changes in one frame into one range move.
+
 ### Piano panel roster
 
 The piano panel follows current note-track and audio-unit membership/order. It
