@@ -103,8 +103,9 @@ export class PanelContent {
                     some: surface => {
                         const result = tryCatch(() => this.#replaceContent(surface.ground))
                         if (result.status === "failure") {
+                            Html.empty(container)
+                            surface.own({terminate: () => this.#onSurfaceCloses()})
                             surface.close()
-                            this.#restoreEmbedded(panelState, container, listener)
                             throw result.error
                         }
                         Html.empty(container)
@@ -171,13 +172,6 @@ export class PanelContent {
             panelState.isMinimized = false
             listener.onEmbed()
         }
-    }
-
-    #restoreEmbedded(panelState: PanelState, container: DomElement, listener: PanelContentListener): void {
-        if (tryCatch(() => this.#replaceContent(container)).status === "success") {return}
-        Html.empty(container)
-        panelState.isMinimized = true
-        listener.onMinimized()
     }
 
     #replaceContent(container: DomElement): void {

@@ -9,7 +9,7 @@ vi.hoisted(() => {
     globalThis.CSSStyleSheet = class {cssRules = [{}]; replaceSync() {}} as unknown as typeof CSSStyleSheet
 })
 const windows = vi.hoisted(() => ({active: false, ground: document.createElement("div"), close: vi.fn(),
-    own: vi.fn()}))
+    own: vi.fn(), unload: () => {}}))
 vi.mock("../surface/Surface", async () => {
     const {Option} = await import("@opendaw/lib-std")
     return {Surface: {getById: () => windows.active ? Option.wrap(windows) : Option.None,
@@ -19,9 +19,11 @@ vi.mock("@/ui/components/dialogs.tsx", () => ({Dialogs: {info: vi.fn()}}))
 beforeEach(() => {
     windows.active = false
     windows.ground.replaceChildren()
+    windows.close.mockClear()
     const lifecycle = new Terminator()
     windows.own.mockImplementation(resource => lifecycle.own(resource))
-    windows.close.mockImplementation(() => {windows.active = false; lifecycle.terminate()})
+    windows.unload = () => {windows.active = false; lifecycle.terminate()}
+    windows.close.mockImplementation(() => windows.unload())
 })
 const state = () => ({isMinimized: false, minimizable: true, popoutable: true, name: "Synthetic"}) as PanelState
 const listener = () => ({onEmbed: vi.fn(), onPopout: vi.fn(), onMinimized: vi.fn()})
@@ -98,6 +100,34 @@ it("minimizes when neither the popout nor the embedded owner can be rebuilt", ()
     expect(container.children).toHaveLength(1)
     handle.terminate()
     expect(cleanup).toHaveBeenCalledTimes(4)
+})
+
+it("keeps a failed popout candidate out of the embedded owner until its window unloads", () => {
+    const cleanup = vi.fn()
+    let failures = 0
+    const content = new PanelContent({create: lifecycle => {
+        lifecycle.own({terminate: cleanup})
+        if (failures > 0) {failures--; throw new Error("synthetic reconstruction failure")}
+        return document.createElement("article")
+    }}, PanelType.Notepad)
+    const panelState = state()
+    const container = document.createElement("div")
+    const panelListener = listener()
+    const handle = content.bind(panelState, container, panelListener)
+    windows.close.mockImplementation(() => {})
+    failures = 1
+    expect(() => handle.togglePopout()).toThrow("synthetic reconstruction failure")
+    expect(windows.close).toHaveBeenCalledTimes(1)
+    expect(container.children).toHaveLength(0)
+    expect(cleanup).toHaveBeenCalledTimes(2)
+    windows.unload()
+    expect(handle.isPopout()).toBe(false)
+    expect(container.children).toHaveLength(1)
+    expect(panelState.isMinimized).toBe(false)
+    expect(panelListener.onEmbed).toHaveBeenCalledTimes(2)
+    handle.terminate()
+    expect(container.children).toHaveLength(0)
+    expect(cleanup).toHaveBeenCalledTimes(3)
 })
 
 it("retires the embedded owner before the popout factory reads its flushed state", () => {
