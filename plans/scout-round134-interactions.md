@@ -73,3 +73,38 @@ changes. Availability requires the saved ID to identify a connected output.
 Refreshing presentation never rewrites the ID or adds an undo operation. Access
 replacement and selector teardown remove the statechange listener. Regressions
 use fake timers, nested SVG events and synthetic MIDIAccess with no hardware.
+
+## Worker validation receipt (2026-11-17)
+
+Fresh SSH origin: `git@github.com:ephes/openDAW.git`, default branch `main`, base
+`273affd77d4bc5c0d0ff49c41f08d6444e85c1f7`. All twelve slices remained applicable;
+none required an owner decision. Each slice's targeted regression failed before
+its production fix. The 28 targeted tests pass after the fixes.
+
+Passed on Node 26.13.1 / npm 11.20.0:
+
+- `npm ci --ignore-scripts`
+- `npm run build` (24 tasks, including production and test TypeScript checks)
+- `npm run lint` (existing warnings, no errors)
+- `npm test` (44 successful tasks)
+
+`tests/browser/r134.spec.ts` adds real-button context menu/child activation,
+browser density emulation with an idle canvas, and actual panel DOM/NumberInput
+keyboard dispatch against synthetic graph boxes and undo. The panel fixture
+isolates the raw key boundary from deferred studio-chain rendering; the unit
+component tests separately cover mounting/profile/row lifetimes. Browser fixture
+and spec also pass a separate TypeScript check with the studio's ambient types.
+
+**Blocked acceptance, not a passing check:** both
+`npm run test:browser -- tests/browser/r134.spec.ts` and the full
+`npm run test:browser` were attempted. Chromium exits before any test body with
+macOS `bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer…:
+Permission denied (1100)` (SIGTRAP). The full run reports 43 failed launches.
+The outside merge clerk must run `npm run test:browser`, including all three
+round-134 journeys, in an environment allowed to launch Chromium. No sandbox
+bypass or external service access was attempted.
+
+Detailed red/green and gate logs are retained at
+`/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r134-opendaw/`.
+All implementation and validation files are handed off on the local branch;
+no push, merge, release, version bump or review CLI invocation was performed.

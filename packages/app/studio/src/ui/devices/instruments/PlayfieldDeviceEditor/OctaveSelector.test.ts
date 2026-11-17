@@ -14,7 +14,7 @@ const fixture = () => {
     const lifecycle = new Terminator(); owners.push(lifecycle)
     const octave = new DefaultObservableValue(0), update = vi.spyOn(octave, "setValue")
     const element = OctaveSelector({lifecycle, octave, octaveIndex: 4,
-        states: Array.from({length: 12}, () => new DefaultObservableValue(SlotState.Empty))}) as HTMLElement
+        states: Array.from({length: 12}, () => new DefaultObservableValue(SlotState.Idle))}) as HTMLElement
     const child = element.querySelector("rect")!
     const send = (type: string) => child.dispatchEvent(new Event(type, {bubbles: true}))
     return {lifecycle, element, octave, update, send}

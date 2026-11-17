@@ -11,7 +11,7 @@ beforeEach(() => {
         frames.add(callback); return {terminate: () => {frames.delete(callback)}}
     })
     vi.spyOn(Html, "watchResize").mockImplementation((_, callback) => {
-        resize = callback; return {terminate() {}}
+        resize = () => callback({} as ResizeObserverEntry, {} as ResizeObserver); return {terminate() {}}
     })
 })
 afterEach(() => {owners.splice(0).forEach(p => p.terminate()); frames.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals()})

@@ -1,8 +1,8 @@
 import {afterEach, expect, it, vi} from "vitest"
-import {MenuItem} from "../../../../../studio/core/src/ui/menu/MenuItems"
+import {MenuItem} from "@opendaw/studio-core"
 import {Menu} from "./Menu"
 
-vi.mock("@opendaw/studio-core", () => ({}))
+vi.hoisted(() => {globalThis.AudioWorkletNode = class {} as unknown as typeof AudioWorkletNode})
 vi.mock("@opendaw/lib-dom", async importOriginal => {
     const original = await importOriginal<typeof import("@opendaw/lib-dom")>()
     return {...original, Html: {...original.Html, adoptStyleSheet: (_: string, prefix: string) => prefix}}

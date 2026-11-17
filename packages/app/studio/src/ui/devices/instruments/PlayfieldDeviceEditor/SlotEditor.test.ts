@@ -66,8 +66,8 @@ it.each([0.2, 0.8].flatMap(start => ["start", "end"].flatMap(handle => [-2, 2].m
         drag.update({clientX: x + 10} as Dragging.Event); expect(parameter.getValue()).toBeCloseTo(original + 0.1)
         f.width(200); drag.update({clientX: 10 + original * 200 + offset} as Dragging.Event)
         expect(parameter.getValue()).toBeCloseTo(original)
-        drag.cancel(); expect(parameter.getValue()).toBe(original)
-        drag.approve(); expect(f.edit.mark).toHaveBeenCalledTimes(1)
+        drag.cancel!(); expect(parameter.getValue()).toBe(original)
+        drag.approve!(); expect(f.edit.mark).toHaveBeenCalledTimes(1)
     })
 it("chooses the nearest near-coincident handle and clamps the result", () => {
     const f = fixture(0.79, 0.8)
