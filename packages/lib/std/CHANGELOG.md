@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Decode binary16 powers exactly and round binary16 writes to nearest, ties-to-even, preserving the existing overflow saturation and canonical NaN policy.
+
 - Preserve aliased Arrays.replace inputs and copy large replacements without argument spread limits.
 
 - Wrap Mulberry32 state on every advance; correct long-running deterministic streams after the former integer precision boundary while preserving initial sequences and seed resets.
