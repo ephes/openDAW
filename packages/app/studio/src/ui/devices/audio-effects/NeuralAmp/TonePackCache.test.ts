@@ -83,3 +83,15 @@ it("recovers abandoned staging on the next attempt and publishes the default bef
     expect([...files.keys()].some(path => path.includes("abandoned"))).toBe(false)
     expect(await readModelFromPack("1", 1)).toContain("v2")
 })
+it.each([
+    ["truncated", "{\"toneId\": 1, \"tit"],
+    ["legacy-invalid", JSON.stringify({toneId: 1, title: "", updatedAt: "v0", models: [{id: 1, name: "Model 1", size: "huge", model_url: ""}]})]
+])("re-selection replaces an unreadable %s manifest and recovers its revisions", async (_kind, manifest) => {
+    files.set("tone3000/1/pack.json", enc.encode(manifest))
+    files.set("tone3000/1/revisions/orphan/models/1.nam", enc.encode("partial"))
+    await expect(readPackMetaFromId("1")).rejects.toBeDefined()
+    const meta = await storePackToOpfs(tone("v1"))
+    expect(await readPackMetaFromId("1")).toEqual(meta)
+    expect([...files.keys()].some(path => path.includes("orphan"))).toBe(false)
+    expect(await readModelFromPack("1", 1)).toContain("v1")
+})

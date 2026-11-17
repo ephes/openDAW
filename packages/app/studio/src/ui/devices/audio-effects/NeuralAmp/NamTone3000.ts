@@ -86,7 +86,13 @@ export const storePackToOpfs = async (input: ToneResponse, signal?: AbortSignal)
     const tone = admitTone(input)
     return navigator.locks.request(`opendaw:tone3000:${tone.id}`, {signal}, async () => {
         signal?.throwIfAborted()
-        const existingMeta = await readPackMeta(tone.id, false)
+        // An unreadable or no longer admissible manifest (truncated by an older
+        // non-atomic write, or a legacy pack) must not block re-selection: treat it
+        // as absent so the fresh pack replaces it and its revisions are recovered.
+        const existingMeta = await readPackMeta(tone.id, false).catch((error: unknown) => {
+            if (Errors.isAbort(error)) {throw error}
+            return null
+        })
         const revisions = `${packPath(tone.id)}/revisions`
         // Only the current complete revision survives recovery; abandoned staging
         // is removed before allocating another revision, under an origin-wide lock.

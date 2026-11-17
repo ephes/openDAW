@@ -5,11 +5,11 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Publish Tone3000 packs only after their complete default model; recover unfinished staging, and bound/validate metadata and model transfers with cancellation and total deadlines.
+- Publish Tone3000 packs only after their complete default model; recover unfinished staging, and bound/validate metadata and model transfers with cancellation and total deadlines. Re-selecting a pack replaces an unreadable or no longer valid cached manifest instead of failing.
 
 - Fence late Tone3000 imports against current devices and model selections; bind cached bytes to persisted pack revisions and refuse stale downloads.
 
-- Scope Tone3000 callbacks and acknowledgements to one selection; cancel blocked, expired and retired selection waits after at most five minutes.
+- Scope Tone3000 callbacks and acknowledgements to one selection; cancel blocked, expired and retired selection waits after at most five minutes. The callback page also accepts a `tone_url` appended with a second `?`.
 
 - Release modular wire observers and deferred draws with their view; ignore removed connections and preserve newer preview registrations.
 

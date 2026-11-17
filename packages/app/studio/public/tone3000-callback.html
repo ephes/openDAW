@@ -13,7 +13,10 @@
 <p id="status">Receiving tone...</p>
 <script>
     const status = document.getElementById("status")
-    const params = new URLSearchParams(window.location.search)
+    // The selection identity rides on redirect_url's own query. A redirector that
+    // appends "?tone_url=..." instead of "&tone_url=..." still yields both values.
+    const search = window.location.search.replace(/^(\?(?:.*&)?selection=[0-9a-f-]{36})\?/i, "$1&")
+    const params = new URLSearchParams(search)
     const toneUrl = params.get("tone_url")
     const selection = params.get("selection")
     if (toneUrl && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selection || "")) {

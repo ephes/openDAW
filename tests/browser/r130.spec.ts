@@ -30,6 +30,14 @@ test("isolated selectors deliver reverse callbacks only to their owning selectio
     await expect.poll(() => popups.every(popup => popup.isClosed())).toBe(true)
 })
 
+test("selection callback tolerates a redirector that appends tone_url with a second question mark", async ({page}) => {
+    const selection = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    const toneUrl = "https://example.test/tones/1?format=nam&v=2"
+    await page.goto(`/tone3000-callback.html?selection=${selection}?tone_url=${encodeURIComponent(toneUrl)}`)
+    await expect(page.locator("#status")).toHaveText("Sending NAM to device...")
+    expect(await page.evaluate(id => localStorage.getItem(`tone3000_tone_url:${id}`), selection)).toBe(toneUrl)
+})
+
 test("modular previews, graph transactions and deferred views retain current owners", async ({page}) => {
     await page.goto("/")
     const result = await page.evaluate(async () => {
