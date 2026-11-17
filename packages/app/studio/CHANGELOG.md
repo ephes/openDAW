@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound and validate latency history; stop optional polling on storage or beacon refusal without entering the application error path.
+
 - Request microphone capture when permission introspection is unsupported; require exact selected inputs and surface missing-device errors.
 
 - Retire cancelled auto-gain probes and ignore unrelated pointers; reject malformed meter frames and nonfinite gain edits.

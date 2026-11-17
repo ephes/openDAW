@@ -68,3 +68,40 @@ and removal of another listener affect the next frame; additions also wait until
 the next frame. Exceptions still stop dispatch under the existing documented rule.
 `Subscribers.test.ts` and real `LiveStreamReceiver.test.ts` regressions fail on
 the original implementation, covering all five scalar/array package types.
+
+## B06: payload and optional reporter cleanup
+
+Array package termination clears the per-address payload cache alongside listeners.
+Real receiver tests reconnect three generations for every array type, proving
+in-connection reuse and fresh payload identities after disconnect. Those three
+regressions fail without cache cleanup.
+
+Latency history is bounded to 4096 characters and 501 integer buckets in [0, 500].
+Stored duplicates are collapsed before adding a new bucket. Invalid/nonpositive
+measured latency is ignored. JSON, schema, storage discovery/read/write and beacon
+failures retire the timer and state listener without reaching the app error path.
+Reporter tests use synthetic malformed/oversized history, refusal stubs and fake
+timers; valid buckets remain deduplicated across contexts. The storage regressions
+fail on the earlier reporter implementation.
+
+## Final local validation
+
+All twelve slices remain applicable on the fresh trunk; none require an owner
+decision. Six ordered bundle commits share the local `codex-q/r120-openDAW` branch.
+No version bump, push, merge, release, deployment or external agent review occurs.
+
+- `npm ci --ignore-scripts`: passed (existing dependency audit findings unchanged).
+- `npm run build`: passed, including production typechecks and generated sources.
+- `npm run lint`: passed (existing warnings, zero errors).
+- `npm test`: passed, 44 Turbo tasks; Studio has 39 files / 308 tests.
+- Explicit lint of changed TSX files and typecheck of the new browser fixtures: passed.
+- `PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r120-opendaw/.cache/playwright npx playwright install chromium`: passed.
+- `PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r120-opendaw/.cache/playwright npm run test:browser`: blocked at Chromium launch
+  for all 30 tests: macOS `bootstrap_check_in ... Permission denied (1100)` /
+  `KERN_SUCCESS` assertion in `mach_port_rendezvous_mac.cc`. No browser assertion
+  ran. The clerk must run this gate outside the sandbox, including the new notes,
+  navigation, pointer capture and microphone fixtures. Dynamic fixture dependencies
+  are scanned before serving to avoid a cold-cache optimizer reload during tests.
+
+Before/after regression outputs and full gate logs are outside the checkout at
+`/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r120-opendaw/`.

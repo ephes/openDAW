@@ -116,7 +116,10 @@ abstract class ArrayPackage<T extends ArrayTypes> implements Package<T> {
     }
 
     hasSubscribers(address: Address): boolean {return !this.subscribers.isEmpty(address)}
-    terminate(): void {this.subscribers.terminate()}
+    terminate(): void {
+        this.subscribers.terminate()
+        this.#arrays.clear()
+    }
 }
 
 class FloatArrayPackage extends ArrayPackage<Float32Array> {

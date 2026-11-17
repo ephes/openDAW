@@ -16,7 +16,7 @@ const fixture = () => {
     const port: Port = {onmessage: null, onmessageerror: null, postMessage: vi.fn()}
     const messenger = Messenger.for(port)
     const receiver = new LiveStreamReceiver()
-    const connection = receiver.connect(messenger)
+    let connection = receiver.connect(messenger)
     disposals.push(() => {connection.terminate(); messenger.terminate()})
     const send = (func: string, value: unknown) => port.onmessage?.(new MessageEvent("message", {
         data: {type: "send", returnId: false, func, args: [{value}]}
@@ -41,7 +41,11 @@ const fixture = () => {
         send("sendUpdateData", output.toArrayBuffer())
         Atomics.store(lock, 0, Lock.READ)
     }
-    return {receiver, send, lock, structure, frame}
+    return {receiver, send, lock, structure, frame, reconnect: () => {
+        connection.terminate()
+        connection = receiver.connect(messenger)
+        send("sendShareLock", lock.buffer)
+    }}
 }
 
 describe("LiveStreamReceiver validated frames", () => {
@@ -185,3 +189,21 @@ it("defers additions and keeps removals from changing the current frame snapshot
     }
     expect(deliveries).toEqual(["first", "second", "first", "new"])
 })
+
+
+it.each([PackageType.FloatArray, PackageType.IntegerArray, PackageType.ByteArray])(
+    "disconnect releases cached payload generation for array type %s", type => {
+        const test = fixture()
+        const arrays: unknown[] = []
+        for (let generation = 0; generation < 3; generation++) {
+            subscribe(test.receiver, type, value => arrays.push(value))
+            test.send("sendUpdateStructure", test.structure(0, [type]))
+            for (let frame = 0; frame < 2; frame++) {
+                test.frame(0, 1, output => writePackage(output, type))
+                test.receiver.dispatch()
+            }
+            expect(arrays[generation * 2]).toBe(arrays[generation * 2 + 1])
+            if (generation > 0) {expect(arrays[generation * 2]).not.toBe(arrays[(generation - 1) * 2])}
+            test.reconnect()
+        }
+    })

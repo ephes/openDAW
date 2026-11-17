@@ -521,3 +521,7 @@ Invalid meter frames are ignored and gain edits require finite evidence.
 Microphone capture can request permission when the browser lacks microphone
 permission introspection. Explicit input selections require the exact device;
 missing inputs require reselection. See [permission help](packages/app/studio/public/manuals/permissions.md).
+
+Latency reporting accepts at most 501 integer buckets from 0 to 500 ms in a
+4096-character stored history. Corrupt history, unavailable storage or a throwing
+beacon retires optional reporting for that installation without an app error.
