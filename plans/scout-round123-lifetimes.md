@@ -3,8 +3,9 @@
 Changes are implemented sequentially from fresh main, with synthetic regression
 tests written and run against the original behavior before each fix. Instrumented
 audio nodes count owned and foreign connections and inject construction, connect
-and map-publication failures. Full build, lint, tests and Chromium fixtures run
-locally; no remote publication or real user data is involved.
+and map-publication failures. Full build, lint and tests run locally; the Chromium
+fixtures run at merge outside the sandbox. No remote publication or real user data
+is involved.
 
 ## Editor gestures
 
@@ -17,7 +18,7 @@ cannot leave the gesture active. A pointerdown from the same pointer or a new pr
 pointer restarts the gesture after a lost completion; secondary contacts are ignored.
 A new source drag retires the old source's payload, class and ghost. Failed source
 setup and source disposal run the same cleanup, which cannot clear a newer owner.
-Twelve synthetic gesture tests reproduce the previous failures.
+Synthetic AutoScroll and DragAndDrop tests reproduce the previous failures.
 
 ## Shortcut and upload admission
 
@@ -82,6 +83,11 @@ PLAYWRIGHT_BROWSERS_PATH=/Users/jochen/workspaces/ws-cx-cx-r123-opendaw/.cache/p
 
 Chromium exits at `bootstrap_check_in ... MachPortRendezvousServer: Permission
 denied (1100)`. The merge clerk must run the full suite outside the sandbox;
-no browser pass is claimed here. Build/test/review logs remain outside the clone
+no browser pass is claimed by the job itself. Build/test/review logs remain outside the clone
 in the runner's prescribed `cx-r123-opendaw` log directory. No owner decisions
 were needed, no remote refs were written and no cross-family review was invoked.
+
+Merge run outside the sandbox: the full Chromium suite passes except
+`tests/browser/scripts.spec.ts`, which also fails on unchanged main (worklet
+`script-contracts` not defined). The AutoScroll fixture now starts the shared
+`AnimationFrame` loop; it fails against the previous AutoScroll and passes with the fix.
