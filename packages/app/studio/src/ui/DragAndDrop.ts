@@ -14,6 +14,8 @@ import {Events} from "@opendaw/lib-dom"
 
 export namespace DragAndDrop {
     let dragging: Option<AnyDragData> = Option.None
+    let activeSource: Nullable<symbol> = null
+    let retireActiveSource: Nullable<() => void> = null
 
     const hasFiles = (event: DragEvent): boolean => {
         const type = event.dataTransfer?.types?.at(0)
@@ -36,35 +38,58 @@ export namespace DragAndDrop {
         classReceiver ??= element
         element.draggable = true
         let activeImage: Nullable<HTMLElement> = null
-        return Terminable.many(
-            Events.subscribe(element, "dragend", () => {
-                classReceiver.classList.remove("dragging")
+        let token: Nullable<symbol> = null
+        let retired = false
+        const cleanup = () => {
+            if (token === null) {return}
+            if (activeSource === token) {
                 dragging = Option.None
-                if (isDefined(activeImage)) {
-                    activeImage.remove()
-                    activeImage = null
-                }
-            }),
-            Events.subscribe(element, "dragstart",
-                (event: DragEvent) => {
-                    const dataTransfer = event.dataTransfer
-                    if (!isDefined(dataTransfer)) {return}
+                activeSource = null
+                retireActiveSource = null
+            }
+            token = null
+            classReceiver.classList.remove("dragging")
+            activeImage?.remove()
+            activeImage = null
+        }
+        const listeners = Terminable.many(
+            Events.subscribe(element, "dragend", cleanup),
+            Events.subscribe(element, "dragstart", (event: DragEvent) => {
+                if (retired) {return}
+                const dataTransfer = event.dataTransfer
+                if (!isDefined(dataTransfer)) {return}
+                retireActiveSource?.()
+                token = Symbol("drag")
+                activeSource = token
+                retireActiveSource = cleanup
+                try {
                     dataTransfer.setData("application/json", "{custom: true}")
                     dataTransfer.effectAllowed = "copyMove"
                     classReceiver.classList.add("dragging")
                     dragging = Option.wrap(provider())
                     if (isDefined(dragImage)) {
                         const ghost = dragImage()
+                        activeImage = ghost
                         ghost.style.position = "fixed"
                         ghost.style.top = "-9999px"
                         ghost.style.left = "-9999px"
                         ghost.style.pointerEvents = "none"
-                        document.body.appendChild(ghost)
+                        element.ownerDocument.body.appendChild(ghost)
                         dataTransfer.setDragImage(ghost, 0, 0)
-                        activeImage = ghost
                     }
-                })
+                } catch (error) {
+                    cleanup()
+                    event.preventDefault()
+                    throw error
+                }
+            })
         )
+        return {terminate: () => {
+            if (retired) {return}
+            retired = true
+            listeners.terminate()
+            cleanup()
+        }}
     }
 
     export interface Process {

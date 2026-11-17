@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire active auto-scroll listeners and frames with the editor, track the initiating pointer and stop on cancellation/blur. Retire drag payloads, ghosts and source classes on disposal or failed setup without clearing newer drags.
+
 - Bound and validate latency history; stop optional polling on storage or beacon refusal without entering the application error path.
 
 - Request microphone capture when permission introspection is unsupported; the studio input-stream helper requests selected devices exactly (track recording keeps its default-input fallback).
