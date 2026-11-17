@@ -7,5 +7,6 @@ export interface ValueContext {
     readonly stringMapping: StringMapping<PrimitiveValues>
     readonly currentValue: unitValue
     readonly floating: boolean
+    readonly affineValueAxis: boolean
     quantize(value: unitValue): unitValue
 }

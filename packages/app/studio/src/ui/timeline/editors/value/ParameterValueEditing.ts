@@ -20,6 +20,7 @@ import {Project} from "@opendaw/studio-core"
 import {ValueContext} from "@/ui/timeline/editors/value/ValueContext"
 
 export class ParameterValueEditing implements ValueContext, Terminable {
+    readonly affineValueAxis = true
     static readonly FallbackStringMapping = StringMapping.percent()
 
     readonly #terminator = new Terminator()

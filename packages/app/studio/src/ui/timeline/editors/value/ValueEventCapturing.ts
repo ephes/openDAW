@@ -33,7 +33,7 @@ export const createValueEventCapturing = (element: Element,
             if (distance <= EventRadius * EventRatio) {
                 if (closest === null) {
                     closest = {event, distance}
-                } else if (closest.distance < distance) {
+                } else if (distance < closest.distance) {
                     closest.event = event
                     closest.distance = distance
                 }
@@ -59,18 +59,18 @@ export const createValueEventCapturing = (element: Element,
             const slope = interpolation.type === "curve" ? interpolation.slope : 0.5
             const x0 = range.unitToX(n0.position + offset)
             const x1 = range.unitToX(n1.position + offset)
-            const y0 = valueToY(n0.value)
-            const y1 = valueToY(n1.value)
+            const y0 = n0.value
+            const y1 = n1.value
             // Check midpoint first
             const midX = (x0 + x1) * 0.5
-            const midY = Curve.normalizedAt(0.5, slope) * (y1 - y0) + y0
+            const midY = valueToY(Curve.normalizedAt(0.5, slope) * (y1 - y0) + y0)
             const dx = x - midX
             const dy = y - midY
             if (Math.sqrt(dx * dx + dy * dy) <= MidPointRadius * EventRatio) {
                 return {type: "midpoint", event: n0}
             }
             // Check curve line
-            const curveY = Curve.valueAt({slope, steps: x1 - x0, y0, y1}, x - x0)
+            const curveY = valueToY(Curve.valueAt({slope, steps: x1 - x0, y0, y1}, x - x0))
             if (Math.abs(curveY - y) < PointerRadiusDistance) {
                 return {type: "curve", event: n0}
             }

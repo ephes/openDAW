@@ -631,7 +631,7 @@ export const AutomationPage: PageFactory<StudioService> = ({}: PageContext<Studi
                             const windowMin = pass.resultStart - pass.rawStart
                             const windowMax = pass.resultEnd - pass.rawStart
                             const iterator = ValueEvent.iterateWindow(eventCollection, windowMin, windowMax)
-                            ValueStreamRenderer.render(context, range, iterator, valueToY, contentColor, 0.2, 0.0, pass)
+                            ValueStreamRenderer.render(context, range, iterator, valueToY, contentColor, 0.2, 0.0, pass, true)
                             context.strokeStyle = "rgba(255, 255, 255, 0.25)"
                         }
                         const offset = section.position - section.loopOffset

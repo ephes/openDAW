@@ -118,6 +118,28 @@ const claimRequest = (audioContext: BaseAudioContext, config: ScriptCompiler.Con
     return request
 }
 
+type PendingInstallation = {
+    request: number
+    box: ScriptCompiler.ScriptDeviceBox
+    source: string
+    sourceChanged: boolean
+    publishing: boolean
+    promise: Promise<void>
+}
+const pendingInstallations = new WeakMap<BaseAudioContext, Map<string, PendingInstallation>>()
+const deviceKey = (config: ScriptCompiler.Config, box: ScriptCompiler.ScriptDeviceBox): string =>
+    config.registryName + ":" + UUID.toString(box.address.uuid)
+
+const pendingInstallation = (audioContext: BaseAudioContext, config: ScriptCompiler.Config,
+                             box: ScriptCompiler.ScriptDeviceBox): Promise<void> | undefined => {
+    const key = deviceKey(config, box)
+    const owner = pendingInstallations.get(audioContext)?.get(key)
+    if (owner === undefined || owner.box !== box || owner.sourceChanged
+        || requests.get(audioContext)?.get(key) !== owner.request
+        || box.graph.findBox(box.address.uuid).unwrapOrNull() !== box) {return undefined}
+    return owner.publishing || owner.source === box.code.getValue() ? owner.promise : undefined
+}
+
 const installationState = (config: ScriptCompiler.Config, uuid: string): string => `
     globalThis.openDAW ??= {}
     globalThis.openDAW.scriptInstallations ??= {}
@@ -221,6 +243,33 @@ const install = async (audioContext: BaseAudioContext, config: ScriptCompiler.Co
     if (failed) {throw failure}
 }
 
+// Pending installation ownership belongs to the device/context, not to an editor
+// instance. Passive initialization joins it; explicit compilation still claims a
+// new request. Publication callbacks may notify a newly mounted editor synchronously.
+const installOwned = (audioContext: BaseAudioContext, config: ScriptCompiler.Config,
+                      box: ScriptCompiler.ScriptDeviceBox, request: number, update: number, userCode: string,
+                      publish: () => void): Promise<void> => {
+    const key = deviceKey(config, box)
+    const owners = pendingInstallations.get(audioContext) ?? new Map<string, PendingInstallation>()
+    pendingInstallations.set(audioContext, owners)
+    const result = Promise.withResolvers<void>()
+    const owner: PendingInstallation = {request, box, source: box.code.getValue(), sourceChanged: false,
+        publishing: false, promise: result.promise}
+    owners.set(key, owner)
+    const subscription = box.code.subscribe(() => {
+        if (!owner.publishing) {owner.sourceChanged = true}
+    })
+    const cleanup = () => {
+        subscription.terminate()
+        if (owners.get(key) === owner) {owners.delete(key)}
+    }
+    void install(audioContext, config, box, request, update, userCode, () => {
+        owner.publishing = true
+        try {publish()} finally {owner.publishing = false}
+    }).then(() => {cleanup(); result.resolve()}, error => {cleanup(); result.reject(error)})
+    return result.promise
+}
+
 export namespace ScriptCompiler {
     export interface ScriptDeviceBox extends DeviceBox {
         readonly graph: BoxGraph
@@ -239,15 +288,25 @@ export namespace ScriptCompiler {
         const headerPattern = createHeaderPattern(config.headerTag)
         const createHeader = (update: number): string =>
             `// @${config.headerTag} js ${COMPILER_VERSION} ${update}\n`
-        return {
+        const compiler = {
+            initialize: (audioContext: BaseAudioContext, editing: Editing, deviceBox: ScriptDeviceBox,
+                         defaultCode: string): Promise<void> => {
+                const pending = pendingInstallation(audioContext, config, deviceBox)
+                if (pending !== undefined) {return pending}
+                return deviceBox.code.getValue().length > 0
+                    ? compiler.load(audioContext, deviceBox)
+                    : compiler.compile(audioContext, editing, deviceBox, defaultCode, true)
+            },
             stripHeader: (source: string): string => parseHeader(source, headerPattern).userCode,
             load: async (audioContext: BaseAudioContext, deviceBox: ScriptDeviceBox): Promise<void> => {
+                const pending = pendingInstallation(audioContext, config, deviceBox)
+                if (pending !== undefined) {return pending}
                 const request = claimRequest(audioContext, config, deviceBox)
                 const {userCode, update} = parseHeader(deviceBox.code.getValue(), headerPattern)
                 if (update === 0) {return}
                 ScriptDeclaration.parseParams(userCode)
                 ScriptDeclaration.parseSamples(userCode)
-                return install(audioContext, config, deviceBox, request, update, userCode, () => {})
+                return installOwned(audioContext, config, deviceBox, request, update, userCode, () => {})
             },
             compile: async (audioContext: BaseAudioContext,
                             editing: Editing,
@@ -278,11 +337,12 @@ export namespace ScriptCompiler {
                 let historyChanged = false, armed = false
                 queueMicrotask(() => {armed = true})
                 const history = append ? editing.subscribe(() => {if (armed) {historyChanged = true}}) : Terminable.Empty
-                return install(audioContext, config, deviceBox, request, newUpdate, userCode, () => {
+                return installOwned(audioContext, config, deviceBox, request, newUpdate, userCode, () => {
                     history.terminate()
                     if (append && !historyChanged) {editing.append(modifier)} else {editing.modify(modifier)}
                 }).finally(() => history.terminate())
             }
         }
+        return compiler
     }
 }

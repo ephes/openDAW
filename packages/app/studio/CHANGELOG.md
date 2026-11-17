@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Settle initial script load/default compile and external reload failures into the current error icon without unhandled rejections; retire stale UI callbacks on disposal, keep Compile working from the code editor after the device panel remounts, and permit explicit retry.
+
+- Draw, capture, label and drag tempo curve handles using stored BPM interpolation on logarithmic axes, consistently across viewport clipping.
+
+- Restore visible automation points after failed deletion/moves and capture the nearest automation/property node; equal-distance ties retain the first candidate, with selected-note priority unchanged.
+
 - Publish Tone3000 packs only after their complete default model; recover unfinished staging, and bound/validate metadata and model transfers with cancellation and total deadlines. Re-selecting a pack replaces an unreadable or no longer valid cached manifest instead of failing; storage errors still keep the current revision.
 
 - Fence late Tone3000 imports against current devices and model selections; bind cached bytes to persisted pack revisions and refuse stale downloads.

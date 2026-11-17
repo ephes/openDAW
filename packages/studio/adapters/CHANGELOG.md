@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Coalesce passive script loads/default initialization with the current device/context installation so editor remounts preserve pending explicit compiles; keep newer requests, external edits and deletion authoritative.
+
+- Split automation ramps in stored-value space, preserving raw BPM playback and curve slopes when inserting unchanged tempo points.
+
+- Index automation keys across pending graph edits, moves and history without per-insertion scans, through one shared update router per graph instead of a listener per collection; rebuild editor event indexes from restored graph pointers on transaction rollback.
+
 - Expose auxiliary send enable state for playback and DAWproject interchange.
 
 - Give MIDI control registrations independent idempotent owners with aggregate presence notifications.

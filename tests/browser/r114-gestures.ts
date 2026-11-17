@@ -123,7 +123,7 @@ export const noteAndSlope = () => {
             box.interpolation.setValue(1)
         })).map(box => boxAdapters.adapterFor(box, ValueEventBoxAdapter)).unwrap())
         const slope = () => ValueSlopeModifier.create({editing, element, pointerY: 100,
-            valueAxis: {valueToAxis: (v: number) => v * 100} as ValueAxis, reference: points[0], collection: values})
+            valueAxis: {valueToAxis: (v: number) => v * 100, axisToValue: (y: number) => y / 100} as ValueAxis, reference: points[0], collection: values})
         const first = slope()
         first.update({clientY: 120, altKey: false} as Dragging.Event)
         first.approve()

@@ -54,9 +54,9 @@ export namespace ValueTooltip {
                         const interpolation = modifier.readInterpolation(event)
                         const slope = interpolation.type !== "curve" ? 0.5 : interpolation.slope
                         const midPosition = (modifier.readPosition(event) + modifier.readPosition(nextEvent)) * 0.5
-                        const y0 = valueAxis.valueToAxis(modifier.readValue(event))
-                        const y1 = valueAxis.valueToAxis(modifier.readValue(nextEvent))
-                        const midY = Curve.normalizedAt(0.5, slope) * (y1 - y0) + y0
+                        const v0 = modifier.readValue(event)
+                        const v1 = modifier.readValue(nextEvent)
+                        const midY = valueAxis.valueToAxis(Curve.normalizedAt(0.5, slope) * (v1 - v0) + v0)
                         const clientRect = element.getBoundingClientRect()
                         const clientX = range.unitToX(midPosition + reader.offset) + clientRect.left + 8
                         const clientY = midY + clientRect.top + 8

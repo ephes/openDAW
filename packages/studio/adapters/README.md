@@ -118,3 +118,37 @@ Each `registerMidiControl()` call owns one idempotent handle. Control-source
 listeners see one aggregate MIDI-add transition on the first registration and one
 remove transition on the last release. Catchup observes the aggregate presence
 even after another owner has released its handle.
+
+### Automation event identity and rollback
+
+Value collections identify points by integer `(position, index)`. Creating the same
+key again in one transaction updates its value/interpolation, including pending
+points and replacements; indices 0 and 1 still represent intentional jumps. The
+lookup follows immediate graph updates rather than scanning notified adapters.
+One shared listener per box graph routes each update only to the collection that
+indexes the box and to the collection a pointer or new box now targets, so the
+cost of an update does not grow with the number of automation collections.
+After an aborted graph transaction, collections rebuild their editor index from
+the restored pointers, including replacement box instances. Editors may still
+remove points temporarily to avoid collisions during promotion and batch moves.
+
+Tempo and parameter cuts interpolate in the stored value domain and split both
+curve slopes there. The optional historical display-mapping argument to `cut`
+is accepted for compatibility and does not affect interpolation. Logarithmic
+tempo display changes neither BPM playback nor the tempo-map time conversion
+when inserting an unchanged point (within Float32 storage precision).
+
+### Script initialization across editor remounts
+
+`ScriptCompiler.initialize(context, editing, device, defaultCode)` loads saved
+code or compiles the default with creation-history append semantics. Both it and
+passive `load` join a current pending installation for the same device object and
+audio context, even when another compiler/editor instance owns that operation.
+Closing an editor retires UI callbacks, not the device's pending compile.
+
+Explicit `compile` always claims a newer request. External source edits (including
+edit/undo), device replacement/deletion and a different context cannot reuse an
+obsolete pending owner. Publication-triggered reloads join the publishing owner
+without installing saved old code over it. Pending owners/subscriptions are
+released on success or failure, and a later explicit retry starts a fresh attempt.
+The existing worklet activation fence and graph rollback remain in force.

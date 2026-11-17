@@ -5,7 +5,7 @@ import {ValueEventBoxAdapter, ValueEventCollectionBoxAdapter} from "@opendaw/stu
 import {Dragging} from "@opendaw/lib-dom"
 import {ValueSlopeModifier} from "./ValueSlopeModifier"
 
-const setup = () => {
+const setup = (axis: ValueAxis = {valueToAxis: (v: number) => v * 100, axisToValue: (y: number) => y / 100}) => {
     const events = EventCollection.create<ValueEventBoxAdapter>()
     const collection = {events, subscribeChange: () => Terminable.Empty, box: {isAttached: () => true}} as unknown as ValueEventCollectionBoxAdapter
     const add = (position: number, value: number) => {
@@ -24,7 +24,7 @@ const setup = () => {
     const editing = {...Editing.Transient}
     vi.spyOn(editing, "modify")
     const construct = {editing, reference: reference.adapter, collection, element: document.createElement("canvas"),
-        valueAxis: {valueToAxis: (value: number) => value * 100} as ValueAxis, pointerY: 100}
+        valueAxis: axis, pointerY: 100}
     const tool = ValueSlopeModifier.create(construct)
     const move = (y: number, altKey = false) => tool.update({clientY: y, altKey} as Dragging.Event)
     return {tool, reference, successor, editing, add, move}
@@ -69,4 +69,16 @@ it("cancellation releases the owned segment subscriptions", () => {
     h.reference.change({value: 0.5})
     h.successor.change({value: 0.8})
     expect(update).not.toHaveBeenCalled()
+})
+
+it("converts a logarithmic midpoint gesture back into stored-value slope", () => {
+    const axis = {valueToAxis: (v: number) => Math.log((v + 1) / 1) / Math.log(2) * 100,
+        axisToValue: (y: number) => 2 ** (y / 100) - 1} as ValueAxis
+    const h = setup(axis)
+    // No movement must retain the original linear stored-value segment.
+    h.move(100)
+    expect(h.tool.readInterpolation(h.reference.adapter)).toEqual(Interpolation.Linear)
+    h.move(120)
+    const slope = axis.axisToValue(axis.valueToAxis(0.5) + 20)
+    expect(h.tool.readInterpolation(h.reference.adapter)).toEqual(Interpolation.Curve(slope))
 })

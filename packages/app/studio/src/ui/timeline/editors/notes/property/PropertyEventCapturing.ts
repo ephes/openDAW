@@ -28,7 +28,7 @@ export const createPropertyCapturing = (valueAxis: ValueAxis,
                 }
                 if (closest === null) {
                     closest = {event, distance}
-                } else if (closest.distance < distance) {
+                } else if (distance < closest.distance) {
                     closest.event = event
                     closest.distance = distance
                 }

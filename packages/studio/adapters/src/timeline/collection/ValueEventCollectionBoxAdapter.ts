@@ -3,7 +3,6 @@ import {
     asDefined,
     Curve,
     int,
-    isDefined,
     linear,
     Notifier,
     Observer,
@@ -16,7 +15,7 @@ import {
     UUID,
     ValueMapping
 } from "@opendaw/lib-std"
-import {Address, Box} from "@opendaw/lib-box"
+import {Address, Box, BoxGraph, Update} from "@opendaw/lib-box"
 import {EventCollection, Interpolation, ppqn, ValueEvent} from "@opendaw/lib-dsp"
 import {Pointers} from "@opendaw/studio-enums"
 import {BoxAdapter} from "../../BoxAdapter"
@@ -31,6 +30,48 @@ type CreateEventParams = {
     interpolation: Interpolation
 }
 
+type IndexListener = {readonly reindex: (uuid: UUID.Bytes, id: string) => void}
+type IndexRouter = {
+    // event box id -> the collection that currently indexes it
+    readonly owners: Map<string, IndexListener>
+    // collection box id -> its adapter in this graph
+    readonly collections: Map<string, IndexListener>
+    readonly subscription: Subscription
+}
+const indexRouters = new WeakMap<BoxGraph, IndexRouter>()
+
+// One immediate update listener per graph routes each update to at most the collection
+// that indexes the box and the collection a pointer/new box now targets, so the cost of
+// an update does not grow with the number of automation collections.
+const indexRouterFor = (graph: BoxGraph): IndexRouter => {
+    const existing = indexRouters.get(graph)
+    if (existing !== undefined) {return existing}
+    const owners = new Map<string, IndexListener>()
+    const collections = new Map<string, IndexListener>()
+    const subscription = graph.subscribeToAllUpdatesImmediate({
+        onUpdate: (update: Update) => {
+            const uuid = update.type === "new" || update.type === "delete" ? update.uuid : update.address.uuid
+            const id = UUID.toString(uuid)
+            const owner = owners.get(id)
+            owner?.reindex(uuid, id)
+            let target: Option<Address> = Option.None
+            if (update.type === "pointer") {
+                target = update.newAddress
+            } else if (update.type === "new") {
+                const box = graph.findBox(uuid).unwrapOrNull()
+                if (box instanceof ValueEventBox) {target = box.events.targetAddress}
+            }
+            target.ifSome(address => {
+                const collection = collections.get(UUID.toString(address.uuid))
+                if (collection !== undefined && collection !== owner) {collection.reindex(uuid, id)}
+            })
+        }
+    })
+    const router: IndexRouter = {owners, collections, subscription}
+    indexRouters.set(graph, router)
+    return router
+}
+
 export class ValueEventCollectionBoxAdapter implements BoxAdapter {
     readonly #terminator: Terminator = new Terminator()
 
@@ -40,16 +81,28 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
     readonly #changeNotifier: Notifier<this>
     readonly #adapters: SortedSet<UUID.Bytes, ValueEventBoxAdapter>
     readonly #events: EventCollection<ValueEventBoxAdapter>
+    readonly #eventKeys = new Map<string, Set<ValueEventBox>>()
+    readonly #indexedBoxes = new Map<string, {box: ValueEventBox, key: string}>()
+    readonly #router: IndexRouter
+    readonly #indexListener: IndexListener
 
     constructor(context: BoxAdaptersContext, box: ValueEventCollectionBox) {
         this.#context = context
         this.#box = box
+        this.#router = indexRouterFor(context.boxGraph)
+        this.#indexListener = {
+            reindex: (uuid: UUID.Bytes, id: string) => {
+                const target = context.boxGraph.findBox(uuid).unwrapOrNull()
+                if (target instanceof ValueEventBox) {this.#indexBox(target)} else {this.#unindexBox(id)}
+            }
+        }
 
         this.#changeNotifier = new Notifier<this>()
         this.#adapters = UUID.newSet(adapter => adapter.uuid)
         this.#events = EventCollection.create(ValueEventBoxAdapter.Comparator)
 
         const addValueProcedure = (box: Box) => {
+            if (box instanceof ValueEventBox) {this.#indexBox(box)}
             const adapter = asDefined(box.accept<BoxVisitor<ValueEventBoxAdapter>>({
                 visitValueEventBox: (box: ValueEventBox) => this.#context.boxAdapters.adapterFor(box, ValueEventBoxAdapter)
             }), `Could not find adapter for ${box}`)
@@ -63,6 +116,35 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
             onAdded: ({box}) => addValueProcedure(box),
             onRemoved: ({box: {address: {uuid}}}) => {
                 this.#events.remove(this.#adapters.removeByKey(uuid))
+                this.#onEventsChanged()
+            }
+        }))
+        // Immediate graph updates include staged boxes before deferred pointer notifications,
+        // field moves, transfers, deletion and the inverse updates of an abort.
+        const collectionId = UUID.toString(this.#box.address.uuid)
+        this.#router.collections.set(collectionId, this.#indexListener)
+        this.#terminator.own({
+            terminate: () => {
+                this.#clearIndex()
+                const {owners, collections, subscription} = this.#router
+                if (collections.get(collectionId) === this.#indexListener) {collections.delete(collectionId)}
+                if (collections.size === 0 && owners.size === 0 && indexRouters.get(context.boxGraph) === this.#router) {
+                    subscription.terminate()
+                    indexRouters.delete(context.boxGraph)
+                }
+            }
+        })
+        this.#terminator.own(context.boxGraph.subscribeTransaction({
+            onBeginTransaction: () => {},
+            onEndTransaction: rolledBack => {
+                if (!rolledBack) {return}
+                // Editors temporarily remove points to avoid sort-key collisions. An abort
+                // restores graph pointers without pointerHub notifications, possibly with
+                // new box instances under the original UUIDs.
+                this.#adapters.clear()
+                this.#events.clear()
+                this.#clearIndex()
+                this.#box.events.pointerHub.incoming().forEach(({box}) => addValueProcedure(box))
                 this.#onEventsChanged()
             }
         }))
@@ -81,7 +163,8 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         return this.#context.boxAdapters.adapterFor(boxCopy, ValueEventCollectionBoxAdapter)
     }
 
-    cut(position: ppqn, eventMapping: ValueMapping<number> = ValueMapping.unipolar()): Option<ValueEventBoxAdapter> {
+    /** The legacy display-mapping argument is accepted for compatibility; interpolation uses stored values. */
+    cut(position: ppqn, _eventMapping: ValueMapping<number> = ValueMapping.unipolar()): Option<ValueEventBoxAdapter> {
         const low = this.events.lowerEqual(position)
         const high = this.events.greaterEqual(position)
         if (null === high) {
@@ -114,13 +197,10 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         if (low.interpolation.type === "linear") {
             const {position: p0} = low
             const {position: p1} = high
-            // Convert to normalized space for interpolation
-            const n0 = eventMapping.x(low.value)
-            const n1 = eventMapping.x(high.value)
-            const normalizedValue = linear(n0, n1, (position - p0) / (p1 - p0))
+            const value = linear(low.value, high.value, (position - p0) / (p1 - p0))
             return Option.wrap(this.createEvent({
                 position,
-                value: eventMapping.y(normalizedValue),
+                value,
                 index: 0,
                 interpolation: low.interpolation
             }))
@@ -128,9 +208,10 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         if (low.interpolation.type === "curve") {
             const {position: p0} = low
             const {position: p1} = high
-            // Convert to normalized space for curve calculation
-            const y0 = eventMapping.x(low.value)
-            const y1 = eventMapping.x(high.value)
+            // Playback interpolates stored values; the display mapping must not
+            // change the function when an unchanged point splits a segment.
+            const y0 = low.value
+            const y1 = high.value
             const steps = p1 - p0
             const cutOffset = position - p0
             const curve = Curve.byHalf(steps, y0, Curve.valueAt({
@@ -144,7 +225,7 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
             InterpolationFieldAdapter.write(low.box.interpolation, Interpolation.Curve(lowSlope))
             return Option.wrap(this.createEvent({
                 position,
-                value: eventMapping.y(cutValue),
+                value: cutValue,
                 index: 0,
                 interpolation: Interpolation.Curve(Curve.slopeByHalf(cutValue, Curve.valueAt(curve, (cutOffset + steps) * 0.5), y1))
             }))
@@ -156,9 +237,9 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
 
     createEvent({position, index, value, interpolation}: CreateEventParams): ValueEventBoxAdapter {
         const intPosition = Math.trunc(position)
-        const existing = this.#adapters.values().find(event => event.position === intPosition && event.index === index)
-        // the adapters might be out of sync until the current transaction ends. Therefore, we check with isAttached.
-        if (isDefined(existing) && existing.box.isAttached()) {
+        const existingBox = this.#eventKeys.get(`${intPosition}:${index}`)?.values().next().value
+        if (existingBox !== undefined) {
+            const existing = this.#context.boxAdapters.adapterFor(existingBox, ValueEventBoxAdapter)
             // Return an existing event instead of creating a duplicate-update its value
             existing.box.value.setValue(value)
             InterpolationFieldAdapter.write(existing.box.interpolation, interpolation)
@@ -190,6 +271,41 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
     get events(): EventCollection<ValueEventBoxAdapter> {return this.#events}
 
     toString(): string {return `{ValueEventCollectionBox ${UUID.toString(this.#box.address.uuid)}}`}
+
+    #unindexBox(id: string): void {
+        const previous = this.#indexedBoxes.get(id)
+        if (previous === undefined) {return}
+        const entries = asDefined(this.#eventKeys.get(previous.key))
+        entries.delete(previous.box)
+        if (entries.size === 0) {this.#eventKeys.delete(previous.key)}
+        this.#indexedBoxes.delete(id)
+        if (this.#router.owners.get(id) === this.#indexListener) {this.#router.owners.delete(id)}
+    }
+
+    #clearIndex(): void {
+        this.#indexedBoxes.forEach((_, id) => {
+            if (this.#router.owners.get(id) === this.#indexListener) {this.#router.owners.delete(id)}
+        })
+        this.#indexedBoxes.clear()
+        this.#eventKeys.clear()
+    }
+
+    #indexBox(box: ValueEventBox): void {
+        const id = UUID.toString(box.address.uuid)
+        this.#unindexBox(id)
+        if (!box.isAttached() || !box.events.targetAddress.mapOr(address => address.equals(this.#box.events.address), false)) {return}
+        const key = `${box.position.getValue()}:${box.index.getValue()}`
+        const entries = this.#eventKeys.get(key) ?? new Set<ValueEventBox>()
+        entries.add(box)
+        this.#eventKeys.set(key, entries)
+        this.#indexedBoxes.set(id, {box, key})
+        // A box targets one collection. If another collection still claims it (for example
+        // when this adapter was created while a transfer update was being dispatched), let it
+        // drop its stale entry before taking over the route.
+        const previousOwner = this.#router.owners.get(id)
+        if (previousOwner !== undefined && previousOwner !== this.#indexListener) {previousOwner.reindex(box.address.uuid, id)}
+        this.#router.owners.set(id, this.#indexListener)
+    }
 
     #onEventsChanged(): void {this.#changeNotifier.notify(this)}
 }

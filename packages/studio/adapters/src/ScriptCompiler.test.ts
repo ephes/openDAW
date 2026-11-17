@@ -258,3 +258,67 @@ it.each([false, true])("appends the initial compile to the creation step only wi
         expect(f.editing.canUndo()).toBe(false)
     }
 })
+
+it("coalesces passive remount loads with a pending explicit compile and publishes it once", async () => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source())
+    let finish!: () => void
+    f.addModule.mockClear().mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve}))
+    const publication = vi.spyOn(f.editing, "modify")
+    const compile = f.compiler.compile(f.context, f.editing, f.box, source("0.25"))
+    const remounted = ScriptCompiler.create({headerTag: "werkstatt", registryName: "werkstattProcessors", functionName: "test"})
+    const load = remounted.load(f.context, f.box)
+    finish(); await Promise.all([compile, load])
+    expect(f.compiler.stripHeader(f.box.code.getValue())).toBe(source("0.25"))
+    expect((f.box.parameters.pointerHub.filter()[0].box as WerkstattParameterBox).defaultValue.getValue()).toBe(0.25)
+    expect(publication).toHaveBeenCalledOnce()
+    expect(f.addModule).toHaveBeenCalledTimes(3)
+})
+
+it("initialization of an empty remounted device joins a pending explicit compile", async () => {
+    const f = fixture()
+    let finish!: () => void
+    f.addModule.mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve}))
+    const compile = f.compiler.compile(f.context, f.editing, f.box, source("0.25"))
+    const remounted = ScriptCompiler.create({headerTag: "werkstatt", registryName: "werkstattProcessors", functionName: "test"})
+    const initialize = remounted.initialize(f.context, f.editing, f.box, source("0.5"))
+    finish(); await Promise.all([compile, initialize])
+    expect(f.compiler.stripHeader(f.box.code.getValue())).toBe(source("0.25"))
+    expect(f.box.parameters.pointerHub.size()).toBe(1)
+})
+
+it.each(["external", "newer compile", "delete"])("keeps %s authoritative over a coalesced remount", async action => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source())
+    const saved = f.box.code.getValue()
+    let finish!: () => void
+    f.addModule.mockImplementationOnce(() => new Promise<void>(resolve => {finish = resolve}))
+    const compile = f.compiler.compile(f.context, f.editing, f.box, source("0.25"))
+    const remount = f.compiler.load(f.context, f.box)
+    let expected = saved
+    if (action === "external") {
+        expected = saved + "\n// external edit"
+        f.editing.modify(() => f.box.code.setValue(expected))
+        await f.compiler.load(f.context, f.box)
+    } else if (action === "newer compile") {
+        await f.compiler.compile(f.context, f.editing, f.box, source("0.75"))
+        expected = f.box.code.getValue()
+    } else {f.editing.modify(() => f.box.delete())}
+    finish(); await Promise.all([compile, remount])
+    if (action === "delete") {expect(f.graph.findBox(f.box.address.uuid).isEmpty()).toBe(true)}
+    else {expect(f.box.code.getValue()).toBe(expected)}
+})
+
+it("settles all owners on failed installation and allows a later retry", async () => {
+    const f = fixture()
+    await f.compiler.compile(f.context, f.editing, f.box, source())
+    const pending = Promise.withResolvers<void>()
+    f.addModule.mockClear().mockReturnValueOnce(pending.promise)
+    const compile = f.compiler.compile(f.context, f.editing, f.box, source("0.25"))
+    const load = f.compiler.load(f.context, f.box)
+    const settled = Promise.allSettled([compile, load])
+    pending.reject(new Error("deferred refusal"))
+    expect((await settled).map(result => result.status)).toEqual(["rejected", "rejected"])
+    await f.compiler.compile(f.context, f.editing, f.box, source("0.75"))
+    expect(f.compiler.stripHeader(f.box.code.getValue())).toBe(source("0.75"))
+})
