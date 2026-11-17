@@ -509,3 +509,7 @@ Inference is loaded and installed once across concurrent first callers; failed
 installation can be retried. Latency reporting owns one timer per audio context,
 registered with the studio surface and retired when either owner closes.
 See [round 120 contracts and validation](plans/scout-round120-studio-lifecycle.md).
+
+Notepad preview saves preserve the original Markdown. Leaving edit mode, blurring
+or closing the panel commits editable text. Markdown links with query strings or
+fragments use native navigation; modified clicks retain browser behavior.

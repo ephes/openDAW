@@ -17,3 +17,18 @@ Boot registers the handle with the studio surface after successful setup.
 `LatencyReporter.test.ts` uses fake contexts and timers for close/replacement and
 owner teardown. The regressions fail on the original implementation and pass
 with the fixes. Full local gate results are recorded below after all bundles.
+
+## B02: lossless notes and navigation
+
+Preview saves leave the Markdown model untouched. Editable contents are committed
+before mode exit, blur or panel teardown replaces the DOM. The editable attribute
+identifies the DOM's current ownership even while the mode observable is changing.
+Repeated preview saves and reopened heading/link/code notes have exact-source
+regressions in `NotePadPanel.test.tsx`.
+
+The existing router owns plain paths only. Query and fragment links use native
+navigation, including fragment scrolling, so complete destinations survive.
+Modified/non-primary clicks, explicit targets and downloads retain browser
+behavior. `MarkdownNavigation.test.ts` covers routing and native admission.
+`tests/browser/r120.spec.ts` adds real notes, shortcut and fragment fixtures;
+Chromium launch is blocked here by macOS Mach port sandbox refusal.

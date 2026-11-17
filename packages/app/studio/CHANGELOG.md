@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve Markdown on preview saves and commit notes on edit exit; retain local-link queries, fragments and modified-click behavior.
+
 - Share lazy inference installation across first callers and retry failures; retire latency polling with its audio context or studio surface.
 
 - Include the first slope-drag motion, retire changed automation segments and remove full-track loop-resize diagnostic snapshots.

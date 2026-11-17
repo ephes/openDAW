@@ -22,6 +22,8 @@ export const NotePadPanel = ({lifecycle, service}: Construct) => {
     const editMode = new DefaultObservableValue(false)
     const notepad: HTMLElement = <div className="content"/>
     const saveNotepad = () => {
+        // Mode observers run after the model changes, before update replaces the DOM.
+        if (!notepad.hasAttribute("contentEditable")) {return}
         const innerText = notepad.innerText
         if (innerText === template) {return}
         markdownText.setValue(innerText)

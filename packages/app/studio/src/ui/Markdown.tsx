@@ -18,7 +18,7 @@ type Construct = {
 export const renderMarkdown = (element: HTMLElement, text: string, actions?: Record<string, Exec>) => {
     if (Browser.isWindows()) {
         Object.entries(ModfierKeys.Mac)
-            .forEach(([key, value]) => text = text.replaceAll(value, (ModfierKeys.Win as any)[key]))
+            .forEach(([key, value]) => text = text.replaceAll(value, (ModfierKeys.Win as Record<string, string>)[key]))
     }
     const md = markdownit()
     md.use(markdownItTable)
@@ -40,12 +40,16 @@ export const renderMarkdown = (element: HTMLElement, text: string, actions?: Rec
             return
         }
         const url = new URL(a.href)
-        if (url.origin === location.origin) {
-            a.onclick = (event: Event) => {
+        // The path router does not own fragment scrolling or query destinations.
+        if (url.origin === location.origin && url.search === "" && url.hash === "") {
+            a.onclick = (event: MouseEvent) => {
+                if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey
+                    || event.shiftKey || event.altKey || a.hasAttribute("download")
+                    || (a.target !== "" && a.target !== "_self")) {return}
                 event.preventDefault()
                 RouteLocation.get().navigateTo(url.pathname)
             }
-        } else {
+        } else if (url.origin !== location.origin) {
             a.target = "_blank"
         }
     })
