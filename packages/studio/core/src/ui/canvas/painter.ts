@@ -75,16 +75,19 @@ class CanvasRenderer implements Terminable {
             this.#lifecycle.own(AnimationFrame.add(() => {
                 const width = canvas.clientWidth
                 const height = canvas.clientHeight
-                if (!this.#needsUpdate || width === 0 || height === 0) {return}
+                if ((!this.#needsUpdate && devicePixelRatio === this.#devicePixelRatio) || width === 0 || height === 0) {return}
                 this.#isResized = width !== this.#width || height !== this.#height || devicePixelRatio !== this.#devicePixelRatio
                 this.#width = width
                 this.#height = height
                 this.#devicePixelRatio = devicePixelRatio
                 canvas.width = width * devicePixelRatio
                 canvas.height = height * devicePixelRatio
-                this.#update()
-                this.#isResized = false
                 this.#needsUpdate = false
+                try {
+                    this.#update()
+                } finally {
+                    this.#isResized = false
+                }
             }))
         )
     }

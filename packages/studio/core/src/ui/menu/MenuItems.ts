@@ -167,22 +167,30 @@ export class MenuItem<DATA extends MenuData = MenuData> {
         if (this.#runtimeChildrenProcedure.isEmpty() && this.#collectors.length === 0) {
             return this.#permanentChildren
         }
+        const wasOpening = this.#isOpening
+        const runtimeBoundary = this.#runtimeChildren.length
         this.#isOpening = true
-        if (this.#collectors.length > 0) {
-            let separatorBefore = false
-            this.#collectors.forEach(collector => collector({
-                addItems: (...items) => {
-                    items.forEach((item: MenuItem) => {
-                        if (separatorBefore) {item.addSeparatorBefore()}
-                        this.#runtimeChildren.push(item)
-                        separatorBefore = false
-                    })
-                    separatorBefore = true
-                }
-            }))
+        try {
+            if (this.#collectors.length > 0) {
+                let separatorBefore = false
+                this.#collectors.forEach(collector => collector({
+                    addItems: (...items) => {
+                        items.forEach((item: MenuItem) => {
+                            if (separatorBefore) {item.addSeparatorBefore()}
+                            this.#runtimeChildren.push(item)
+                            separatorBefore = false
+                        })
+                        separatorBefore = true
+                    }
+                }))
+            }
+            this.#runtimeChildrenProcedure.ifSome(procedure => procedure(this))
+        } catch (error) {
+            this.#runtimeChildren.splice(runtimeBoundary)
+            throw error
+        } finally {
+            this.#isOpening = wasOpening
         }
-        this.#runtimeChildrenProcedure.ifSome(procedure => procedure(this))
-        this.#isOpening = false
         return this.#permanentChildren.concat(this.#runtimeChildren)
     }
 
