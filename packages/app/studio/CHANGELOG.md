@@ -9,7 +9,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Bound selected sample source and decoded PCM to 64 MiB before decode/encode (any browser-decodable WAV layout); report definite upload refusals with their server reason; own one upload attempt until completion and retire it with its page. Reject malformed shortcut context imports atomically.
 
-- Retire active auto-scroll listeners and frames with the editor, track the initiating pointer and stop on release, cancellation or blur (also after a cancelled native drag start). Retire drag payloads, ghosts and source classes on disposal or failed setup without clearing newer drags.
+- Retire active auto-scroll listeners and frames with the editor, track the initiating pointer and stop on release, cancellation or blur (also after a cancelled native drag start); a new primary pointer restarts a gesture whose completion was lost. Retire drag payloads, ghosts and source classes on disposal or failed setup without clearing newer drags.
 
 - Bound and validate latency history; stop optional polling on storage or beacon refusal without entering the application error path.
 

@@ -5,8 +5,8 @@ vi.mock("@/ui/surface/Surface.tsx", () => ({Surface: {get: () => ({owner: {docum
 vi.mock("@opendaw/lib-dom", async original => ({...await original<object>(), AnimationFrame: {
     add: (callback: () => void) => {const frame = {callback, terminate: vi.fn()}; frames.push(frame); return frame}
 }}))
-const event = (target: EventTarget, type: string, pointerId = 1, clientX = 200) => {
-    target.dispatchEvent(Object.assign(new Event(type), {pointerId, clientX, clientY: 0}))
+const event = (target: EventTarget, type: string, pointerId = 1, clientX = 200, isPrimary = false) => {
+    target.dispatchEvent(Object.assign(new Event(type), {pointerId, clientX, clientY: 0, isPrimary}))
 }
 afterEach(() => {frames.length = 0})
 const setup = () => {
@@ -38,6 +38,18 @@ describe("auto scroll ownership", () => {
         expect(frame.terminate).not.toHaveBeenCalled()
         event(document, "pointerup", 1)
         expect(frame.terminate).toHaveBeenCalledOnce()
+        owner.terminate()
+    })
+    it.each([1, 7])("restarts after a lost completion when pointer %i begins a primary gesture", pointerId => {
+        const {target, owner, frame, scroll} = setup()
+        event(target, "pointerdown", pointerId, 200, pointerId === 7)
+        expect(frame.terminate).toHaveBeenCalledOnce()
+        event(document, "pointermove", pointerId, -100)
+        expect(frames).toHaveLength(2)
+        frames[1].callback()
+        expect(scroll).toHaveBeenLastCalledWith(-100, 0)
+        event(document, "pointerup", pointerId)
+        expect(frames[1].terminate).toHaveBeenCalledOnce()
         owner.terminate()
     })
     it.each(["pointercancel", "pointerup", "dragend", "blur"])("stops on %s", type => {

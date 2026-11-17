@@ -15,7 +15,7 @@ class XHR {
     open = vi.fn()
     setRequestHeader = vi.fn()
     send = vi.fn()
-    abort = vi.fn(() => this.onabort?.())
+    abort = vi.fn(() => {this.readyState = 4; this.status = 0; this.onreadystatechange?.(); this.onabort?.()})
     complete(status: number): void {this.status = status; this.readyState = 4; this.onreadystatechange?.()}
 }
 afterEach(() => {vi.restoreAllMocks(); vi.unstubAllGlobals(); history.replaceState(null, "", "/")})
@@ -39,7 +39,8 @@ it("holds the upload promise until remote completion", async () => {
 it.each(["abort", "error", "http"])("settles %s without replay", async kind => {
     const {xhr, close} = setup(), controller = new AbortController()
     const result = OpenSampleAPI.get().upload(new ArrayBuffer(4), meta, controller.signal)
-    const rejection = expect(result).rejects.toThrow()
+    const rejection = kind === "abort"
+        ? expect(result).rejects.toMatchObject({name: "AbortError"}) : expect(result).rejects.toThrow()
     if (kind === "abort") {controller.abort()} else if (kind === "error") {xhr.onerror?.()} else {xhr.complete(500)}
     await rejection
     expect(xhr.send).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce()

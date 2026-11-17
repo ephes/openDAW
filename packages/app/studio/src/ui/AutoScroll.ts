@@ -14,6 +14,7 @@ export const installAutoScroll = (target: Element, autoScroller: AutoScroller, o
     let retired = false
     let attempt = 0
     let active = false
+    let activePointer = -1
     const measure: Provider<AABB> = options?.measure ?? (() => {
         const {bottom, left, right, top} = target.getBoundingClientRect()
         return {xMin: left, yMin: top, xMax: right, yMax: bottom}
@@ -50,10 +51,12 @@ export const installAutoScroll = (target: Element, autoScroller: AutoScroller, o
         lifeTime.terminate()
     }
     const start = Events.subscribe(target, "pointerdown", (event: PointerEvent) => {
-        if (retired || active) {return}
+        if (retired) {return}
+        if (active && event.pointerId !== activePointer && !event.isPrimary) {return}
         finish()
         active = true
         const pointerId = event.pointerId
+        activePointer = pointerId
         let nativeDrag = false
         const owner = Surface.get(target).owner.document
         lifeTime.ownAll(

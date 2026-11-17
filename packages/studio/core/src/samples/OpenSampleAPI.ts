@@ -188,6 +188,10 @@ export class OpenSampleAPI implements SampleAPI {
                 })
                 xhr.onreadystatechange = () => {
                     if (xhr.readyState !== 4) {return}
+                    if (signal?.aborted) {
+                        reject(new DOMException("Upload cancelled; remote outcome may be uncertain", "AbortError"))
+                        return
+                    }
                     if (xhr.status === 200) {resolve()} else if (xhr.status >= 400 && xhr.status < 500) {
                         reject(new SampleUploadRefused(OpenSampleAPI.#refusalMessage(xhr)))
                     } else {reject(new Error("Upload failed; remote outcome may be uncertain"))}

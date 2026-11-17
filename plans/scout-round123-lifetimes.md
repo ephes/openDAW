@@ -13,7 +13,8 @@ Only the initiating pointer moves or completes a pointer gesture. Cancellation a
 window blur stop it. A native dragstart transfers completion to dragend (browsers
 issue pointercancel when native dragging starts); native dragover still scrolls.
 A pointerup from the initiating pointer always stops it, so a cancelled dragstart
-cannot leave the gesture active.
+cannot leave the gesture active. A pointerdown from the same pointer or a new primary
+pointer restarts the gesture after a lost completion; secondary contacts are ignored.
 A new source drag retires the old source's payload, class and ghost. Failed source
 setup and source disposal run the same cleanup, which cannot clear a newer owner.
 Twelve synthetic gesture tests reproduce the previous failures.
@@ -35,7 +36,7 @@ These bounds apply to this upload page; other sample import paths are unchanged.
 Browse stays disabled from picker entry through actual transport settlement. Page
 retirement fences picker/read/decode results and aborts a published XHR where
 possible. Picker and file reads cannot be cancelled through their current APIs;
-their late results are discarded. Aborting an upload cannot guarantee server rollback.
+their late results are discarded. Aborting an upload rejects with AbortError and cannot guarantee server rollback.
 Definite refusals (missing access key before sending, HTTP 4xx) are reported with
 the server reason. Otherwise a live page reports an uncertain upload result and asks the user to check the
 catalog before explicitly retrying; there is no automatic replay.
