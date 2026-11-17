@@ -1,5 +1,5 @@
 import {Editing, Option} from "@opendaw/lib-std"
-import {EventCollection} from "@opendaw/lib-dsp"
+import {EventCollection, PPQN} from "@opendaw/lib-dsp"
 import {AudioRegionBox} from "@opendaw/studio-boxes"
 import {Dragging} from "@opendaw/lib-dom"
 import {TimelineRange} from "@opendaw/studio-core"
@@ -49,11 +49,12 @@ export namespace AudioEditorGestures {
         if (!canResize) {return Option.None}
         const startPPQN = range.xToUnit(startEvent.clientX)
         const beginPPQN = reader.loopDuration
+        const minimum = beginPPQN > 0 ? Math.min(PPQN.SemiQuaver, beginPPQN) : PPQN.SemiQuaver
         const edit = new ProvisionalFieldEdit(editing, box instanceof AudioRegionBox ? box.loopDuration : box.duration)
         return Option.wrap({
             update: (event: Dragging.Event) => {
                 const delta = snapping.computeDelta(startPPQN, event.clientX, beginPPQN)
-                edit.write(() => reader.contentDuration = beginPPQN + delta)
+                edit.write(() => reader.contentDuration = Math.max(minimum, beginPPQN + delta))
             },
             approve: () => edit.approve(),
             cancel: () => edit.cancel()

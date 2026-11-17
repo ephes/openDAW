@@ -49,8 +49,9 @@ gesture's own field and keeps the other edits. A field that another editor chang
 or deleted during the drag is no longer written or restored by the gesture.
 
 Audio clip loop lengths are written through the clip's time base (PPQN or
-seconds) and never drop below a sixteenth note, or below the clip's own length
-when it already starts shorter. Audio regions keep the existing sixteenth-note
+seconds). A resize never drops below a sixteenth note, or below the length the
+clip had when the gesture started if that was already shorter; the audio clip
+reader ignores nonpositive lengths. Audio regions keep the existing sixteenth-note
 floor of the region reader.
 
 ### Content editor subscriptions

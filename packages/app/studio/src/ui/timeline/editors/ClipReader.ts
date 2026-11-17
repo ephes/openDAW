@@ -9,7 +9,7 @@ import {
     ValueClipBoxAdapter,
     ValueEventCollectionBoxAdapter
 } from "@opendaw/studio-adapters"
-import {PPQN, ppqn} from "@opendaw/lib-dsp"
+import {ppqn} from "@opendaw/lib-dsp"
 import {mod, Observer, Option, Subscription} from "@opendaw/lib-std"
 import {TimelineRange} from "@opendaw/studio-core"
 import {Propagation} from "@opendaw/lib-box"
@@ -26,10 +26,7 @@ export class ClipReader<CONTENT> implements EventOwnerReader<CONTENT> {
             constructor(clip: AudioClipBoxAdapter) {super(clip, timelineBoxAdapter)}
             get audioContent(): AudioContentBoxAdapter {return clip}
             get contentDuration(): ppqn {return clip.duration}
-            set contentDuration(value: ppqn) {
-                const current = clip.duration
-                clip.duration = Math.max(current > 0 ? Math.min(PPQN.SemiQuaver, current) : PPQN.SemiQuaver, value)
-            }
+            set contentDuration(value: ppqn) {if (value > 0) {clip.duration = value}}
         }(clip)
     }
 
