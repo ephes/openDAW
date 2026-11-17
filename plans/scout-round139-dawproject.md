@@ -27,10 +27,9 @@ forward-referenced aux; check send values and native export/reimport. Six tests
 failed before the fix; the absent-output positive case already passed.
 The same build/lint/test and browser commands are run after this bundle.
 
-The older EQ archive fixture declares a disabled aux self-send. Its test now
-asserts feedback refusal, then removes that send to retain the ordinary EQ import
-smoke check. Disabled/zero-gain cyclic declarations are refused too because edits
-could activate the unsupported topology.
+The EQ archive fixture (a Bitwig export) declares a disabled aux self-send. The
+merge review reversed the initial refusal of disabled cyclic sends; see "Merge
+review amendments" below.
 
 ## B03: child tracks and instrument kinds
 
@@ -65,9 +64,10 @@ valid timing cases retain their prior behavior. The same full gates follow.
 Correct the typed marker container. Import two labeled/colors markers, check native
 save/reopen and reject unsupported coordinates, seconds, comments and colors.
 Independently create native markers and inspect literal XML; repeat counts and
-disabled nonempty tracks refuse before the first packer write. Markerless export
-remains supported. All new failure cases were run before the fix. Native hue
-colors are intentionally restricted to the exact representable palette.
+(initially also disabled nonempty tracks, reversed in the merge review) refuse
+before the first packer write. Markerless export remains supported. All new
+failure cases were run before the fix. Foreign marker colors map to the nearest
+native hue (merge review amendment).
 
 The synthetic Chromium fixture `tests/browser/r139.spec.ts` combines child tracks,
 nested lanes/wrappers, primary sends, literal BPM playback timing, markers, native
@@ -86,7 +86,8 @@ execution and cross-family review; no subscription review agent was run here.
 
 ## Merge review amendments
 
-Review of the merged bundle reversed four refusals that blocked real projects:
+Review of the merged bundle reversed refusals that blocked real projects and
+tightened two details:
 
 - The EQ fixture is an unmodified Bitwig Studio export. Bitwig writes a disabled,
   zero-gain send slot from every channel to every FX/return channel (including
