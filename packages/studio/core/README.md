@@ -594,3 +594,9 @@ Tempo automation imports and exports native positive finite float32 BPM values.
 The editor's min/max BPM settings affect display only; interchange does not scale
 event values. BPM outside the native finite positive domain is refused before
 graph construction or resource packing.
+
+Every declared channel/send destination must resolve to a bus channel, including
+forward references and primary-output sends. Intentionally absent channel outputs
+remain disconnected. Feedback routing (including a primary send with a return
+path) is refused before native-state reads or graph construction. Supported primary
+sends retain enable, pre/post, level and pan.

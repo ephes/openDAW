@@ -18,3 +18,16 @@ cannot launch Chromium in this macOS sandbox: MachPortRendezvousServer
 `bootstrap_check_in` returns Permission denied (1100). The outside merge clerk must
 run browser validation. Full command outputs and red/green regressions are in the
 worker's external coordination log directory, not the repository.
+
+## B02: route accounting
+
+Regressions expose dropped primary sends, accepted missing/wrong-kind outputs and
+send targets, and feedback. Preserve an intentionally unrouted channel and a
+forward-referenced aux; check send values and native export/reimport. Six tests
+failed before the fix; the absent-output positive case already passed.
+The same build/lint/test and browser commands are run after this bundle.
+
+The older EQ archive fixture declares a disabled aux self-send. Its test now
+asserts feedback refusal, then removes that send to retain the ordinary EQ import
+smoke check. Disabled/zero-gain cyclic declarations are refused too because edits
+could activate the unsupported topology.

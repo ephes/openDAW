@@ -4,7 +4,7 @@ import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema, RealPointSchema} from "@opendaw/lib-dawproject"
 import {PPQN, ValueEvent} from "@opendaw/lib-dsp"
 import {InterpolationFieldAdapter, SampleLoaderManager, TempoGridCursor} from "@opendaw/studio-adapters"
-import {ValueEventBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
+import {AudioUnitBox, AuxSendBox, ValueEventBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
 import {UUID} from "@opendaw/lib-std"
 import {DawProjectImport} from "./DawProjectImporter"
 import {DawProjectExporter} from "./DawProjectExporter"
@@ -64,4 +64,46 @@ it('B01 exports independently constructed native BPM events literally', async ()
     packer.write.mockClear()
     expect(() => write(skeleton)).toThrow(/tempo.*BPM/i)
     expect(packer.write).not.toHaveBeenCalled()
+})
+
+const aux = '<Track id="aux" contentType="audio"><Channel id="aux-channel" role="effect"/></Track>'
+const primarySend = master.replace('role="master"/>', 'role="master"><Sends><Send destination="aux-channel" type="pre"><Volume value="0.5" unit="linear"/><Pan value="0.25" unit="normalized"/><Enable value="false"/></Send></Sends></Channel>')
+it('B02 retains primary sends including forward targets and all send state', async () => {
+    const {skeleton} = await read(source('', regular + primarySend + aux))
+    const check = (graph: BoxGraph) => {
+        const sends = graph.boxes().filter(box => box instanceof AuxSendBox)
+        expect(sends).toHaveLength(1)
+        const send = sends[0]
+        expect(send.routing.getValue()).toBe(0)
+        expect(send.enabled.getValue()).toBe(false)
+        expect(send.sendGain.getValue()).toBeCloseTo(-6.0206)
+        expect(send.sendPan.getValue()).toBe(-0.5)
+        expect(send.targetBus.targetVertex.unwrap().box.name).toBe('AudioBusBox')
+    }
+    check(skeleton.boxGraph)
+    const exported = write(skeleton)
+    check((await read(xml(exported))).skeleton.boxGraph)
+})
+it('B02 refuses primary feedback routing before constructing a graph', async () => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(read(source('', primarySend + aux.replace('role="effect"', 'role="effect" destination="master"')))).rejects.toThrow(/feedback routing/i)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it.each([
+    regular.replace('destination="master"', 'destination="missing"'),
+    regular.replace('destination="master"', 'destination="channel"'),
+    regular.replace('role="regular" destination="master"/>', 'role="regular" destination="master"><Sends><Send destination="missing"/></Sends></Channel>'),
+    regular.replace('role="regular" destination="master"/>', 'role="regular" destination="master"><Sends><Send destination="track"/></Sends></Channel>')
+])('B02 refuses unknown or wrong-kind declared destinations before construction', async track => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(read(source('', track + master))).rejects.toThrow(/routing destination/i)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it('B02 keeps intentionally absent outputs disconnected', async () => {
+    const {skeleton} = await read(source('', regular.replace(' destination="master"', '') + master + aux))
+    const units = skeleton.boxGraph.boxes().filter((box): box is AudioUnitBox => box instanceof AudioUnitBox && box !== skeleton.mandatoryBoxes.primaryAudioUnitBox)
+    expect(units).toHaveLength(2)
+    expect(units.every(box => box.output.targetVertex.isEmpty())).toBe(true)
 })

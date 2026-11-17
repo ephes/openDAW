@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retain primary-output DAWproject sends; preflight all declared route destinations and refuse feedback instead of dropping connections.
+
 - Preserve native BPM in DAWproject tempo import/export independently of display bounds; refuse invalid BPM before graph construction or resource packing.
 
 - Bound audio fade path construction by visible device pixels while preserving clipped curve shape and handle placement.

@@ -223,7 +223,43 @@ export namespace DawProjectImport {
         }
     }
 
+    // Resolve the complete declared route graph before reading native state or allocating boxes.
+    const validateRouting = (tracks: ReadonlyArray<LaneSchema>): void => {
+        const channels = new Map<string, ChannelSchema>()
+        const collect = (lanes: ReadonlyArray<LaneSchema>): void => lanes.forEach(lane => {
+            if (!isInstanceOf(lane, TrackSchema)) {return}
+            const channel = asDefined(lane.channel, "Track has no Channel")
+            const id = asDefined(channel.id, "Channel must have an Id")
+            assert(!channels.has(id), `Duplicate routing channel '${id}'`)
+            channels.set(id, channel)
+            collect(lane.tracks ?? [])
+        })
+        collect(tracks)
+        const routes = new Map<string, string[]>()
+        channels.forEach((channel, id) => {
+            const targets = [channel.destination, ...(channel.sends ?? []).map(send =>
+                asDefined(send.destination, "Send routing destination is undefined"))].filter(isDefined)
+            targets.forEach(target => {
+                const destination = channels.get(target)
+                assert(destination !== undefined && (destination.role === ChannelRole.EFFECT || destination.role === ChannelRole.MASTER),
+                    `Unsupported routing destination '${target}': expected a declared bus channel`)
+            })
+            routes.set(id, targets)
+        })
+        const visiting = new Set<string>(), visited = new Set<string>()
+        const visit = (id: string): void => {
+            assert(!visiting.has(id), "Unsupported feedback routing")
+            if (visited.has(id)) {return}
+            visiting.add(id)
+            routes.get(id)?.forEach(visit)
+            visiting.delete(id)
+            visited.add(id)
+        }
+        channels.forEach((_, id) => visit(id))
+    }
+
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
+        validateRouting(schema.structure)
         if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
         if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
         if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
@@ -445,13 +481,13 @@ export namespace DawProjectImport {
                     const {audioUnitBox} = createInstrumentUnit(track, AudioUnitType.Instrument, toAudioUnitCapture(boxGraph, track.contentType))
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                     ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
-                    outputPointers.push({target: channel.destination!, pointer: audioUnitBox.output})
+                    ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.EFFECT) {
                     const {audioBusBox, audioUnitBox} = createAudioBusUnit(track, AudioUnitType.Aux, IconSymbol.Effects)
                     registerAudioBus(channelId, audioBusBox)
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                     ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
-                    outputPointers.push({target: channel.destination!, pointer: audioUnitBox.output})
+                    ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.MASTER) {
                     const isMostLikelyPrimaryOutput = primaryAudioBusUnitOption.isEmpty()
                         && depth === 0
@@ -463,6 +499,7 @@ export namespace DawProjectImport {
                         registerAudioBus(channelId, audioBusBox)
                         registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                         audioUnitBox.output.refer(rootBox.outputDevice)
+                        ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
                         primaryAudioBusUnitOption = Option.wrap(audioBusUnit)
                     } else {
                         const audioBusUnit = createAudioBusUnit(track, AudioUnitType.Bus, IconSymbol.AudioBus)
@@ -676,11 +713,8 @@ export namespace DawProjectImport {
         }
         await ifDefined(schema.arrangement, arrangement => readArrangement(arrangement))
         outputPointers.forEach(({target, pointer}) => {
-            const value = audioBusses.get(target)
-            // https://github.com/andremichelle/openDAW/issues/25
-            if (isDefined(value)) {
-                pointer.refer(value.input)
-            }
+            const value = asDefined(audioBusses.get(target), `Unresolved routing destination '${target}'`)
+            pointer.refer(value.input)
         })
         rootBox.audioUnits.pointerHub.incoming().forEach(({box}) => {
             const audioUnitBox = asInstanceOf(box, AudioUnitBox)
