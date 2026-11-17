@@ -16,3 +16,8 @@ tempo/signature paths and arrangement-only projects.
 
 B04: reject unsupported expressive state before packing; admit linear zero-gain
 audio envelopes and serialize their PPQN extents as beats.
+
+B05: rebind native device hosts while decoding via DeviceIO, validate in a
+temporary graph and refuse dependent state/external pointers explicitly. Preserve
+standalone instrument/effect parameters and order. Buses are structural channels.
+Generic Points admission is separate from dedicated tempo/signature support.

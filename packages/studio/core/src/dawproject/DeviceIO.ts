@@ -1,6 +1,6 @@
 import {assert, ByteArrayInput, ByteArrayOutput, Option, panic, UUID} from "@opendaw/lib-std"
-import {Address, Box, BoxGraph, PointerField} from "@opendaw/lib-box"
-import {AudioFileBox, BoxIO} from "@opendaw/studio-boxes"
+import {Address, Box, BoxGraph, Field, PointerField} from "@opendaw/lib-box"
+import {BoxIO} from "@opendaw/studio-boxes"
 import {DeviceBox, DeviceBoxUtils} from "@opendaw/studio-adapters"
 
 export namespace DeviceIO {
@@ -23,7 +23,7 @@ export namespace DeviceIO {
         return output.toArrayBuffer()
     }
 
-    export const importDevice = (boxGraph: BoxGraph<BoxIO.TypeMap>, buffer: ArrayBufferLike): DeviceBox => {
+    export const importDevice = (boxGraph: BoxGraph<BoxIO.TypeMap>, buffer: ArrayBufferLike, host: Field): DeviceBox => {
         const input = new ByteArrayInput(buffer)
         const header = input.readString()
         const version = input.readInt()
@@ -36,31 +36,36 @@ export namespace DeviceIO {
             const uuid = UUID.fromDataInput(input)
             const key = input.readString() as keyof BoxIO.TypeMap
             const length = input.readInt()
+            assert(length >= 0 && length <= buffer.byteLength - input.position, "Invalid native device record length")
             const array = new Int8Array(length)
             input.readBytes(array)
-            mapping.add({source: uuid, target: key === AudioFileBox.ClassName ? uuid : UUID.generate()})
+            mapping.add({source: uuid, target: UUID.generate()})
             return {uuid, key, input: new ByteArrayInput(array.buffer)}
         }
         rawBoxes.push(readRawBox())
         const numDeps = input.readInt()
-        for (let i = 0; i < numDeps; i++) {
-            rawBoxes.push(readRawBox())
-        }
+        // Dependent resources and cross-device state need a dedicated import path.
+        assert(numDeps === 0 && input.position === buffer.byteLength,
+            "Unsupported native device dependencies: render or remove dependent resources before interchange")
         // We are going to award all boxes with new UUIDs.
         // Therefore, we need to map all internal pointer targets.
         return PointerField.decodeWith({
-            map: (_pointer: PointerField, newAddress: Option<Address>): Option<Address> =>
-                newAddress.map(address => mapping.opt(address.uuid).match({
-                    none: () => address,
+            map: (pointer: PointerField, newAddress: Option<Address>): Option<Address> => {
+                if (DeviceBoxUtils.isDeviceBox(pointer.box) && pointer === pointer.box.host) {
+                    return Option.wrap(host.address)
+                }
+                return newAddress.map(address => mapping.opt(address.uuid).match({
+                    none: () => panic("Unsupported native device external pointer"),
                     some: ({target}) => address.moveTo(target)
                 }))
+            }
         }, () => {
-            const [main, ...deps] = rawBoxes
+            const [main] = rawBoxes
             const {key, uuid, input} = main
             const box = boxGraph.createBox(key, mapping.get(uuid).target, box => box.read(input))
             if (!DeviceBoxUtils.isDeviceBox(box)) {return panic(`${box.name} is not a DeviceBox`)}
-            deps.forEach(({key, uuid, input}) =>
-                boxGraph.createBox(key, mapping.get(uuid).target, box => box.read(input)))
+            assert(input.remaining() === 0, "Trailing native device state")
+            box.host.refer(host)
             return box
         })
     }

@@ -132,7 +132,7 @@ export namespace DawProjectExporter {
         }, TransportSchema)
 
         const writeDevices = (field: Field, deviceRole: string): ReadonlyArray<DeviceSchema> => field.pointerHub
-            .incoming().slice().sort((left, right) => {
+            .incoming().filter(({box}) => DeviceBoxUtils.isDeviceBox(box)).sort((left, right) => {
                 const leftIndex = DeviceBoxUtils.isEffectDeviceBox(left.box) ? left.box.index.getValue() : 0
                 const rightIndex = DeviceBoxUtils.isEffectDeviceBox(right.box) ? right.box.index.getValue() : 0
                 return leftIndex - rightIndex || UUID.Comparator(left.box.address.uuid, right.box.address.uuid)

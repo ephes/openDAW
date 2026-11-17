@@ -1,7 +1,7 @@
 import {expect, it} from "vitest"
 import JSZip from "jszip"
 import {AudioData, WavFile} from "@opendaw/lib-dsp"
-import {AudioFileBox, AudioRegionBox, AudioUnitBox, DelayDeviceBox, PitchDeviceBox, UnknownAudioEffectDeviceBox, UnknownMidiEffectDeviceBox} from "@opendaw/studio-boxes"
+import {AudioFileBox, AudioRegionBox, AudioUnitBox, DelayDeviceBox, PitchDeviceBox} from "@opendaw/studio-boxes"
 import {DeviceBoxUtils, SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {Option, UUID} from "@opendaw/lib-std"
@@ -71,9 +71,9 @@ it("serializes reordered MIDI and audio chains by index with stable UUID ties", 
     const encoded = await DawProject.encode(skeleton, samples, Xml.element({}, MetaDataSchema))
     const decoded = await DawProject.decode(encoded)
     const {skeleton: imported} = await DawProjectImport.read(decoded.project, decoded.resources)
-    const chain = (kind: typeof UnknownAudioEffectDeviceBox | typeof UnknownMidiEffectDeviceBox) => imported.boxGraph.boxes()
+    const chain = (kind: typeof DelayDeviceBox | typeof PitchDeviceBox) => imported.boxGraph.boxes()
         .filter(box => box instanceof kind).sort((left, right) => DeviceBoxUtils.lookupIndexField(left).getValue() - DeviceBoxUtils.lookupIndexField(right).getValue())
         .map(box => DeviceBoxUtils.lookupLabelField(box).getValue())
-    expect(chain(UnknownAudioEffectDeviceBox)).toEqual(["audio-1", "audio-2", "audio-0"])
-    expect(chain(UnknownMidiEffectDeviceBox)).toEqual(["midi-1", "midi-0"])
+    expect(chain(DelayDeviceBox)).toEqual(["audio-1", "audio-2", "audio-0"])
+    expect(chain(PitchDeviceBox)).toEqual(["midi-1", "midi-0"])
 })

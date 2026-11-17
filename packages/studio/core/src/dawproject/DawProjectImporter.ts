@@ -74,6 +74,8 @@ import {
     AudioUnitOrdering,
     CaptureBox,
     ColorCodes,
+    DeviceBox,
+    DeviceBoxUtils,
     InstrumentBox,
     InstrumentFactories,
     InterpolationFieldAdapter,
@@ -81,6 +83,7 @@ import {
     TrackType
 } from "@opendaw/studio-adapters"
 import {DawProject} from "./DawProject"
+import {DeviceIO} from "./DeviceIO"
 import {BuiltinDevices} from "./BuiltinDevices"
 import {AudioContentHelpers} from "../project/audio/AudioContentHelpers"
 
@@ -173,6 +176,8 @@ export namespace DawProjectImport {
             validateContent(clip, asDefined(content.clips[0].content)[0], nestedUnit)
         } else if (isInstanceOf(content, NotesSchema)) {
             noteCoordinates(clip)
+        } else if (isInstanceOf(content, PointsSchema)) {
+            assert((content.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(content, WarpsSchema)) {
             const sourceUnit = content.contentTimeUnit ?? "seconds"
             assert(sourceUnit === "seconds", "Unsupported warp source time unit: expected seconds")
@@ -190,6 +195,8 @@ export namespace DawProjectImport {
         requireBeats(unit)
         if (isInstanceOf(timeline, LanesSchema)) {
             timeline.lanes?.forEach(child => validateTimeline(child, unit))
+        } else if (isInstanceOf(timeline, PointsSchema)) {
+            assert((timeline.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(timeline, ClipsSchema)) {
             timeline.clips.forEach(clip => {
                 const contentUnit = clip.contentTimeUnit ?? unit
@@ -201,8 +208,38 @@ export namespace DawProjectImport {
 
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
         if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
-        if (schema.arrangement?.tempoAutomation !== undefined) {validateTimeline(schema.arrangement.tempoAutomation)}
-        if (schema.arrangement?.timeSignatureAutomation !== undefined) {validateTimeline(schema.arrangement.timeSignatureAutomation)}
+        if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
+        if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
+        const nativeStates = new Map<DeviceSchema, ArrayBuffer>()
+        const validateNative = (tracks: ReadonlyArray<LaneSchema>): void => tracks.forEach(track => {
+            if (!isInstanceOf(track, TrackSchema)) {return}
+            track.channel?.devices?.forEach(device => {
+                if (device.deviceVendor !== "openDAW") {return}
+                try {
+                    const path = asDefined(device.state?.path, "Missing native state")
+                    const buffer = resources.fromPath(path).buffer
+                    const temporary = ProjectSkeleton.empty({createOutputMaximizer: false, createDefaultUser: true})
+                    const graph = temporary.boxGraph
+                    graph.beginTransaction()
+                    const unit = AudioUnitBox.create(graph, UUID.generate(), box => box.collection.refer(temporary.mandatoryBoxes.rootBox.audioUnits))
+                    const host = device.deviceRole === DeviceRole.INSTRUMENT ? unit.input
+                        : device.deviceRole === DeviceRole.AUDIO_FX ? unit.audioEffects : unit.midiEffects
+                    const restored = DeviceIO.importDevice(graph, buffer, host)
+                    const expected = device.deviceRole === DeviceRole.INSTRUMENT ? "instrument"
+                        : device.deviceRole === DeviceRole.AUDIO_FX ? "audio-effect"
+                            : device.deviceRole === DeviceRole.NOTE_FX ? "midi-effect" : undefined
+                    assert(expected !== undefined && restored.tags.deviceType === expected && restored.name === device.deviceID,
+                        "Native device identity or role mismatch")
+                    graph.endTransaction()
+                    graph.verifyPointers()
+                    nativeStates.set(device, buffer)
+                } catch {
+                    throw new Error("Unsupported native device state: invalid state, external pointers or dependent resources; no substitute sound was imported")
+                }
+            })
+            validateNative(track.tracks ?? [])
+        })
+        validateNative(schema.structure)
         const boxGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
         boxGraph.beginTransaction()
 
@@ -248,19 +285,14 @@ export namespace DawProjectImport {
                               index: int): unknown => {
             const {deviceRole, deviceVendor, deviceID, deviceName, state} = device
             assert(deviceRole === DeviceRole.NOTE_FX || deviceRole === DeviceRole.AUDIO_FX, "Device is not an effect")
-            /*
-             TODO There is a bug in this if branch, which results in an invalid host pointer
-             if (deviceVendor === "openDAW") {
-                console.debug(`Recreate openDAW effect device '${deviceName}' with id '${deviceID}'`)
-                const resource = ifDefined(state?.path, path => resources.fromPath(path))
-                if (isDefined(resource)) {
-                    const device = DeviceIO.importDevice(boxGraph, resource.buffer)
-                    device.host.refer(field)
-                    device.label.setValue(deviceName ?? "")
-                    DeviceBoxUtils.lookupIndexField(device).setValue(index)
-                    return
-                }
-            }*/
+            const native = nativeStates.get(device)
+            if (native !== undefined) {
+                const restored = DeviceIO.importDevice(boxGraph, native, field)
+                restored.label.setValue(deviceName ?? "")
+                restored.enabled.setValue(device.enabled?.value !== false)
+                DeviceBoxUtils.lookupIndexField(restored).setValue(index)
+                return restored
+            }
             if (isInstanceOf(device, EqualizerSchema)) {
                 return BuiltinDevices.equalizer(boxGraph, device, field, index)
             }
@@ -304,22 +336,14 @@ export namespace DawProjectImport {
         const createInstrumentBox = (audioUnitBox: AudioUnitBox,
                                      track: TrackSchema,
                                      device: Maybe<DeviceSchema>): InstrumentBox => {
-            /*
-            TODO There is a bug in this if branch, which results in an invalid host pointer
-            if (isDefined(device)) {
-                const {deviceName, deviceVendor, deviceID, state} = device
-                if (deviceVendor === "openDAW") {
-                    console.debug(`Recreate openDAW instrument device '${deviceName}' with id '${deviceID}'`)
-                    const resource = ifDefined(state?.path, path => resources.fromPath(path))
-                    if (isDefined(resource)) {
-                        const device = DeviceIO.importDevice(boxGraph, resource.buffer)
-                        device.host.refer(audioUnitBox.input)
-                        device.label.setValue(deviceName ?? "")
-                        assert(DeviceBoxUtils.isInstrumentDeviceBox(device), `${device.name} is not an instrument`)
-                        return device as InstrumentBox
-                    }
-                }
-            }*/
+            const native = isDefined(device) ? nativeStates.get(device) : undefined
+            if (native !== undefined) {
+                const restored: DeviceBox = DeviceIO.importDevice(boxGraph, native, audioUnitBox.input)
+                assert(DeviceBoxUtils.isInstrumentDeviceBox(restored), "Native device is not an instrument")
+                restored.label.setValue(device?.deviceName ?? "")
+                restored.enabled.setValue(device?.enabled?.value !== false)
+                return restored as InstrumentBox
+            }
             if (track.contentType === "notes") {
                 return InstrumentFactories.Vaporisateur
                     .create(boxGraph, audioUnitBox.input, track.name ?? "", IconSymbol.Piano)

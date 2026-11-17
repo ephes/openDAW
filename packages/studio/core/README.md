@@ -536,3 +536,13 @@ chance or repeat features. Audio region gain must be 0 dB. Linear fades (slope
 0.5) are exported in explicit beat units, with finite nonnegative extents no
 greater than the region duration. Shaped fades require rendering before export;
 inactive fade slopes do not affect admission.
+
+Native openDAW DAWproject devices with self-contained state are restored with new
+IDs and a host in the destination graph, preserving parameters, enabled state and
+effect order. State is checked in a temporary graph before constructing the
+imported project. Missing/malformed state, wrong device identity/role, external
+pointers and dependent resources are explicitly refused; these devices require
+rendering or removal before interchange. No replacement instrument is substituted.
+Audio buses are channels, not native instrument presets. Nonempty generic Points
+parameter lanes are refused before graph construction; dedicated tempo and
+time-signature automation remain supported.

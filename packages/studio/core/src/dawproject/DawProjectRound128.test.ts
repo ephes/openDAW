@@ -3,7 +3,7 @@ import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema} from "@opendaw/lib-dawproject"
 import {AudioData, FadingEnvelope, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
-import {AudioRegionBox, AudioUnitBox, AuxSendBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
+import {AudioFileBox, AudioRegionBox, AudioUnitBox, AuxSendBox, DelayDeviceBox, NanoDeviceBox, PitchDeviceBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {Option, UUID} from "@opendaw/lib-std"
@@ -19,9 +19,10 @@ const project = (content = notes, attributes = '', extra = '') => Xml.parse(`<Pr
     <Arrangement><Lanes><Lanes track="track"><Clips><Clip time="0" duration="8" loopEnd="4" ${attributes}>${content}</Clip></Clips></Lanes></Lanes></Arrangement></Project>`, ProjectSchema)
 const data = AudioData.create(4, 16, 1)
 const resource = {uuid: UUID.generate(), name: "ramp.wav", path: "ramp.wav", buffer: new ArrayBuffer(0)}
-const resources = {fromPath: vi.fn(() => resource), fromUUID: vi.fn(() => resource)}
+const packedResources = new Map<string, ArrayBuffer>()
+const resources = {fromPath: vi.fn((path: string) => ({...resource, buffer: packedResources.get(path) ?? resource.buffer})), fromUUID: vi.fn(() => resource)}
 const samples = {getOrCreate: () => ({data: Option.wrap(data)})} as unknown as SampleLoaderManager
-const packer = {write: vi.fn((path: string, _buffer: ArrayBufferLike) => Xml.element({path}, FileReferenceSchema))}
+const packer = {write: vi.fn((path: string, buffer: ArrayBufferLike) => {packedResources.set(path, buffer as ArrayBuffer); return Xml.element({path}, FileReferenceSchema)})}
 const write = (skeleton: Awaited<ReturnType<typeof DawProjectImport.read>>['skeleton']) => DawProjectExporter.write(skeleton, samples, packer)
 const xml = (schema: ProjectSchema) => Xml.pretty(Xml.toElement("Project", schema))
 const audible = (skeleton: Awaited<ReturnType<typeof DawProjectImport.read>>['skeleton']) => skeleton.boxGraph.boxes().filter(box => box instanceof NoteRegionBox).flatMap(region => {
@@ -185,4 +186,60 @@ it("B04 exports linear fades in explicit beat units", async () => {
     expect(exported).toContain('fadeTimeUnit="beats"')
     expect(exported).toContain('fadeInTime="1"')
     expect(exported).toContain('fadeOutTime="2"')
+})
+
+it("B05 restores native Nano and ordered effect parameters with valid hosts", async () => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    const {boxGraph} = skeleton
+    const unit = boxGraph.boxes().find(box => box instanceof AudioUnitBox && box.type.getValue() === AudioUnitType.Instrument) as AudioUnitBox
+    boxGraph.beginTransaction()
+    unit.input.pointerHub.incoming().forEach(({box}) => box.delete())
+    NanoDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.input); box.release.setValue(0.75); box.volume.setValue(-9)})
+    DelayDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.index.setValue(1); box.feedback.setValue(0.25)})
+    DelayDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.index.setValue(0); box.feedback.setValue(0.75)})
+    PitchDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.midiEffects); box.index.setValue(0)})
+    boxGraph.endTransaction()
+    const packed = new Map<string, ArrayBuffer>()
+    const schema = DawProjectExporter.write(skeleton, samples, {write: (path, bytes) => {packed.set(path, bytes as ArrayBuffer); return Xml.element({path}, FileReferenceSchema)}})
+    const provider = {...resources, fromPath: (path: string) => ({...resource, path, buffer: packed.get(path)!})}
+    const {skeleton: imported} = await DawProjectImport.read(Xml.parse(xml(schema), ProjectSchema), provider)
+    const nano = imported.boxGraph.boxes().find(box => box instanceof NanoDeviceBox) as NanoDeviceBox
+    expect(nano).toBeDefined()
+    expect(nano.release.getValue()).toBe(0.75)
+    expect(nano.volume.getValue()).toBe(-9)
+    const host = nano.host.targetVertex.unwrap().box as AudioUnitBox
+    const delays = imported.boxGraph.boxes().filter(box => box instanceof DelayDeviceBox).sort((a, b) => a.index.getValue() - b.index.getValue())
+    expect(delays.map(box => box.feedback.getValue())).toEqual([0.75, 0.25])
+    expect(delays.every(box => box.host.targetVertex.unwrap().box === host)).toBe(true)
+    expect(imported.boxGraph.boxes().filter(box => box instanceof PitchDeviceBox)).toHaveLength(1)
+    expect(() => imported.boxGraph.verifyPointers()).not.toThrow()
+})
+it("B05 refuses malformed native state before reading audio assets", async () => {
+    const source = xml(project(audio)).replace(/<Channel[^>]*id="channel"[^>]*\/>/, '<Channel id="channel" role="regular" destination="master"><Devices><BuiltinDevice deviceVendor="openDAW" deviceID="NanoDeviceBox" deviceRole="instrument"><State path="bad.preset"/></BuiltinDevice></Devices></Channel>')
+    await expect(DawProjectImport.read(Xml.parse(source, ProjectSchema), resources)).rejects.toThrow(/Unsupported native device state/)
+    expect(resources.fromPath).toHaveBeenCalledTimes(1)
+    expect(resources.fromPath).toHaveBeenCalledWith('bad.preset')
+})
+it("B05 refuses generic parameter Points before graph allocation", async () => {
+    const source = xml(project()).replace('<Clips>', '<Points><Target parameter="volume"/><RealPoint time="0" value="0.5"/></Points><Clips>')
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(DawProjectImport.read(Xml.parse(source, ProjectSchema), resources)).rejects.toThrow(/Unsupported parameter automation lane/)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+
+it("B05 refuses native dependent resources instead of substituting a sampler", async () => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    const {boxGraph} = skeleton
+    boxGraph.beginTransaction()
+    const unit = boxGraph.boxes().find(box => box instanceof AudioUnitBox && box.type.getValue() === AudioUnitType.Instrument) as AudioUnitBox
+    unit.input.pointerHub.incoming().forEach(({box}) => box.delete())
+    const file = AudioFileBox.create(boxGraph, UUID.generate(), box => {box.endInSeconds.setValue(4)})
+    NanoDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.input); box.file.refer(file)})
+    boxGraph.endTransaction()
+    const exported = Xml.parse(xml(write(skeleton)), ProjectSchema)
+    resources.fromPath.mockClear()
+    await expect(DawProjectImport.read(exported, resources)).rejects.toThrow(/Unsupported native device state/)
+    expect(resources.fromPath).toHaveBeenCalledTimes(1)
+    expect(resources.fromPath.mock.calls[0][0]).toMatch(/^presets\//)
 })

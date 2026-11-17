@@ -14,7 +14,9 @@ const fixture = (attributes = 'playStart="2"', markers = '<Warp time="0" content
     data.frames[0].set(Float32Array.from({length: 16}, (_, index) => index))
     const buffer = WavFile.encodeFloats(data)
     const resource = {uuid: UUID.generate(), name: "ramp.wav", path: "ramp.wav", buffer}
-    const resources = {fromPath: vi.fn(() => resource), fromUUID: vi.fn(() => resource)}
+    const packed = new Map<string, ArrayBuffer>()
+    const pack = (path: string, buffer: ArrayBufferLike) => {packed.set(path, buffer as ArrayBuffer); return Xml.element({path}, FileReferenceSchema)}
+    const resources = {fromPath: vi.fn((path: string) => ({...resource, buffer: packed.get(path) ?? resource.buffer})), fromUUID: vi.fn(() => resource)}
     const schema = Xml.parse(`<Project version="1.0"><Structure>
         <Track id="audio" contentType="audio"><Channel id="channel" role="regular" destination="master"/></Track>
         <Track id="output" contentType="audio"><Channel id="master" role="master"/></Track>
@@ -23,7 +25,7 @@ const fixture = (attributes = 'playStart="2"', markers = '<Warp time="0" content
             <Audio duration="4" channels="1" sampleRate="4" algorithm="repitch"><File path="ramp.wav"/></Audio>
         </Warps></Clip>
     </Clips></Lanes></Lanes></Arrangement></Project>`, ProjectSchema)
-    return {schema, resources, resource, data, run: () => DawProjectImport.read(schema, resources)}
+    return {schema, resources, resource, data, pack, run: () => DawProjectImport.read(schema, resources)}
 }
 afterEach(() => vi.restoreAllMocks())
 it("preserves a trimmed ramp's first source sample and region extent", async () => {
@@ -73,7 +75,7 @@ it.each([4, 16])("round-trips trimmed/looped audio of %s beats with its source w
     const imported = await f.run()
     const samples = {getOrCreate: () => ({data: Option.wrap(f.data)})} as unknown as SampleLoaderManager
     const exported = DawProjectExporter.write(imported.skeleton, samples, {
-        write: (path, _buffer) => Xml.element({path, external: false}, FileReferenceSchema)
+        write: f.pack
     })
     const {skeleton} = await DawProjectImport.read(Xml.parse(Xml.pretty(Xml.toElement("Project", exported)), ProjectSchema), f.resources)
     const region = skeleton.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
@@ -102,7 +104,7 @@ it.each([TimeBase.Seconds, TimeBase.Musical])("exports ordinary no-stretch audio
     imported.skeleton.mandatoryBoxes.timelineBox.bpm.setValue(120)
     imported.skeleton.boxGraph.endTransaction()
     const samples = {getOrCreate: () => ({data: Option.wrap(f.data)})} as unknown as SampleLoaderManager
-    const exported = DawProjectExporter.write(imported.skeleton, samples, {write: (path, _buffer) => Xml.element({path}, FileReferenceSchema)})
+    const exported = DawProjectExporter.write(imported.skeleton, samples, {write: f.pack})
     const {skeleton} = await DawProjectImport.read(Xml.parse(Xml.pretty(Xml.toElement("Project", exported)), ProjectSchema), f.resources)
     const result = skeleton.boxGraph.boxes().find(box => box instanceof AudioRegionBox) as AudioRegionBox
     expect(result.position.getValue()).toBe(10 * PPQN.Quarter)
@@ -125,6 +127,7 @@ it.each([
     region.timeBase.setValue(timeBase)
     region.duration.setValue(timeBase === TimeBase.Seconds ? 2 : 4 * PPQN.Quarter)
     region.loopDuration.setValue(timeBase === TimeBase.Seconds ? 4 : 8 * PPQN.Quarter)
+    region.loopOffset.setValue(0)
     if (unsupported === "tempo automation") {
         const collection = ValueEventCollectionBox.create(boxGraph, UUID.generate())
         timelineBox.tempoTrack.events.refer(collection.owners)
