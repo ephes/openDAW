@@ -12,3 +12,10 @@ identity recurrence fixes the shared primitive without changing nonconstant
 interpolation. Before the fix, five Curve cases failed and two curved tempo-map
 cases rejected nonfinite BPM. Afterward, all eight Curve tests and all 194 adapter
 tests passed, including seeks, adjacent ramps and conversion round trips.
+
+## Random state
+
+The Mulberry32 regression compares every draw through 4,917,824 against a
+Uint32Array-wrapped reference. Unfixed code first diverged at draw 4,917,760.
+Wrapping the stored state before mixing restores the intended 32-bit sequence.
+The six tests also pin the initial sample and signed/unsigned seed reset replay.

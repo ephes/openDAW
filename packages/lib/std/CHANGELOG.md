@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Wrap Mulberry32 state on every advance; correct long-running deterministic streams after the former integer precision boundary while preserving initial sequences and seed resets.
+
 - Keep equal-endpoint Curve recurrences exact and finite, including zero-height rendering.
 
 - Detect nonzero signed bit words, including MIDI boundary notes.

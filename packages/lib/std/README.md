@@ -9,6 +9,11 @@ endpoints. `Curve.walk` and `Curve.run` therefore keep constant curves (includin
 zero-height drawing bounds) finite at every slope; changing curves keep their
 existing interpolation.
 
+`Mulberry32` advances its state modulo 2^32 on every draw. Seed spelling as a
+signed or unsigned 32-bit integer and `setSeed` replay remain equivalent. This
+corrects long-running streams after the old unbounded accumulator lost integer
+precision (seed 1 first diverged at draw 4,917,760); earlier draws are unchanged.
+
 ## Core Utilities
 
 * Language primitives, type definitions, and utility functions **lang.ts**
