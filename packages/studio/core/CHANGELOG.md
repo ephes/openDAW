@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound audio fade path construction by visible device pixels while preserving clipped curve shape and handle placement.
+
 - Roll back failed runtime menu population and restore collection state; preserve canvas redraw requests raised during rendering and redraw idle canvases when device pixel ratio changes.
 
 - Render stored-value interpolation before nonlinear display mapping with visible-pixel bounded sampling; retain an explicit cheap affine linear path.

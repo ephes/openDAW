@@ -23,35 +23,32 @@ export namespace AudioFadingRenderer {
         context.strokeStyle = color
         context.fillStyle = "rgba(0,0,0,0.25)"
         context.lineWidth = dpr
+        const renderFade = (slope: number, x0: number, x1: number, y0: number, y1: number): void => {
+            const visibleStart = Math.max(0, x0)
+            const visibleEnd = Math.min(range.width * dpr, x1)
+            if (visibleEnd <= visibleStart) {return}
+            const definition = {slope, steps: x1 - x0, y0, y1}
+            const yAt = (x: number): number => Curve.valueAt(definition, x - x0)
+            const path = new Path2D()
+            path.moveTo(visibleStart, yAt(visibleStart))
+            for (let x = visibleStart + 1; x < visibleEnd; x++) {path.lineTo(x, yAt(x))}
+            path.lineTo(visibleEnd, yAt(visibleEnd))
+            context.stroke(path)
+            path.lineTo(visibleEnd, actualTop)
+            path.lineTo(visibleStart, actualTop)
+            path.lineTo(visibleStart, yAt(visibleStart))
+            context.fill(path)
+        }
         if (fadeIn > 0) {
             const fadeInEndPPQN = startPPQN + fadeIn
             const x0 = range.unitToX(startPPQN) * dpr
             const x1 = range.unitToX(fadeInEndPPQN) * dpr
-            const xn = x1 - x0
-            const path = new Path2D()
-            path.moveTo(x0, actualBottom)
-            let x = x0
-            Curve.run(fadeInSlope, xn, actualBottom, actualTop, y => path.lineTo(++x, y))
-            path.lineTo(x1, actualTop)
-            context.stroke(path)
-            path.lineTo(x0, actualTop)
-            path.lineTo(x0, actualBottom)
-            context.fill(path)
+            renderFade(fadeInSlope, x0, x1, actualBottom, actualTop)
         }
         if (fadeOut > 0) {
             const x0 = range.unitToX(endPPQN - fadeOut) * dpr
             const x1 = range.unitToX(endPPQN) * dpr
-            const xn = x1 - x0
-            const path = new Path2D()
-            path.moveTo(x0, actualTop)
-            let x = x0
-            Curve.run(fadeOutSlope, xn, actualTop, actualBottom, y => path.lineTo(++x, y))
-            path.lineTo(x1, actualBottom)
-            context.strokeStyle = color
-            context.stroke(path)
-            path.lineTo(x1, actualTop)
-            path.lineTo(x0, actualTop)
-            context.fill(path)
+            renderFade(fadeOutSlope, x0, x1, actualTop, actualBottom)
         }
         const handleRadius = 1.5 * dpr
         const x0 = Math.max(range.unitToX(startPPQN + fadeIn), range.unitToX(startPPQN)) * dpr

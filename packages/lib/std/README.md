@@ -4,6 +4,21 @@ _This package is part of the openDAW SDK_
 
 Standard library providing core utilities and data structures for TypeScript projects.
 
+`Curve.coefficients` returns the exact recurrence `{m: 1, q: 0}` for equal
+endpoints. `Curve.walk` and `Curve.run` therefore keep constant curves (including
+zero-height drawing bounds) finite at every slope; changing curves keep their
+existing interpolation.
+
+`Mulberry32` advances its state modulo 2^32 on every draw. Seed spelling as a
+signed or unsigned 32-bit integer and `setSeed` replay remain equivalent. This
+corrects long-running streams after the old unbounded accumulator lost integer
+precision (seed 1 first diverged at draw 4,917,760); earlier draws are unchanged.
+
+`Arrays.replace` preserves the destination identity and replacement order, treats
+self-replacement as a no-op, and copies large arrays without variadic argument
+limits. Empty replacements clear the destination. It does not promise atomic
+recovery from throwing getters or proxies.
+
 ## Core Utilities
 
 * Language primitives, type definitions, and utility functions **lang.ts**

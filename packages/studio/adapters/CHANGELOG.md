@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep curved equal-BPM tempo automation finite during grid walks and PPQN/seconds conversion.
+
 - Coalesce passive script loads/default initialization with the current device/context installation so editor remounts preserve pending explicit compiles; keep newer requests, external edits and deletion authoritative.
 
 - Split automation ramps in stored-value space, preserving raw BPM playback and curve slopes when inserting unchanged tempo points.

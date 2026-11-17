@@ -5,6 +5,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve aliased Arrays.replace inputs and copy large replacements without argument spread limits.
+
+- Wrap Mulberry32 state on every advance; correct long-running deterministic streams after the former integer precision boundary while preserving initial sequences and seed resets.
+
+- Keep equal-endpoint Curve recurrences exact and finite, including zero-height rendering.
+
 - Detect nonzero signed bit words, including MIDI boundary notes.
 
 - Stage virtual-object updates before publication, support null/scalar-to-record replacements and refuse unsupported/read-only shapes without partial mutation.

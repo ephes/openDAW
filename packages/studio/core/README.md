@@ -1,5 +1,12 @@
 This package is part of the openDAW SDK
 
+Audio fade painting intersects each fade with the visible timeline width before
+building its path. Samples use the original fade coordinates and at most one
+vertex per visible device pixel, preserving shape when scrolling or zooming at
+different device pixel ratios. Fully hidden or boundary-touching fades generate
+no path; handles retain their original positions. Overlong fade pairs retain
+their proportional duration scaling.
+
 ### Local storage read budgets
 
 Local OPFS reads use explicit budgets before allocation: metadata, indexes and

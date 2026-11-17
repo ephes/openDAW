@@ -1,4 +1,11 @@
 
+### Initial track ordering
+
+Timeline construction collects the initial audio units and their tracks before
+one synchronous final ordering and listIndex assignment. Final indices are ready
+when TracksManager construction returns. Later live track/unit additions,
+removals and index changes keep the existing immediate ordering behavior.
+
 ### Automation editing
 
 Failed point deletions and batch moves restore the visible/playback event index

@@ -7,8 +7,9 @@ export class Arrays {
     static readonly empty = <T>(): ReadonlyArray<T> => (() => this.#empty)()
     static readonly clear = <T>(array: Array<T>): void => {array.length = 0}
     static readonly replace = <T>(array: Array<T>, newValues: Array<T>): void => {
-        array.length = 0
-        array.push(...newValues)
+        if (array === newValues) {return}
+        array.length = newValues.length
+        for (let index = 0; index < newValues.length; index++) {array[index] = newValues[index]}
     }
     static readonly consume = <T>(array: Array<T>, procedure: Func<T, boolean>): void => {
         for (let index = 0; index < array.length;) {

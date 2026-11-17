@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Order initial timeline track catchup once before construction returns, retaining immediate ordering for subsequent live edits.
+
 - Floor silent Revamp spectrum bins at -60 dB before interpolation and handle empty/one-pixel canvas geometry without nonfinite path coordinates.
 
 - Evaluate Revamp response curves and frequency normalization at the engine sample rate, matching the audible high-frequency digital filter shapes.

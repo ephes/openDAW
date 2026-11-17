@@ -8,8 +8,9 @@ import {
     ValueEvent
 } from "@opendaw/lib-dsp"
 import {bpm, ppqn, seconds} from "@opendaw/lib-dsp"
-import {quantizeCeil, quantizeFloor} from "@opendaw/lib-std"
-import {TempoGridCursor} from "./VaryingTempoMap"
+import {Option, quantizeCeil, quantizeFloor} from "@opendaw/lib-std"
+import {TempoGridCursor, VaryingTempoMap} from "./VaryingTempoMap"
+import {TimelineBoxAdapter} from "./timeline/TimelineBoxAdapter"
 
 describe("intervalToSeconds across ppqn=0", () => {
     const barPpqn = 4 * PPQN.Quarter
@@ -86,6 +87,40 @@ describe("VaryingTempoMap grid helpers", () => {
 
     const storageBpm: bpm = 120
     const cursor = new TempoGridCursor()
+
+    it.each([0.2, 0.5, 0.8])("keeps equal curved tempos finite through seeks and transitions: %s", slope => {
+        const events = [
+            makeEvent(0, 0, 90, Interpolation.Curve(0.3)),
+            makeEvent(TempoChangeGrid * 64, 0, 120, Interpolation.Curve(slope)),
+            makeEvent(TempoChangeGrid * 128, 0, 120, Interpolation.Curve(0.7)),
+            makeEvent(TempoChangeGrid * 192, 0, 160, Interpolation.None)
+        ]
+        const collection = makeCollection(events)
+        const adapter = {
+            box: {bpm: {getValue: () => storageBpm, subscribe: () => ({terminate() {}})}},
+            tempoTrackEvents: Option.wrap({events: collection, valueAt: (position: number, fallback: number) =>
+                ValueEvent.valueAt(collection, position, fallback)}),
+            catchupAndSubscribeTempoAutomation: (observer: () => void) => {
+                observer()
+                return {terminate() {}}
+            }
+        } as unknown as TimelineBoxAdapter
+        const map = new VaryingTempoMap(adapter)
+        for (const position of [127, 65, 193, 96, 64, 129, 128].map(step => step * TempoChangeGrid + 1)) {
+            const expected = naiveIntegrate(collection, 0, position, storageBpm)
+            expect(map.ppqnToSeconds(position)).toBeCloseTo(expected, 9)
+            expect(map.secondsToPPQN(expected)).toBeCloseTo(position, 6)
+            expect(map.getTempoAt(position)).toBeCloseTo(ValueEvent.valueAt(collection, position, storageBpm), 10)
+        }
+        for (let step = 64; step < 128; step++) {
+            const from = step * TempoChangeGrid
+            const to = from + TempoChangeGrid
+            expect(cursor.integrate(events, from, to, storageBpm)).toBeCloseTo(PPQN.pulsesToSeconds(TempoChangeGrid, 120), 10)
+            expect(map.intervalToSeconds(64 * TempoChangeGrid, to))
+                .toBeCloseTo(naiveIntegrate(collection, 64 * TempoChangeGrid, to, storageBpm), 9)
+        }
+        map.terminate()
+    })
 
     it("matches naive reference for constant tempo (none, two equal events)", () => {
         const events = [

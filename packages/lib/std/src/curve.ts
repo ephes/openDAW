@@ -38,6 +38,7 @@ export namespace Curve {
     }
 
     export const coefficients = (definition: Definition): Coefficients => {
+        if (definition.y0 === definition.y1) {return {m: 1.0, q: 0.0}}
         const f1 = valueAt(definition, 1.0)
         const f2 = valueAt(definition, 2.0)
         const m = (f2 - f1) / (f1 - definition.y0)
