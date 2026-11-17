@@ -44,3 +44,16 @@ for (const owner of ["clip", "region"] as const) {
         }
     }
 }
+
+test("round 143 content editor subscriptions follow and retire", async ({page}) => {
+    await page.goto("/")
+    const result = await page.evaluate(async () => {
+        // @ts-expect-error Vite serves the synthetic source fixture.
+        return (await import("/r143-editors.ts")).run()
+    })
+    expect(result.stale).toBe(0)
+    expect(result.current).toBeGreaterThan(0)
+    expect(result.closed).toBe(0)
+    expect(result.followed).toBeGreaterThan(0)
+    expect(result.after).toBe(result.followed)
+})

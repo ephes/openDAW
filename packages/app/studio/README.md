@@ -53,6 +53,17 @@ seconds) and never drop below a sixteenth note, or below the clip's own length
 when it already starts shorter. Audio regions keep the existing sixteenth-note
 floor of the region reader.
 
+### Content editor subscriptions
+
+The region bound strip above a content editor watches the edited region's track
+pointer once and keeps exactly one listener on the region's current track; moving
+the region retires the previous track listener and repaints once, and a detached
+region binds none. `EventOwnerReader.keeoOverlapping` returns one terminable that
+owns both the box subscription and the frame-deferred range follow-up: terminating
+it (closing or switching the editor) also drops an already queued follow-up, so a
+previous region cannot move the next editor's viewport. Active readers still
+coalesce several changes in one frame into one range move.
+
 ### Piano panel roster
 
 The piano panel follows current note-track and audio-unit membership/order. It

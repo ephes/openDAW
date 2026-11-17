@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep one current-track listener for the content editor region bound across track moves and retire it on close; retire queued region range follow-ups with the editor so an old region cannot move the next viewport.
+
 - Restore cancelled audio-editor loop resizes and waveform slips without history noise or touching concurrent edits; commit each approved gesture as one undo step. Keep audio clip loop lengths positive and write them through the clip's time base.
 
 - Keep first-party failures fatal despite injected scripts and preserve bounded diagnostics/recovery for hostile rejection values.
