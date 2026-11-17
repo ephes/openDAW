@@ -7,7 +7,7 @@ export namespace WavFile {
     const MAGIC_FMT = 0x20746d66
     const MAGIC_DATA = 0x61746164
 
-    export const decodeFloats = (buffer: ArrayBuffer): AudioData => {
+    export const inspect = (buffer: ArrayBuffer) => {
         const view = new DataView(buffer)
         if (view.byteLength < 12 || view.getUint32(0, true) !== MAGIC_RIFF
             || view.getUint32(8, true) !== MAGIC_WAVE) {
@@ -52,6 +52,12 @@ export namespace WavFile {
             return panic(`Unsupported WAV format: ${audioFormat}, ${bitsPerSample}-bit`)
         }
         const numberOfFrames = Math.floor(dataSize / blockAlign)
+        return {sampleRate, numberOfFrames, numberOfChannels, audioFormat, bitsPerSample, dataOffset}
+    }
+
+    export const decodeFloats = (buffer: ArrayBuffer): AudioData => {
+        const {sampleRate, numberOfFrames, numberOfChannels, audioFormat, bitsPerSample, dataOffset} = inspect(buffer)
+        const view = new DataView(buffer)
         const audioData = AudioData.create(sampleRate, numberOfFrames, numberOfChannels)
         if (audioFormat === 3 && bitsPerSample === 32) {
             const interleaved = new Float32Array(buffer, dataOffset, numberOfFrames * numberOfChannels)

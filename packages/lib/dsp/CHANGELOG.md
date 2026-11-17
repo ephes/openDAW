@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Expose allocation-free WAV inspection and reuse it in float decoding for bounded upload admission.
+
 - Retire all incident graph edges before late edge leases; sort processors with iterative linear graph traversal and explicit cycle detection.
 
 - Validate sample-rate conversion geometry before early returns and allocation.

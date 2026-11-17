@@ -50,7 +50,7 @@ export namespace StudioShortcutManager {
     export const fromJSONString = (target: ShortcutsMap, source: string): void => {
         const {status, value: stored, error} = tryCatch(() => JSON.parse(source))
         if (status === "success") {
-            Objects.entries(target).forEach(([key, definition]) => ShortcutDefinitions.fromJSON(definition, stored[key]))
+            if (!ShortcutDefinitions.fromContextsJSON(target, stored)) {console.warn("Invalid shortcut configuration") }
         } else {
             console.warn(error)
         }
@@ -78,14 +78,9 @@ export namespace StudioShortcutManager {
         const gs = GlobalShortcuts
         const storedShortcuts = localStorage.getItem(localStorageKey)
         if (isDefined(storedShortcuts)) {
-            const {status, value: stored, error} = tryCatch(() => JSON.parse(storedShortcuts))
-            if (status === "success") {
-                Objects.entries(Contexts).forEach(([name, {workingDefinition}]) =>
-                    ShortcutDefinitions.fromJSON(workingDefinition, stored[name]))
-                console.debug("Custom shortcuts loaded.")
-            } else {
-                console.warn(error)
-            }
+            const target: ShortcutsMap = {}
+            Objects.entries(Contexts).forEach(([name, {workingDefinition}]) => target[name] = workingDefinition)
+            fromJSONString(target, storedShortcuts)
         }
         return Terminable.many(
             gc.register(gs["project-undo"].shortcut, () => service.runIfProject(project => project.editing.undo()), {allowRepeat: true}),
