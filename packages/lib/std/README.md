@@ -14,6 +14,11 @@ signed or unsigned 32-bit integer and `setSeed` replay remain equivalent. This
 corrects long-running streams after the old unbounded accumulator lost integer
 precision (seed 1 first diverged at draw 4,917,760); earlier draws are unchanged.
 
+`Arrays.replace` preserves the destination identity and replacement order, treats
+self-replacement as a no-op, and copies large arrays without variadic argument
+limits. Empty replacements clear the destination. It does not promise atomic
+recovery from throwing getters or proxies.
+
 ## Core Utilities
 
 * Language primitives, type definitions, and utility functions **lang.ts**

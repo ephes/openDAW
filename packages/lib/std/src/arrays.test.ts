@@ -42,6 +42,35 @@ describe("Arrays", () => {
      * replace()
      * ------------------------------------------------------------------ */
     describe("replace()", () => {
+        it("preserves self replacement", () => {
+            const target = [1, 2, 3]
+            Arrays.replace(target, target)
+            expect(target).toEqual([1, 2, 3])
+        })
+
+        it("copies large ordered inputs without replacing the destination identity", () => {
+            const target = [-1]
+            const alias = target
+            const source = Array.from({length: 200_000}, (_, index) => index)
+            Arrays.replace(target, source)
+            expect(target).toBe(alias)
+            expect(target).not.toBe(source)
+            expect(target).toEqual(source)
+            expect(source).toHaveLength(200_000)
+        })
+
+        it("refreshes effect order without changing effect identities", () => {
+            const delay = {name: "Delay"}
+            const reverb = {name: "Reverb"}
+            const effects = [delay, reverb]
+            const alias = effects
+            Arrays.replace(effects, [reverb, delay])
+            expect(alias[0]).toBe(reverb)
+            expect(alias[1]).toBe(delay)
+            Arrays.replace(effects, [])
+            expect(alias).toEqual([])
+        })
+
         it("should replace the whole content independent of length", () => {
             const target = [0, 0, 0, 0]
             Arrays.replace(target, [1, 2])

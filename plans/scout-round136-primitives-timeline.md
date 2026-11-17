@@ -19,3 +19,10 @@ The Mulberry32 regression compares every draw through 4,917,824 against a
 Uint32Array-wrapped reference. Unfixed code first diverged at draw 4,917,760.
 Wrapping the stored state before mixing restores the intended 32-bit sequence.
 The six tests also pin the initial sample and signed/unsigned seed reset replay.
+
+## Array replacement
+
+Self-replacement and an ordered 200,000-element input failed before the fix
+(empty result and RangeError respectively). Identity-preserving indexed copying
+and an alias no-op avoid both failures. The regression suite also checks ordinary
+effect reordering and clearing without a live audio graph.
