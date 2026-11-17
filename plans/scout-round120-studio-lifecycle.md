@@ -26,10 +26,10 @@ identifies the DOM's current ownership even while the mode observable is changin
 Repeated preview saves and reopened heading/link/code notes have exact-source
 regressions in `NotePadPanel.test.tsx`.
 
-The existing router owns plain paths only. Query and fragment links use native
-navigation, including fragment scrolling, so complete destinations survive.
+Local links route with their complete path, query and fragment, so destinations
+survive without a full studio reload. Same-page fragments scroll natively.
 Modified/non-primary clicks, explicit targets and downloads retain browser
-behavior. `MarkdownNavigation.test.ts` covers routing and native admission.
+behavior. `MarkdownNavigation.test.ts` covers full-destination routing and native fragments.
 `tests/browser/r120.spec.ts` adds real notes, shortcut and fragment fixtures;
 Chromium launch is blocked here by macOS Mach port sandbox refusal.
 
@@ -52,8 +52,10 @@ The browser fixture also drives real mouse capture/release and cancellation.
 Permissions introspection is advisory: missing, throwing or rejected queries let
 `getUserMedia` request permission. Explicit denial shows help and fails without
 capture; capture refusal resets the shared permission attempt for retry. Temporary
-permission streams stop their tracks. Explicit device IDs use an exact constraint,
-and missing-device errors propagate; an omitted selector keeps the default.
+permission streams stop their tracks. The app-level `AudioDevices` input-stream
+helper uses an exact constraint for explicit device IDs and propagates missing-device
+errors; it has no production caller yet. Track recording (`CaptureAudio` in
+studio-core) keeps its deliberate default-input fallback, which is an owner decision.
 `AudioDevices.test.ts` uses fake permissions and streams, including a fake browser
 that falls back for ideal selectors. Both regressions fail before their fixes.
 The browser fixture exercises the same real acquisition entry points with stubs.

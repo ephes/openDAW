@@ -7,11 +7,11 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Bound and validate latency history; stop optional polling on storage or beacon refusal without entering the application error path.
 
-- Request microphone capture when permission introspection is unsupported; require exact selected inputs and surface missing-device errors.
+- Request microphone capture when permission introspection is unsupported; the studio input-stream helper requests selected devices exactly (track recording keeps its default-input fallback).
 
 - Retire cancelled auto-gain probes and ignore unrelated pointers; reject malformed meter frames and nonfinite gain edits.
 
-- Preserve Markdown on preview saves and commit notes on edit exit; retain local-link queries, fragments and modified-click behavior.
+- Preserve Markdown on preview saves and commit notes on edit exit; route local links with their queries and fragments without reloading; keep same-page fragments and modified clicks native.
 
 - Share lazy inference installation across first callers and retry failures; retire latency polling with its audio context or studio surface.
 

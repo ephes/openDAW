@@ -23,6 +23,6 @@ browser's capture request instead. A reported denial remains visible; capture
 refusal can be retried. The temporary stream used to reveal device labels stops
 all its tracks immediately.
 
-Selecting a specific microphone requires that exact device. If it disappears,
-recording setup fails so you can reselect deliberately; it never silently records
-another microphone. Omitting the input selector keeps the browser default.
+When a track's selected microphone disappears, recording falls back to the
+browser's default input and logs a warning in the console. Reselect the input in
+the track's capture menu to record from a specific device again.

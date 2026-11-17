@@ -41,19 +41,21 @@ test("notes preserve exact Markdown through preview saves, editing, blur and tea
     expect(await read()).toBe(edited + " before teardown")
 })
 
-test("Markdown keeps native query/fragment destinations and modified clicks", async ({page}) => {
+test("Markdown routes complete query/fragment destinations without reloading and keeps modified clicks", async ({page}) => {
     const result = await page.evaluate(async () => {
         // @ts-expect-error Vite serves the synthetic fixture.
         const click = (await import("/r120-studio.ts")).setupLinks()
-        return [click("query"), click("section"), click("plain", {ctrlKey: true}),
+        Object.assign(window, {sameDocument: true})
+        return [click("section"), click("plain", {ctrlKey: true}),
             click("plain", {metaKey: true}), click("plain", {shiftKey: true}), click("plain", {button: 1})]
     })
-    expect(result).toEqual([false, false, false, false, false, false])
+    expect(result).toEqual([false, false, false, false, false])
     await page.getByRole("link", {name: "section", exact: true}).click()
     await expect(page).toHaveURL(/#section$/)
     expect(await page.evaluate(() => scrollY)).toBeGreaterThan(1000)
     await page.getByRole("link", {name: "query", exact: true}).click()
     await expect(page).toHaveURL(/\/manuals\/topic\?mode=x#section$/)
+    expect(await page.evaluate(() => (window as unknown as {sameDocument?: boolean}).sameDocument)).toBe(true)
 })
 
 for (const cancel of ["pointercancel", "lostpointercapture"]) {

@@ -16,11 +16,16 @@ const click = (destination: string, options: MouseEventInit = {}) => {
     anchor.onclick?.call(anchor, event as PointerEvent)
     return event.defaultPrevented
 }
-it.each(["/manuals/topic?mode=x#section", "#section", "/manuals/topic?mode=x", "/manuals/topic#section"])(
-    "leaves %s to native navigation with its complete destination", destination => {
-        const navigate = vi.spyOn(RouteLocation.get(), "navigateTo")
-        expect(click(destination)).toBe(false)
-        expect(navigate).not.toHaveBeenCalled()
+it("leaves a same-document fragment to native scrolling", () => {
+    const navigate = vi.spyOn(RouteLocation.get(), "navigateTo")
+    expect(click("#section")).toBe(false)
+    expect(navigate).not.toHaveBeenCalled()
+})
+it.each(["/manuals/topic?mode=x#section", "/manuals/topic?mode=x", "/manuals/topic#section"])(
+    "routes %s with its complete destination instead of reloading the studio", destination => {
+        const navigate = vi.spyOn(RouteLocation.get(), "navigateTo").mockReturnValue(true)
+        expect(click(destination)).toBe(true)
+        expect(navigate).toHaveBeenCalledWith(destination)
     })
 it.each([{ctrlKey: true}, {metaKey: true}, {shiftKey: true}, {altKey: true}, {button: 1}])(
     "preserves browser click semantics %s", options => {

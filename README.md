@@ -511,16 +511,18 @@ registered with the studio surface and retired when either owner closes.
 See [round 120 contracts and validation](plans/scout-round120-studio-lifecycle.md).
 
 Notepad preview saves preserve the original Markdown. Leaving edit mode, blurring
-or closing the panel commits editable text. Markdown links with query strings or
-fragments use native navigation; modified clicks retain browser behavior.
+or closing the panel commits editable text. Local Markdown links keep their query
+strings and fragments through in-app routing without reloading the studio;
+same-page fragments scroll natively and modified clicks retain browser behavior.
 
 Stereo Tool auto gain cancels measurement on pointer cancellation or premature
 capture loss. A normal short release still completes the one-second measurement.
 Invalid meter frames are ignored and gain edits require finite evidence.
 
 Microphone capture can request permission when the browser lacks microphone
-permission introspection. Explicit input selections require the exact device;
-missing inputs require reselection. See [permission help](packages/app/studio/public/manuals/permissions.md).
+permission introspection. The studio's input-stream helper requests a selected
+device exactly; track recording still falls back to the default input when the
+selected device is missing. See [permission help](packages/app/studio/public/manuals/permissions.md).
 
 Latency reporting accepts at most 501 integer buckets from 0 to 500 ms in a
 4096-character stored history. Corrupt history, unavailable storage or a throwing
