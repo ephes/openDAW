@@ -69,7 +69,6 @@ export const boot = async ({workersUrl, workletsUrl, offlineEngineUrl}: {
     const context = new AudioContext({sampleRate, latencyHint: 0})
     console.debug(`AudioContext state: ${context.state}, sampleRate: ${context.sampleRate}`)
     console.debug(`Error.stackTraceLimit: ${Error.stackTraceLimit ?? "N/A"}`)
-    installLatencyReporter(context)
     reportVisitor()
     const audioWorklets = await Promises.tryCatch(AudioWorklets.createFor(context))
     if (audioWorklets.status === "rejected") {
@@ -111,6 +110,7 @@ export const boot = async ({workersUrl, workletsUrl, offlineEngineUrl}: {
             menu.attach(Surface.get(surface.owner).flyout)
         }))
     }, errorHandler)
+    surface.own(installLatencyReporter(context))
     Surface.subscribeKeyboard("keydown", event => ShortcutManager.get().handleEvent(event), Number.MAX_SAFE_INTEGER)
     document.querySelector("#preloader")?.remove()
     replaceChildren(surface.ground, App(service))

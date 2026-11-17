@@ -1,4 +1,4 @@
-import {isDefined} from "@opendaw/lib-std"
+import {isDefined, Terminable} from "@opendaw/lib-std"
 
 const STORAGE_KEY = "reported-latencies"
 const API_URL = "https://api.opendaw.studio/latency/report.php"
@@ -19,11 +19,30 @@ const report = (ms: number): void => {
     }
 }
 
-export const installLatencyReporter = (context: AudioContext): void => {
+const reporters = new WeakMap<AudioContext, Terminable>()
+
+export const installLatencyReporter = (context: AudioContext): Terminable => {
+    const installed = reporters.get(context)
+    if (installed !== undefined) {return installed}
+    if (context.state === "closed") {return Terminable.Empty}
     const check = () => {
         if (context.state !== "running") return
         const ms = bucketMs(context)
         if (ms !== -1) report(ms)
     }
-    setInterval(check, 10_000)
+    const timer = setInterval(check, 10_000)
+    let active = true
+    const handle: Terminable = {
+        terminate: () => {
+            if (!active) {return}
+            active = false
+            clearInterval(timer)
+            context.removeEventListener("statechange", onStateChange)
+            reporters.delete(context)
+        }
+    }
+    const onStateChange = () => {if (context.state === "closed") {handle.terminate()}}
+    context.addEventListener("statechange", onStateChange)
+    reporters.set(context, handle)
+    return handle
 }

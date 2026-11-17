@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Share lazy inference installation across first callers and retry failures; retire latency polling with its audio context or studio surface.
+
 - Include the first slope-drag motion, retire changed automation segments and remove full-track loop-resize diagnostic snapshots.
 
 - Move and copy the original surviving note selection, preserve chord intervals at MIDI edges and keep audition aligned with preview, including copy origins after a selection change.

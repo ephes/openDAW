@@ -502,3 +502,10 @@ code and resource changes. Failed or superseded installations preserve the prior
 device; default/unit edits preserve parameter identity. See the
 [adapter script contracts](packages/studio/adapters/README.md) for numeric admission,
 resource naming, domain changes and intentional undo/load semantics.
+
+### Studio startup and interaction ownership
+
+Inference is loaded and installed once across concurrent first callers; failed
+installation can be retried. Latency reporting owns one timer per audio context,
+registered with the studio surface and retired when either owner closes.
+See [round 120 contracts and validation](plans/scout-round120-studio-lifecycle.md).
