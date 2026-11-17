@@ -37,3 +37,10 @@ Converting an audio region to a clip keeps its native loop duration and time bas
 source waveform offset, file and playback mode. It does not convert an already
 native seconds value a second time. Existing saved conversions are not migrated;
 region-only fades and loop offset are outside this operation.
+
+### Piano panel roster
+
+The piano panel follows current note-track and audio-unit membership/order. It
+rebuilds and retires track controls when membership or exclusions change, and
+closes all current subscriptions when the panel closes. Track labels retain the
+unit label and numbered suffix convention.

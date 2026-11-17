@@ -1,23 +1,20 @@
 import css from "./PianoModePanel.sass?inline"
-import {createElement, Group} from "@opendaw/lib-jsx"
+import {createElement, Group, replaceChildren} from "@opendaw/lib-jsx"
 import {StudioService} from "@/service/StudioService.ts"
 import {deferNextFrame, Html, ShortcutManager} from "@opendaw/lib-dom"
 import {PianoRoll} from "@/ui/piano-panel/PianoRoll.tsx"
 import {NoteFall} from "@/ui/piano-panel/NoteFall.tsx"
 import {
-    Exec,
     Lifecycle,
     MutableObservableValue,
     Notifier,
     Predicates,
-    Subscription,
-    Terminable,
     Terminator
 } from "@opendaw/lib-std"
 import {NumberInput} from "@/ui/components/NumberInput.tsx"
 import {Checkbox} from "@/ui/components/Checkbox.tsx"
 import {Icon} from "@/ui/components/Icon.tsx"
-import {AudioUnitBoxAdapter, RootBoxAdapter, TrackBoxAdapter, TrackType} from "@opendaw/studio-adapters"
+import {AudioUnitBoxAdapter, TrackType} from "@opendaw/studio-adapters"
 import {RadioGroup} from "@/ui/components/RadioGroup.tsx"
 import {EditWrapper} from "@/ui/wrapper/EditWrapper.ts"
 import {Colors, IconSymbol} from "@opendaw/studio-enums"
@@ -38,7 +35,7 @@ export const PianoModePanel = ({lifecycle, service}: Construct) => {
     const pianoMode = rootBoxAdapter.pianoMode
     const {keyboard, timeRangeInQuarters, noteScale, noteLabels, transpose} = pianoMode
     const updateNotifier = lifecycle.own(new Notifier<void>())
-    const notify = deferNextFrame(() => updateNotifier.notify())
+    const notify = lifecycle.own(deferNextFrame(() => updateNotifier.notify()))
     const tracksHeader: HTMLElement = (
         <Group>
             <span style={{color: Colors.blue.toString()}}>Tracks:</span>
@@ -48,49 +45,57 @@ export const PianoModePanel = ({lifecycle, service}: Construct) => {
     const noMidiTrackMessage: HTMLElement = (
         <div className="no-midi-track-label">No midi track available</div>
     )
-    // Quick and dirty solution. We just listen to all tracks and unsubscribe and relisten to a new situation
-    const subscribeExcludePianoModeAll = (rootBoxAdapter: RootBoxAdapter, anyUpdate: Exec): Terminable => {
-        const terminator = new Terminator()
-        let anyEnabled = false
+    const trackControls: HTMLElement = <Group/>
+    const rosterOwner = lifecycle.own(new Terminator())
+    const refreshRoster = () => {
+        rosterOwner.terminate()
         let anyAvailable = false
-        terminator.own(rootBoxAdapter.audioUnits.catchupAndSubscribe({
-            onAdd: (audioUnitBoxAdapter: AudioUnitBoxAdapter) =>
-                terminator.own(audioUnitBoxAdapter.tracks.catchupAndSubscribe({
-                    onAdd: (adapter: TrackBoxAdapter) => {
-                        if (adapter.type === TrackType.Notes) {
-                            const {box: {excludePianoMode}} = adapter
-                            terminator.own(excludePianoMode.subscribe(anyUpdate))
-                            if (!excludePianoMode.getValue()) {
-                                anyEnabled = true
-                            }
-                            anyAvailable = true
-                        }
-                    },
-                    onRemove: anyUpdate,
-                    onReorder: anyUpdate
-                })),
-            onRemove: () => anyUpdate,
-            onReorder: () => anyUpdate
-        }))
+        let anyEnabled = false
+        const controls = rootBoxAdapter.audioUnits.adapters().flatMap(audioUnit => {
+            return audioUnit.tracks.values().filter(track => track.type === TrackType.Notes)
+                .map((track, index, array) => {
+                    anyAvailable = true
+                    if (!track.box.excludePianoMode.getValue()) {anyEnabled = true}
+                    rosterOwner.own(track.box.excludePianoMode.subscribe(refreshRoster))
+                    return <Group>
+                        <span>{array.length === 1 ? audioUnit.label : `${audioUnit.label} (${index + 1})`}</span>
+                        <Checkbox lifecycle={rosterOwner}
+                                  model={EditWrapper.forValue(editing,
+                                      MutableObservableValue.inverseBoolean(track.box.excludePianoMode))}>
+                            <Icon symbol={IconSymbol.Checkbox}/>
+                        </Checkbox>
+                    </Group>
+                })
+        })
+        replaceChildren(trackControls, controls)
         tracksHeader.classList.toggle("hidden", !anyAvailable)
         noMidiTrackMessage.classList.toggle("hidden", anyEnabled)
-        return terminator
+        notify.request()
     }
-    let excludePianoModeSubscription: Subscription = Terminable.Empty
-    const subscribeExcludePianoMode = () => {
-        excludePianoModeSubscription = subscribeExcludePianoModeAll(rootBoxAdapter, () => {
-            excludePianoModeSubscription.terminate()
-            subscribeExcludePianoMode()
-            notify.request()
-        })
-    }
-    subscribeExcludePianoMode()
+    const membershipOwner = lifecycle.own(new Terminator())
+    const unitOwners = new Map<AudioUnitBoxAdapter, Terminator>()
+    lifecycle.own(rootBoxAdapter.audioUnits.catchupAndSubscribe({
+        onAdd: audioUnit => {
+            const owner = membershipOwner.spawn()
+            unitOwners.set(audioUnit, owner)
+            owner.own(audioUnit.tracks.collection.subscribe({
+                onAdd: refreshRoster, onRemove: refreshRoster, onReorder: refreshRoster
+            }))
+            refreshRoster()
+        },
+        onRemove: audioUnit => {
+            unitOwners.get(audioUnit)?.terminate()
+            unitOwners.delete(audioUnit)
+            refreshRoster()
+        },
+        onReorder: refreshRoster
+    }))
+    refreshRoster()
     const shortcuts = ShortcutManager.get().createContext(Predicates.alwaysTrue, "PianoPanel")
     const engine = project.engine
     lifecycle.ownAll(
         position.subscribe(notify.request),
         pianoMode.subscribe(notify.request),
-        excludePianoModeSubscription,
         shortcuts,
         shortcuts.register(PianoPanelShortcuts["position-increment"].shortcut, () => {
             if (!engine.isPlaying.getValue()) {
@@ -137,25 +142,7 @@ export const PianoModePanel = ({lifecycle, service}: Construct) => {
                         <Icon symbol={IconSymbol.Checkbox}/>
                     </Checkbox>
                     {tracksHeader}
-                    {
-                        rootBoxAdapter.audioUnits.adapters()
-                            .flatMap(audioUnitBoxAdapter => audioUnitBoxAdapter.tracks.values()
-                                .filter(track => track.type === TrackType.Notes)
-                                .map((track, index, array) => (
-                                    <Group>
-                                        <span>{
-                                            // TODO This list will not scale (scroll) and isn't very well designed
-                                            array.length === 1
-                                                ? audioUnitBoxAdapter.label
-                                                : `${(audioUnitBoxAdapter.label)} (${index + 1})`}</span>
-                                        <Checkbox lifecycle={lifecycle}
-                                                  model={EditWrapper.forValue(editing,
-                                                      MutableObservableValue.inverseBoolean(track.box.excludePianoMode))}>
-                                            <Icon symbol={IconSymbol.Checkbox}/>
-                                        </Checkbox>
-                                    </Group>
-                                )))
-                    }
+                    {trackControls}
                 </Group>
             </div>
             {noMidiTrackMessage}

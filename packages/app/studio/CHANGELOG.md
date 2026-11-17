@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Follow current piano track/unit membership and order, retiring current controls and subscriptions on replacement and close.
+
 - Keep native duration, time base and source waveform offset when converting audio regions to clips.
 
 - Preserve stored signature events on base-meter edits while playback is disabled; refuse occupied snapped insertion boundaries without changing the map.
