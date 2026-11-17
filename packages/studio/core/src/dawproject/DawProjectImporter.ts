@@ -74,6 +74,8 @@ import {
     AudioUnitOrdering,
     CaptureBox,
     ColorCodes,
+    DeviceBox,
+    DeviceBoxUtils,
     InstrumentBox,
     InstrumentFactories,
     InterpolationFieldAdapter,
@@ -81,6 +83,7 @@ import {
     TrackType
 } from "@opendaw/studio-adapters"
 import {DawProject} from "./DawProject"
+import {DeviceIO} from "./DeviceIO"
 import {BuiltinDevices} from "./BuiltinDevices"
 import {AudioContentHelpers} from "../project/audio/AudioContentHelpers"
 
@@ -104,6 +107,15 @@ export namespace DawProjectImport {
         if (contentType === "audio") return Option.wrap(CaptureAudioBox.create(boxGraph, UUID.generate()))
         if (contentType === "notes") return Option.wrap(CaptureMidiBox.create(boxGraph, UUID.generate()))
         return Option.None
+    }
+    const clipFades = (clip: ClipSchema) => {
+        assert(clip.playStop === undefined, "Unsupported clip playStop: explicit source stop windows cannot be imported")
+        const fadeIn = clip.fadeInTime ?? 0, fadeOut = clip.fadeOutTime ?? 0
+        assert([fadeIn, fadeOut].every(value => Number.isFinite(value) && value >= 0 && value <= (clip.duration ?? 0)),
+            "Unsupported clip fade extent: expected finite nonnegative durations within the clip")
+        assert((fadeIn === 0 && fadeOut === 0) || clip.fadeTimeUnit === "beats",
+            "Unsupported clip fade time unit: nonzero fades require explicit beats")
+        return {fadeIn, fadeOut}
     }
     const noteCoordinates = (clip: ClipSchema) => {
         const position = asDefined(clip.time, "Time not defined")
@@ -168,11 +180,19 @@ export namespace DawProjectImport {
             assert(content.clips.length === 1 && content.clips[0].content?.length === 1,
                 "Unsupported nested Clips: expected one clip with one content")
             // The supported wrapper uses the outer clip's playback coordinates.
+            const nestedFades = clipFades(content.clips[0])
+            assert(nestedFades.fadeIn === 0 && nestedFades.fadeOut === 0, "Unsupported nested clip fades: only the outer playback envelope is supported")
             const nestedUnit = content.clips[0].contentTimeUnit ?? unit
             requireBeats(nestedUnit)
             validateContent(clip, asDefined(content.clips[0].content)[0], nestedUnit)
         } else if (isInstanceOf(content, NotesSchema)) {
+            const {fadeIn, fadeOut} = clipFades(clip)
+            assert(fadeIn === 0 && fadeOut === 0, "Unsupported note clip fade")
             noteCoordinates(clip)
+        } else if (isInstanceOf(content, LanesSchema)) {
+            validateTimeline(content, unit)
+        } else if (isInstanceOf(content, PointsSchema)) {
+            assert((content.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(content, WarpsSchema)) {
             const sourceUnit = content.contentTimeUnit ?? "seconds"
             assert(sourceUnit === "seconds", "Unsupported warp source time unit: expected seconds")
@@ -190,8 +210,11 @@ export namespace DawProjectImport {
         requireBeats(unit)
         if (isInstanceOf(timeline, LanesSchema)) {
             timeline.lanes?.forEach(child => validateTimeline(child, unit))
+        } else if (isInstanceOf(timeline, PointsSchema)) {
+            assert((timeline.points?.length ?? 0) === 0, "Unsupported parameter automation lane: parameter targets are not imported")
         } else if (isInstanceOf(timeline, ClipsSchema)) {
             timeline.clips.forEach(clip => {
+                clipFades(clip)
                 const contentUnit = clip.contentTimeUnit ?? unit
                 requireBeats(contentUnit)
                 clip.content?.forEach(content => validateContent(clip, content, contentUnit))
@@ -201,8 +224,48 @@ export namespace DawProjectImport {
 
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
         if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes)}
-        if (schema.arrangement?.tempoAutomation !== undefined) {validateTimeline(schema.arrangement.tempoAutomation)}
-        if (schema.arrangement?.timeSignatureAutomation !== undefined) {validateTimeline(schema.arrangement.timeSignatureAutomation)}
+        if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
+        if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
+        const nativeStates = new Map<DeviceSchema, ArrayBuffer>()
+        const validateNative = (tracks: ReadonlyArray<LaneSchema>): void => tracks.forEach(track => {
+            if (!isInstanceOf(track, TrackSchema)) {return}
+            track.channel?.devices?.forEach(device => {
+                if (device.deviceVendor !== "openDAW") {return}
+                try {
+                    const channel = asDefined(track.channel)
+                    const regular = channel.role === ChannelRole.REGULAR
+                    // Earlier openDAW exports wrote the structural AudioBusBox of every bus channel as a
+                    // native instrument. Bus channels are rebuilt from their channel role, so skip it.
+                    if (!regular && device.deviceRole === DeviceRole.INSTRUMENT && device.deviceID === "AudioBusBox") {return}
+                    assert(device.deviceRole === DeviceRole.AUDIO_FX || regular,
+                        "Native device role is unsupported on this channel")
+                    assert(device.deviceRole !== DeviceRole.INSTRUMENT
+                        || channel.devices?.filter(entry => entry.deviceRole === DeviceRole.INSTRUMENT).length === 1,
+                    "Multiple native instruments are unsupported")
+                    const path = asDefined(device.state?.path, "Missing native state")
+                    const buffer = resources.fromPath(path).buffer
+                    const temporary = ProjectSkeleton.empty({createOutputMaximizer: false, createDefaultUser: true})
+                    const graph = temporary.boxGraph
+                    graph.beginTransaction()
+                    const unit = AudioUnitBox.create(graph, UUID.generate(), box => box.collection.refer(temporary.mandatoryBoxes.rootBox.audioUnits))
+                    const host = device.deviceRole === DeviceRole.INSTRUMENT ? unit.input
+                        : device.deviceRole === DeviceRole.AUDIO_FX ? unit.audioEffects : unit.midiEffects
+                    const restored = DeviceIO.importDevice(graph, buffer, host)
+                    const expected = device.deviceRole === DeviceRole.INSTRUMENT ? "instrument"
+                        : device.deviceRole === DeviceRole.AUDIO_FX ? "audio-effect"
+                            : device.deviceRole === DeviceRole.NOTE_FX ? "midi-effect" : undefined
+                    assert(expected !== undefined && restored.tags.deviceType === expected && restored.name === device.deviceID,
+                        "Native device identity or role mismatch")
+                    graph.endTransaction()
+                    graph.verifyPointers()
+                    nativeStates.set(device, buffer)
+                } catch {
+                    throw new Error("Unsupported native device state: invalid state, external pointers or dependent resources; no substitute sound was imported")
+                }
+            })
+            validateNative(track.tracks ?? [])
+        })
+        validateNative(schema.structure)
         const boxGraph = new BoxGraph<BoxIO.TypeMap>(Option.wrap(BoxIO.create))
         boxGraph.beginTransaction()
 
@@ -246,21 +309,16 @@ export namespace DawProjectImport {
         const createEffect = (device: DeviceSchema,
                               field: Field<Pointers.MIDIEffectHost> | Field<Pointers.AudioEffectHost>,
                               index: int): unknown => {
-            const {deviceRole, deviceVendor, deviceID, deviceName, state} = device
+            const {deviceRole, deviceVendor, deviceID, deviceName} = device
             assert(deviceRole === DeviceRole.NOTE_FX || deviceRole === DeviceRole.AUDIO_FX, "Device is not an effect")
-            /*
-             TODO There is a bug in this if branch, which results in an invalid host pointer
-             if (deviceVendor === "openDAW") {
-                console.debug(`Recreate openDAW effect device '${deviceName}' with id '${deviceID}'`)
-                const resource = ifDefined(state?.path, path => resources.fromPath(path))
-                if (isDefined(resource)) {
-                    const device = DeviceIO.importDevice(boxGraph, resource.buffer)
-                    device.host.refer(field)
-                    device.label.setValue(deviceName ?? "")
-                    DeviceBoxUtils.lookupIndexField(device).setValue(index)
-                    return
-                }
-            }*/
+            const native = nativeStates.get(device)
+            if (native !== undefined) {
+                const restored = DeviceIO.importDevice(boxGraph, native, field)
+                restored.label.setValue(deviceName ?? "")
+                restored.enabled.setValue(device.enabled?.value !== false)
+                DeviceBoxUtils.lookupIndexField(restored).setValue(index)
+                return restored
+            }
             if (isInstanceOf(device, EqualizerSchema)) {
                 return BuiltinDevices.equalizer(boxGraph, device, field, index)
             }
@@ -285,12 +343,11 @@ export namespace DawProjectImport {
 
         const createSends = (audioUnitBox: AudioUnitBox, sends: ReadonlyArray<SendSchema>) => {
             sends
-                // bitwig does not set enabled if it is enabled 🤥
-                .filter((send) => isUndefined(send?.enable?.value) || send.enable.value)
                 .forEach((send, index) => {
                     const destination = asDefined(send.destination, "destination is undefined")
                     const auxSendBox = AuxSendBox.create(boxGraph, UUID.generate(), box => {
                         const type = send.type as Maybe<SendType>
+                        box.enabled.setValue(send.enable?.value !== false)
                         box.routing.setValue(type === SendType.PRE ? AudioSendRouting.Pre : AudioSendRouting.Post)
                         box.sendGain.setValue(gainToDb(send.volume?.value ?? 1.0)) // TODO Take unit into account
                         box.sendPan.setValue(ValueMapping.bipolar().y(send.pan?.value ?? 0.5)) // TODO Take unit into account
@@ -305,22 +362,14 @@ export namespace DawProjectImport {
         const createInstrumentBox = (audioUnitBox: AudioUnitBox,
                                      track: TrackSchema,
                                      device: Maybe<DeviceSchema>): InstrumentBox => {
-            /*
-            TODO There is a bug in this if branch, which results in an invalid host pointer
-            if (isDefined(device)) {
-                const {deviceName, deviceVendor, deviceID, state} = device
-                if (deviceVendor === "openDAW") {
-                    console.debug(`Recreate openDAW instrument device '${deviceName}' with id '${deviceID}'`)
-                    const resource = ifDefined(state?.path, path => resources.fromPath(path))
-                    if (isDefined(resource)) {
-                        const device = DeviceIO.importDevice(boxGraph, resource.buffer)
-                        device.host.refer(audioUnitBox.input)
-                        device.label.setValue(deviceName ?? "")
-                        assert(DeviceBoxUtils.isInstrumentDeviceBox(device), `${device.name} is not an instrument`)
-                        return device as InstrumentBox
-                    }
-                }
-            }*/
+            const native = isDefined(device) ? nativeStates.get(device) : undefined
+            if (native !== undefined) {
+                const restored: DeviceBox = DeviceIO.importDevice(boxGraph, native, audioUnitBox.input)
+                assert(DeviceBoxUtils.isInstrumentDeviceBox(restored), "Native device is not an instrument")
+                restored.label.setValue(device?.deviceName ?? "")
+                restored.enabled.setValue(device?.enabled?.value !== false)
+                return restored as InstrumentBox
+            }
             if (track.contentType === "notes") {
                 return InstrumentFactories.Vaporisateur
                     .create(boxGraph, audioUnitBox.input, track.name ?? "", IconSymbol.Piano)
@@ -543,6 +592,11 @@ export namespace DawProjectImport {
                     box.label.setValue(clip.name ?? "")
                     box.loopOffset.setValue(playStart * PPQN.Quarter)
                     box.loopDuration.setValue(loopDurationInPulses)
+                    const {fadeIn, fadeOut} = clipFades(clip)
+                    box.fading.in.setValue(fadeIn * PPQN.Quarter)
+                    box.fading.out.setValue(fadeOut * PPQN.Quarter)
+                    box.fading.inSlope.setValue(0.5)
+                    box.fading.outSlope.setValue(0.5)
                     box.mute.setValue(clip.enable === false)
                     box.regions.refer(trackBox.regions)
                     box.file.refer(audioFileBox)

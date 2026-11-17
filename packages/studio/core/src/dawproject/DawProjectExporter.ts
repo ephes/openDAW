@@ -26,6 +26,8 @@ import {
     ProjectSchema,
     RealParameterSchema,
     RealPointSchema,
+    SendSchema,
+    SendType,
     TempoAutomationConverter,
     TimelineSchema,
     TimeSignatureParameterSchema,
@@ -37,7 +39,7 @@ import {
     WarpSchema,
     WarpsSchema
 } from "@opendaw/lib-dawproject"
-import {AudioUnitType} from "@opendaw/studio-enums"
+import {AudioSendRouting, AudioUnitType} from "@opendaw/studio-enums"
 import {
     AudioFileBox,
     AudioPitchStretchBox,
@@ -45,6 +47,7 @@ import {
     WarpMarkerBox,
     AudioRegionBox,
     AudioUnitBox,
+    AuxSendBox,
     BoxVisitor,
     NoteEventBox,
     NoteEventCollectionBox,
@@ -70,6 +73,43 @@ export namespace DawProjectExporter {
         const audioUnits: ReadonlyArray<AudioUnitBox> = rootBox.audioUnits.pointerHub.incoming()
             .map(({box}) => asInstanceOf(box, AudioUnitBox))
             .sort((a, b) => a.index.getValue() - b.index.getValue())
+        // Admit source coordinates before publishing any media or device state.
+        boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
+            visitNoteEventBox: note => {
+                assert(note.playCount.getValue() === 1 && note.playCurve.getValue() === 0
+                    && note.cent.getValue() === 0 && note.chance.getValue() === 100
+                    && !note.pointerHub.incoming().some(({box}) => box.name === "NoteEventRepeatBox"),
+                "Unsupported expressive note: ratchets, detune, chance or repeat features cannot be exported")
+            },
+            visitValueRegionBox: region => {
+                assert(region.events.targetVertex.mapOr(vertex =>
+                    asInstanceOf(vertex.box, ValueEventCollectionBox).events.pointerHub.incoming().length === 0, true),
+                "Unsupported parameter automation region: DAWproject parameter targets are not exported")
+            },
+            visitNoteClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
+            visitAudioClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
+            visitValueClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
+            visitNoteRegionBox: region => {
+                assert(region.eventOffset.getValue() === 0, "Unsupported note event offset: copy notes to a new region before export")
+                assert(region.loopOffset.getValue() >= 0 && region.loopOffset.getValue() < region.loopDuration.getValue(),
+                    "Unsupported note export playback window")
+            },
+            visitAudioRegionBox: region => {
+                assert(region.gain.getValue() === 0, "Unsupported audio gain: render region gain before export")
+                const fadeIn = region.fading.in.getValue(), fadeOut = region.fading.out.getValue()
+                const duration = region.timeBase.getValue() === TimeBase.Seconds
+                    ? PPQN.secondsToPulses(region.duration.getValue(), timelineBox.bpm.getValue())
+                    : region.duration.getValue()
+                assert([fadeIn, fadeOut].every(value => Number.isFinite(value) && value >= 0 && value <= duration),
+                    "Unsupported audio fade extent")
+                assert((fadeIn === 0 || region.fading.inSlope.getValue() === 0.5)
+                    && (fadeOut === 0 || region.fading.outSlope.getValue() === 0.5),
+                "Unsupported audio fade curve: only linear fades can be exported")
+                const start = region.loopOffset.getValue(), span = region.loopDuration.getValue()
+                assert(Number.isFinite(start) && Number.isFinite(span) && span > 0 && start >= 0 && start < span,
+                    "Unsupported audio export playback window")
+            }
+        }))
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
             visitAudioFileBox: (box: AudioFileBox): void => {
                 const path = `samples/${UUID.toString(box.address.uuid)}.wav`
@@ -92,7 +132,7 @@ export namespace DawProjectExporter {
         }, TransportSchema)
 
         const writeDevices = (field: Field, deviceRole: string): ReadonlyArray<DeviceSchema> => field.pointerHub
-            .incoming().slice().sort((left, right) => {
+            .incoming().filter(({box}) => DeviceBoxUtils.isDeviceBox(box)).sort((left, right) => {
                 const leftIndex = DeviceBoxUtils.isEffectDeviceBox(left.box) ? left.box.index.getValue() : 0
                 const rightIndex = DeviceBoxUtils.isEffectDeviceBox(right.box) ? right.box.index.getValue() : 0
                 return leftIndex - rightIndex || UUID.Comparator(left.box.address.uuid, right.box.address.uuid)
@@ -176,6 +216,19 @@ export namespace DawProjectExporter {
                             ...(writeDevices(audioUnitBox.input, DeviceRole.INSTRUMENT)),
                             ...(writeDevices(audioUnitBox.audioEffects, DeviceRole.AUDIO_FX))
                         ],
+                        mute: ParameterEncoder.bool(ids.getOrCreate(audioUnitBox.mute.address), audioUnitBox.mute.getValue(), "Mute"),
+                        solo: audioUnitBox.solo.getValue(),
+                        sends: audioUnitBox.auxSends.pointerHub.incoming()
+                            .map(({box}) => asInstanceOf(box, AuxSendBox))
+                            .sort((a, b) => a.index.getValue() - b.index.getValue())
+                            .map(send => Xml.element({
+                                id: ids.getOrCreate(send.address),
+                                destination: ids.getOrCreate(send.targetBus.targetVertex.unwrap("Send has no destination").box.address),
+                                type: send.routing.getValue() === AudioSendRouting.Pre ? SendType.PRE : SendType.POST,
+                                enable: ParameterEncoder.bool(ids.getOrCreate(send.enabled.address), send.enabled.getValue(), "Enable"),
+                                volume: ParameterEncoder.linear(ids.getOrCreate(send.sendGain.address), dbToGain(send.sendGain.getValue()), 0, 2, "Volume"),
+                                pan: ParameterEncoder.normalized(ids.getOrCreate(send.sendPan.address), (send.sendPan.getValue() + 1) / 2, 0, 1, "Pan")
+                            }, SendSchema)),
                         volume: ParameterEncoder.linear(ids.getOrCreate(audioUnitBox.volume.address),
                             dbToGain(audioUnitBox.volume.getValue()), 0.0, 2.0,
                             "Volume"),
@@ -225,7 +278,10 @@ export namespace DawProjectExporter {
                     time: region.position.getValue() / PPQN.Quarter,
                     duration,
                     contentTimeUnit: TimeUnit.BEATS,
-                    playStart: region.loopOffset.getValue() / PPQN.Quarter,
+                    playStart: toBeats(region.loopOffset.getValue()),
+                    fadeTimeUnit: TimeUnit.BEATS,
+                    fadeInTime: region.fading.in.getValue() / PPQN.Quarter,
+                    fadeOutTime: region.fading.out.getValue() / PPQN.Quarter,
                     loopStart: 0.0,
                     loopEnd: toBeats(region.loopDuration.getValue()),
                     enable: !region.mute.getValue(),
@@ -248,7 +304,7 @@ export namespace DawProjectExporter {
                     time: region.position.getValue() / PPQN.Quarter,
                     duration: region.duration.getValue() / PPQN.Quarter,
                     contentTimeUnit: TimeUnit.BEATS,
-                    playStart: 0.0,
+                    playStart: region.loopOffset.getValue() / PPQN.Quarter,
                     loopStart: 0.0,
                     loopEnd: region.loopDuration.getValue() / PPQN.Quarter,
                     enable: !region.mute.getValue(),

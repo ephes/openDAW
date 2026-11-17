@@ -515,3 +515,53 @@ transaction. Unknown tags, incomplete values and trailing bytes are refused
 without applying any update from that commit. This uses the
 [bounded lib-box update decoder](../../lib/box/README.md#recovery-update-payload-admission);
 valid update-log round trips retain their existing wire format.
+
+### DAWproject playback preservation and refusals
+
+DAWproject export preserves note loop offsets and converts seconds-based audio
+source trims to beats at constant tempo. Nonzero note event offsets and invalid
+source loop windows are refused before media packing; copy notes to a new
+region when the source has a nonzero event offset.
+
+DAWproject channels retain mute and solo independently of clip mute. Auxiliary
+sends retain destination, pre/post routing, gain, pan and enable state; disabled
+sends keep their saved settings while producing silence and can be re-enabled from
+the mixer send menu. Existing projects default
+sends to enabled.
+
+DAWproject export refuses nonempty parameter automation regions and launcher
+clips (note, audio or value), before packing samples or presets. Move launcher
+content to the arrangement for interchange. Empty launcher rows and dedicated
+tempo/time-signature automation remain supported.
+
+DAWproject export refuses expressive notes with ratchets/play curves, cent detune,
+chance or repeat features. Audio region gain must be 0 dB. Linear fades (slope
+0.5) are exported in explicit beat units, with finite nonnegative extents no
+greater than the region duration. Shaped fades require rendering before export;
+inactive fade slopes do not affect admission.
+
+Native openDAW DAWproject devices with self-contained state are restored with new
+IDs and a host in the destination graph, preserving parameters, enabled state and
+effect order. State is checked in a temporary graph before constructing the
+imported project. Missing/malformed state, wrong device identity/role, external
+pointers, dependent resources, multiple instruments and unsupported native roles
+on bus channels are explicitly refused; these devices require
+rendering or removal before interchange. No replacement instrument is substituted.
+Audio buses are channels, not native instrument presets. The structural
+`AudioBusBox` instrument entries that earlier openDAW exports wrote on bus
+channels are skipped, so those files still import. Native device state contains
+only the device and the boxes it owns: selections, controller mappings and
+automation lanes that refer to the device are not exported with it. Such
+selection, controller-mapping and empty automation-lane records in earlier
+exports are dropped on import; lanes with automation events are refused. Export
+still writes the state of devices with dependent resources (for example a Nano
+with a sample) for other applications, but openDAW refuses to re-import it. Nonempty generic Points
+parameter lanes are refused before graph construction; dedicated tempo and
+time-signature automation remain supported.
+
+Explicit clip playStop windows are not representable by the current import path
+and are refused before graph construction or asset requests. Audio fades accept
+finite nonnegative extents up to the clip duration, with explicit fadeTimeUnit=beats
+for nonzero fades, and become linear region envelopes. Nonzero fades without a
+unit or in seconds, note fades and inner-wrapper fades are refused. Overlapping
+linear fades use the quieter envelope, matching local playback.

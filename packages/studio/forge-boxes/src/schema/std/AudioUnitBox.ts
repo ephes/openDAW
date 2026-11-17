@@ -110,7 +110,8 @@ export const AuxSendBox: BoxSchema<Pointers> = {
             5: {
                 type: "float32", name: "send-gain", pointerRules: ParameterPointerRules,
                 constraints: "decibel", unit: "dB"
-            }
+            },
+            7: {type: "boolean", name: "enabled", value: true}
         }
     }, pointerRules: {accepts: [Pointers.SideChain], mandatory: false}
 }

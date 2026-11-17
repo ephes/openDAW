@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add auxiliary send enabled state, defaulting to true for existing projects.
+
 - Restore baseline lint with explicit boundary types and behavior-preserving source cleanup.
 
 ## [0.0.91](https://github.com/andremichelle/openDAW/compare/@opendaw/studio-forge-boxes@0.0.90...@opendaw/studio-forge-boxes@0.0.91) (2026-05-22)

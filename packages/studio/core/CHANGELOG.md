@@ -5,6 +5,20 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep native DAWproject device export self-contained: selections, controller mappings and automation lanes no longer travel as device dependencies, so selected devices round-trip; earlier exports with such records still import unless their lanes carry automation events. Skip the structural AudioBusBox entries that earlier exports wrote on bus channels instead of refusing those files.
+
+- Refuse explicit DAWproject playStop windows before import and retain validated linear beat-based audio fades; reject unsupported fade units, note fades and invalid extents.
+
+- Restore self-contained native DAWproject device state with destination hosts; refuse unsafe/dependent state and ignored generic parameter lanes before project publication. Stop exporting buses as instrument presets.
+
+- Refuse lossy expressive-note and audio-gain/shaped-fade exports; serialize supported linear audio fades in explicit beats.
+
+- Refuse unsupported parameter automation regions and launcher clips before DAWproject export packing instead of silently dropping content.
+
+- Round-trip channel mute/solo and auxiliary send routing, gain, pan and enable state through DAWproject.
+
+- Preserve DAWproject note loop offsets and convert absolute audio source trims to beats; refuse unsupported event offsets and invalid playback windows before packing.
+
 - Refuse malformed nested recovery update payloads before opening replay transactions.
 
 - Keep sample upload promises pending until transport completion and support cancellation without automatic replay. Definite refusals (missing access key, HTTP 4xx) reject with `SampleUploadRefused` and the server reason.

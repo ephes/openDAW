@@ -40,7 +40,7 @@ export const AuxSend = ({lifecycle, editing, adapter}: Construct) => {
             }
         })
     }))
-    return (
+    const element: HTMLElement = (
         <div className={className}>
             <RelativeUnitValueDragging lifecycle={lifecycle} editing={editing} parameter={adapter.sendPan}
                                        options={SnapCenter}>
@@ -58,6 +58,9 @@ export const AuxSend = ({lifecycle, editing, adapter}: Construct) => {
                         MenuItem.default({label: "Post Fader"}),
                         MenuItem.default({label: "Pre Fader", checked: true})
                     )))
+                .addMenuItem(MenuItem.default({label: "Enabled", checked: adapter.enabledField.getValue()})
+                    .setTriggerProcedure(() => editing.modify(() =>
+                        adapter.enabledField.setValue(!adapter.enabledField.getValue()))))
                 .addMenuItem(MenuItem.default({label: `Remove Send '${adapter.targetBus.labelField.getValue()}'`})
                     .setTriggerProcedure(() => editing.modify(() => adapter.delete()))))}
                         style={{flex: "0 1 auto"}}
@@ -66,4 +69,9 @@ export const AuxSend = ({lifecycle, editing, adapter}: Construct) => {
             </MenuButton>
         </div>
     )
+    lifecycle.own(adapter.enabledField.catchupAndSubscribe(field => {
+        element.classList.toggle("disabled", !field.getValue())
+        element.title = field.getValue() ? "" : "Send disabled"
+    }))
+    return element
 }
