@@ -112,7 +112,7 @@ export class Menu implements Terminable, Lifecycle {
         this.#scrollUp = scrollUp
         this.#container = container
         this.#scrollDown = scrollDown
-        this.#openTime = Date.now()
+        this.#openTime = performance.now()
 
         this.#element.onblur = (event) => {
             const related = event.relatedTarget
@@ -198,6 +198,7 @@ export class Menu implements Terminable, Lifecycle {
     }
 
     #onPointerUp(item: MenuItem, _itemElement: HTMLElement, event: PointerEvent): void {
+        if (event.button !== 0) {return}
         event.preventDefault()
         if (this.#childMenu.isEmpty()) {
             this.root.terminate()
@@ -265,7 +266,7 @@ export class Menu implements Terminable, Lifecycle {
                     itemElement.onpointerenter = () => this.#onPointerEnter(item, itemElement)
                     itemElement.onpointerleave = (event: PointerEvent) => this.#onPointerLeave(item, itemElement, event)
                     itemElement.onpointerup = (event: PointerEvent) => {
-                        if (Date.now() - this.#openTime < Menu.MIN_TIME_MS) {return}
+                        if (performance.now() - this.#openTime < Menu.MIN_TIME_MS) {return}
                         this.#onPointerUp(item, itemElement, event)
                     }
                     return (

@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Use monotonic elapsed time for menu activation and accept only primary-button actions, preserving the 250 ms guard for each submenu.
+
 - Settle initial script load/default compile and external reload failures into the current error icon without unhandled rejections; retire stale UI callbacks on disposal, keep Compile working from the code editor after the device panel remounts, and permit explicit retry.
 
 - Draw, capture, label and drag tempo curve handles using stored BPM interpolation on logarithmic axes, consistently across viewport clipping.
