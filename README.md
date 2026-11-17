@@ -532,3 +532,6 @@ beacon retires optional reporting for that installation without an app error.
 
 See the [ownership and cache contracts](plans/scout-round130-modular-tone3000.md)
 for modular gesture transactions and synthetic validation.
+
+Menu, canvas and device-view interaction contracts and regression notes are in
+[round 134](plans/scout-round134-interactions.md).

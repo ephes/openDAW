@@ -577,3 +577,6 @@ Unknown/nonlinear axes use at most one sample per visible device pixel plus
 segment endpoints; offscreen duration does not increase sampling. Callers may
 pass `affineValueAxis=true` for a known affine axis to retain the two-endpoint
 linear path. Rendering never edits events.
+
+Menu population rollback and canvas invalidation contracts are documented in
+[round 134](../../../plans/scout-round134-interactions.md).

@@ -57,19 +57,28 @@ export const OctaveSelector = ({lifecycle, states, octave, octaveIndex}: Constru
     )
     const updateActiveState = () => element.classList.toggle("active", octave.getValue() === octaveIndex)
     let dragSwitch = Terminable.Empty
+    let hoverGeneration = 0
+    const cancelHover = () => {
+        hoverGeneration++
+        dragSwitch.terminate()
+        dragSwitch = Terminable.Empty
+        element.classList.remove("drag-over")
+    }
     lifecycle.ownAll(
+        Terminable.create(cancelHover),
         Events.subscribe(element, "click", () => octave.setValue(octaveIndex)),
         Events.subscribe(element, "dragenter", () => {
+            cancelHover()
+            const generation = hoverGeneration
             element.classList.add("drag-over")
             dragSwitch = Runtime.scheduleTimeout(() => {
-                element.classList.remove("drag-over")
+                if (generation !== hoverGeneration) {return}
+                cancelHover()
                 octave.setValue(octaveIndex)
             }, 1000)
         }),
-        Events.subscribe(element, "dragleave", () => {
-            element.classList.remove("drag-over")
-            dragSwitch.terminate()
-        }),
+        Events.subscribe(element, "dragleave", cancelHover),
+        Events.subscribe(element, "drop", cancelHover),
         octave.catchupAndSubscribe(updateActiveState)
     )
     return element

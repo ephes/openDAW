@@ -17,7 +17,7 @@ import {MenuItem, MidiDevices, Project} from "@opendaw/studio-core"
 import {MIDIOutputDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {Colors, IconSymbol} from "@opendaw/studio-enums"
 import {MIDIOutputBox, RootBox} from "@opendaw/studio-boxes"
-import {Html} from "@opendaw/lib-dom"
+import {Events, Html} from "@opendaw/lib-dom"
 import {NumberInput} from "@/ui/components/NumberInput"
 import {Checkbox} from "@/ui/components/Checkbox"
 import {Icon} from "@/ui/components/Icon"
@@ -46,10 +46,21 @@ export const DeviceSelector = ({lifecycle, project, adapter}: Construct) => {
     const {editing, rootBox} = project
     const {box: {device}, midiDevice} = adapter
     const deviceLabelClass = Inject.classList("device-label")
-    const deviceIdObserver = (requestedId: string) => {
+    let requestedId = ""
+    const refreshAvailability = () => {
         const device = MidiDevices.outputDevices().find(device => device.id === requestedId)
-        deviceLabelClass.toggle("not-available", isAbsent(device) && requestedId !== "")
+        deviceLabelClass.toggle("not-available", (isAbsent(device) || device.state !== "connected") && requestedId !== "")
     }
+    const deviceIdObserver = (id: string) => {
+        requestedId = id
+        refreshAvailability()
+    }
+    const accessSubscription = lifecycle.own(new Terminator())
+    lifecycle.own(MidiDevices.get().catchupAndSubscribe(access => {
+        accessSubscription.terminate()
+        access.ifSome(midi => accessSubscription.own(Events.subscribe(midi, "statechange", refreshAvailability)))
+        refreshAvailability()
+    }))
     const delayInMs = lifecycle.own(new DefaultObservableValue<int>(0))
     const sendTransportMessages = lifecycle.own(new DefaultObservableValue<boolean>(true))
     const deviceSubscription = lifecycle.own(new Terminator())

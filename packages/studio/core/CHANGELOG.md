@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Roll back failed runtime menu population and restore collection state; preserve canvas redraw requests raised during rendering and redraw idle canvases when device pixel ratio changes.
+
 - Render stored-value interpolation before nonlinear display mapping with visible-pixel bounded sampling; retain an explicit cheap affine linear path.
 
 - Expose atomic OPFS publication through the worker facade for complete Tone3000 pack manifests and model files.
