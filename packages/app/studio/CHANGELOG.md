@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Restore cancelled audio-editor loop resizes and waveform slips without history noise or touching concurrent edits; commit each approved gesture as one undo step. Keep audio clip loop lengths positive and write them through the clip's time base.
+
 - Keep first-party failures fatal despite injected scripts and preserve bounded diagnostics/recovery for hostile rejection values.
 
 - Light piano notes at exact onsets and loop boundaries; render invalid saved keyboard layouts with the existing default without changing project data.
