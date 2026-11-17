@@ -600,3 +600,9 @@ forward references and primary-output sends. Intentionally absent channel output
 remain disconnected. Feedback routing (including a primary send with a return
 path) is refused before native-state reads or graph construction. Supported primary
 sends retain enable, pre/post, level and pan.
+
+Child tracks are traversed under regular, effect and master parents. Each child
+retains its own declared routing and arrangement identity. Native instrument
+track kinds use the instrument's public content tag (audio/notes), including
+MIDIOutput, Apparat and Soundfont. Native state with external/dependent resources
+continues to be refused; another instrument is never substituted.

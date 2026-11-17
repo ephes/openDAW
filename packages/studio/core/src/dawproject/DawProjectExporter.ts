@@ -182,17 +182,11 @@ export namespace DawProjectExporter {
                 const isPrimary = unitType === AudioUnitType.Output
                 const isAux = unitType === AudioUnitType.Aux
                 const inputBox = audioUnitBox.input.pointerHub.incoming().at(0)?.box
-                const contentType = isPrimary ? "audio notes" // we copied that value from bitwig
-                    : isAux ? "audio" : (() =>
-                        // TODO Another location to remember to put devices in...?
-                        //  We could also read the first track type?
-                        inputBox?.accept<BoxVisitor<string>>({
-                            visitTapeDeviceBox: () => "audio",
-                            visitVaporisateurDeviceBox: () => "notes",
-                            visitNanoDeviceBox: () => "notes",
-                            visitPlayfieldDeviceBox: () => "notes",
-                            visitAudioBusBox: () => "tracks"
-                        }))() ?? undefined
+                const instrumentContent = inputBox?.tags.content
+                const contentType = isPrimary ? "audio notes" // follows the common master convention
+                    : isAux ? "audio"
+                        : instrumentContent === "audio" || instrumentContent === "notes" ? instrumentContent
+                            : inputBox?.name === "AudioBusBox" ? "tracks" : undefined
                 return Xml.element({
                     id: ids.getOrCreate(audioUnitBox.address),
                     name: DeviceBoxUtils.lookupLabelField(inputBox).getValue(),

@@ -31,3 +31,12 @@ The older EQ archive fixture declares a disabled aux self-send. Its test now
 asserts feedback refusal, then removes that send to retain the ordinary EQ import
 smoke check. Disabled/zero-gain cyclic declarations are refused too because edits
 could activate the unsupported topology.
+
+## B03: child tracks and instrument kinds
+
+Before the fix, regular/effect children failed track resolution; master children
+already worked. Independent self-contained MIDIOutput/Apparat/Soundfont presets
+imported with Undefined track type. Tests now check the full subtree, notes and
+pointers and native factory track-type agreement in import and export. Existing
+dependent-resource refusal regressions remain in the full suite.
+The same build/lint/test and browser commands are run after this bundle.

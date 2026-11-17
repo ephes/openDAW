@@ -1,13 +1,14 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
-import {FileReferenceSchema, ProjectSchema, RealPointSchema} from "@opendaw/lib-dawproject"
+import {FileReferenceSchema, ProjectSchema, RealPointSchema, TrackSchema} from "@opendaw/lib-dawproject"
 import {PPQN, ValueEvent} from "@opendaw/lib-dsp"
-import {InterpolationFieldAdapter, SampleLoaderManager, TempoGridCursor} from "@opendaw/studio-adapters"
-import {AudioUnitBox, AuxSendBox, ValueEventBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
+import {InterpolationFieldAdapter, InstrumentFactories, SampleLoaderManager, TempoGridCursor, TrackType} from "@opendaw/studio-adapters"
+import {ApparatDeviceBox, AudioUnitBox, AuxSendBox, MIDIOutputDeviceBox, NoteEventBox, NoteRegionBox, SoundfontDeviceBox, TrackBox, ValueEventBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
 import {UUID} from "@opendaw/lib-std"
 import {DawProjectImport} from "./DawProjectImporter"
 import {DawProjectExporter} from "./DawProjectExporter"
+import {DeviceIO} from "./DeviceIO"
 
 const q = PPQN.Quarter
 const notes = '<Notes><Note time="0" duration="1" key="60" channel="0"/></Notes>'
@@ -106,4 +107,34 @@ it('B02 keeps intentionally absent outputs disconnected', async () => {
     const units = skeleton.boxGraph.boxes().filter((box): box is AudioUnitBox => box instanceof AudioUnitBox && box !== skeleton.mandatoryBoxes.primaryAudioUnitBox)
     expect(units).toHaveLength(2)
     expect(units.every(box => box.output.targetVertex.isEmpty())).toBe(true)
+})
+
+const lanes = (content = notes, track = 'track') => `<Lanes><Lanes track="${track}"><Clips><Clip time="2" duration="4">${content}</Clip></Clips></Lanes></Lanes>`
+it.each(['regular', 'effect', 'master'])('B03 traverses child tracks under a %s parent', async role => {
+    const child = regular.replace('id="track"', 'id="child"').replace('id="channel"', 'id="child-channel"')
+    const parent = `<Track id="parent" contentType="${role === 'master' ? 'tracks' : 'notes'}"><Channel id="parent-channel" role="${role}" destination="master"/>${child}</Track>`
+    const {skeleton} = await read(source(lanes(notes, 'child'), parent + master))
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof AudioUnitBox)).toHaveLength(3)
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof NoteRegionBox)).toHaveLength(1)
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof NoteEventBox)).toHaveLength(1)
+    expect(() => skeleton.boxGraph.verifyPointers()).not.toThrow()
+})
+it.each([
+    ['MIDIOutput', MIDIOutputDeviceBox], ['Apparat', ApparatDeviceBox], ['Soundfont', SoundfontDeviceBox]
+] as const)('B03 uses the native %s instrument content contract in import and export', async (name, deviceType) => {
+    const {skeleton} = await read(source())
+    const {boxGraph} = skeleton
+    const unit = boxGraph.boxes().find((box): box is AudioUnitBox => box instanceof AudioUnitBox && box !== skeleton.mandatoryBoxes.primaryAudioUnitBox)!
+    boxGraph.beginTransaction()
+    unit.input.pointerHub.incoming().forEach(({box}) => box.delete())
+    const device = deviceType.create(boxGraph, UUID.generate(), box => box.host.refer(unit.input))
+    boxGraph.endTransaction()
+    buffers.set('native', DeviceIO.exportDevice(device) as ArrayBuffer)
+    const independent = regular.replace('destination="master"/>', `destination="master"><Devices><BuiltinDevice deviceVendor="openDAW" deviceID="${name}DeviceBox" deviceRole="instrument"><State path="native"/></BuiltinDevice></Devices></Channel>`)
+    const imported = (await read(source(lanes(), independent + master))).skeleton
+    expect(imported.boxGraph.boxes().filter(box => box instanceof TrackBox).map(box => box.type.getValue())).toEqual([InstrumentFactories.Named[name].trackType])
+    expect(InstrumentFactories.Named[name].trackType).toBe(TrackType.Notes)
+    const exported = write(skeleton)
+    expect((exported.structure[0] as TrackSchema).contentType).toBe('notes')
+    expect(xml(write(imported))).toContain('contentType="notes"')
 })

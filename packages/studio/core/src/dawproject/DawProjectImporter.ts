@@ -53,7 +53,6 @@ import {
     AudioUnitBox,
     AuxSendBox,
     BoxIO,
-    BoxVisitor,
     CaptureAudioBox,
     CaptureMidiBox,
     GrooveShuffleBox,
@@ -509,11 +508,11 @@ export namespace DawProjectImport {
                         ifDefined(channel.destination, destination =>
                             outputPointers.push({target: destination, pointer: audioUnitBox.output}))
                         ifDefined(channel.sends, sends => createSends(audioUnitBox, sends))
-                        readTracks(track.tracks ?? [], depth + 1)
                     }
                 } else {
                     return panic(`Unknown channel role ('${channel.role}')`)
                 }
+                readTracks(track.tracks ?? [], depth + 1)
             })
         readTracks(schema.structure, 0)
 
@@ -763,13 +762,11 @@ export namespace DawProjectImport {
 
     const readInputTrackType = (audioUnitBox: AudioUnitBox): TrackType => {
         const inputBox = audioUnitBox.input.pointerHub.incoming().at(0)?.box
-        // TODO Can we find a better way to determine the track type?
-        //  Because this would be another location to update when adding new instruments.
-        return inputBox?.accept<BoxVisitor<TrackType>>({
-            visitTapeDeviceBox: () => TrackType.Audio,
-            visitNanoDeviceBox: () => TrackType.Notes,
-            visitPlayfieldDeviceBox: () => TrackType.Notes,
-            visitVaporisateurDeviceBox: () => TrackType.Notes
-        }) ?? TrackType.Undefined
+        if (!isDefined(inputBox) || !DeviceBoxUtils.isInstrumentDeviceBox(inputBox)) {return TrackType.Undefined}
+        switch (inputBox.tags.content) {
+            case "audio": return TrackType.Audio
+            case "notes": return TrackType.Notes
+            default: return panic(`Unsupported instrument content '${inputBox.tags.content}'`)
+        }
     }
 }

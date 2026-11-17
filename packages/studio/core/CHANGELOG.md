@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Import child tracks under every admitted parent role and classify native DAWproject instrument tracks from their public content tags, including MIDIOutput, Apparat and Soundfont.
+
 - Retain primary-output DAWproject sends; preflight all declared route destinations and refuse feedback instead of dropping connections.
 
 - Preserve native BPM in DAWproject tempo import/export independently of display bounds; refuse invalid BPM before graph construction or resource packing.
