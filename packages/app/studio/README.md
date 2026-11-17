@@ -52,3 +52,14 @@ retires candidate resources and allows retry. Failed popout creation closes the
 candidate window and keeps embedded content; a failed return to embedded content
 leaves the panel minimized so it can be reopened. Binding handles act only on
 their own placeholder and can be terminated repeatedly.
+
+### Control clipboard payloads
+
+Number, timecode and text controls accept application/json only for plain objects
+with the matching openDAW app/content markers. Numbers must be finite; text must
+be a string no longer than the control's maxChars (127 by default). Invalid or
+malformed payloads do not write the model or consume native paste, preserving
+ordinary clipboard fallback. Numeric guards still run on accepted values.
+Text controls follow external model changes and accepted application pastes;
+unchanged editable text retains its text node and selection. Closing the control
+retires the model subscription.

@@ -535,3 +535,5 @@ for modular gesture transactions and synthetic validation.
 
 Menu, canvas and device-view interaction contracts and regression notes are in
 [round 134](plans/scout-round134-interactions.md).
+
+The [round 138 contracts](packages/app/studio/README.md) document audio region conversion, live piano controls, recoverable panel bindings and control clipboard admission. Binary16 rounding is specified in [lib-std](packages/lib/std/README.md); meter editing is specified in the [signature track notes](packages/app/studio/src/ui/timeline/tracks/primary/signature/README.md).

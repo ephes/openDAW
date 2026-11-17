@@ -1,6 +1,6 @@
 import {Events, Html} from "@opendaw/lib-dom"
 import css from "./TextInput.sass?inline"
-import {int, isDefined, isInstanceOf, Lifecycle, MutableObservableValue} from "@opendaw/lib-std"
+import {int, isDefined, isInstanceOf, isRecord, Lifecycle, MutableObservableValue, tryCatch} from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
 
 const defaultClassName = Html.adoptStyleSheet(css, "TextInput")
@@ -20,8 +20,12 @@ export const TextInput = ({lifecycle, model, className, maxChars}: Construct) =>
             {input}
         </div>
     )
-    const update = () => input.textContent = model.getValue()
+    const update = () => {
+        const value = model.getValue()
+        if (input.textContent !== value) {input.textContent = value}
+    }
     lifecycle.ownAll(
+        model.subscribe(update),
         Events.subscribe(element, "focusin", (event: Event) => {
             if (!isInstanceOf(event.target, HTMLElement)) {return}
             Html.selectContent(event.target)
@@ -42,8 +46,10 @@ export const TextInput = ({lifecycle, model, className, maxChars}: Construct) =>
         Events.subscribe(element, "paste", (event: ClipboardEvent) => {
             const data = event.clipboardData?.getData("application/json")
             if (isDefined(data)) {
-                const json = JSON.parse(data)
-                if (json.app === "openDAW" && json.content === "text") {
+                const {status, value: json} = tryCatch<unknown>(() => JSON.parse(data))
+                if (status === "success" && isRecord(json) && Object.getPrototypeOf(json) === Object.prototype
+                    && json.app === "openDAW" && json.content === "text"
+                    && typeof json.value === "string" && json.value.length <= maxChars) {
                     event.preventDefault()
                     model.setValue(json.value)
                 }

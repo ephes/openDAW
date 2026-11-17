@@ -114,4 +114,3 @@ it("follows added, reordered and removed audio units while the panel stays open"
     expect(controls().map(input => input.checked)).toEqual([true])
     lifecycle.terminate()
 })
-
