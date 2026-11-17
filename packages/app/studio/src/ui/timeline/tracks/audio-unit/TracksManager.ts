@@ -42,6 +42,7 @@ export class TracksManager implements Terminable {
     #currentClipModifier: Option<ClipModifier> = Option.None
     #currentRegionModifier: Option<RegionModifier> = Option.None
     #orderedByIndex: Option<ReadonlyArray<TrackContext>> = Option.None
+    #initializing: boolean = true
 
     constructor(service: StudioService, scrollContainer: Element, factory: TrackFactory) {
         this.#service = service
@@ -53,6 +54,8 @@ export class TracksManager implements Terminable {
         this.#tracks = UUID.newSet(({trackBoxAdapter: {uuid}}) => uuid)
         this.#maxClipsIndex = this.#terminator.own(new DefaultObservableValue(8))
         this.#terminator.own(this.#subscribe())
+        this.#initializing = false
+        this.#invalidateOrder()
     }
 
     startClipModifier(option: Option<ClipModifier>): Option<Dragging.Process> {
@@ -211,6 +214,7 @@ export class TracksManager implements Terminable {
 
     #invalidateOrder(): void {
         this.#orderedByIndex = Option.None
+        if (this.#initializing) {return}
         this.tracks().forEach(({trackBoxAdapter}, index) => trackBoxAdapter.listIndex = index)
     }
 
