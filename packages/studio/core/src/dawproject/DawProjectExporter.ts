@@ -75,6 +75,14 @@ export namespace DawProjectExporter {
             .sort((a, b) => a.index.getValue() - b.index.getValue())
         // Admit source coordinates before publishing any media or device state.
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
+            visitValueRegionBox: region => {
+                assert(region.events.targetVertex.mapOr(vertex =>
+                    asInstanceOf(vertex.box, ValueEventCollectionBox).events.pointerHub.incoming().length === 0, true),
+                "Unsupported parameter automation region: DAWproject parameter targets are not exported")
+            },
+            visitNoteClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
+            visitAudioClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
+            visitValueClipBox: () => {throw new Error("Unsupported launcher clip: move session content to the arrangement before export")},
             visitNoteRegionBox: region => {
                 assert(region.eventOffset.getValue() === 0, "Unsupported note event offset: consolidate the region before export")
                 assert(region.loopOffset.getValue() >= 0 && region.loopOffset.getValue() < region.loopDuration.getValue(),

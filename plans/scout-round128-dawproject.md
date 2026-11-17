@@ -10,3 +10,6 @@ NoteRegionBox.eventOffset; refuse nonzero values rather than invent semantics.
 
 B02: add backward-compatible enabled send state and honor it in the audio path.
 Channel solo uses the schema boolean attribute; mute uses BooleanParameterSchema.
+
+B03: preflight owned content before any packer writes. Retain the existing
+tempo/signature paths and arrangement-only projects.

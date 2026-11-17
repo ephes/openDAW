@@ -525,3 +525,8 @@ DAWproject channels retain mute and solo independently of clip mute. Auxiliary
 sends retain destination, pre/post routing, gain, pan and enable state; disabled
 sends keep their saved settings while producing silence. Existing projects default
 sends to enabled.
+
+DAWproject export refuses nonempty parameter automation regions and launcher
+clips (note, audio or value), before packing samples or presets. Move launcher
+content to the arrangement for interchange. Empty launcher rows and dedicated
+tempo/time-signature automation remain supported.

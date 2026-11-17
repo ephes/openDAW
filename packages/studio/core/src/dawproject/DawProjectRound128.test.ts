@@ -3,7 +3,7 @@ import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema} from "@opendaw/lib-dawproject"
 import {AudioData, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
-import {AudioRegionBox, AudioUnitBox, AuxSendBox, NoteEventBox, NoteRegionBox} from "@opendaw/studio-boxes"
+import {AudioRegionBox, AudioUnitBox, AuxSendBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
 import {Option, UUID} from "@opendaw/lib-std"
@@ -109,4 +109,41 @@ it("B02 keeps channel mute/solo independent from clip mute", async () => {
     expect((imported.boxGraph.boxes().find(box => box instanceof NoteRegionBox) as NoteRegionBox).mute.getValue()).toBe(false)
     expect(imported.mandatoryBoxes.primaryAudioUnitBox.mute.getValue()).toBe(false)
     expect(imported.mandatoryBoxes.primaryAudioUnitBox.solo.getValue()).toBe(false)
+})
+
+it("B03 refuses nonempty parameter regions before packing but keeps tempo automation", async () => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    const {boxGraph, mandatoryBoxes: {timelineBox}} = skeleton
+    boxGraph.beginTransaction()
+    const collection = ValueEventCollectionBox.create(boxGraph, UUID.generate())
+    ValueEventBox.create(boxGraph, UUID.generate(), box => {box.events.refer(collection.events); box.value.setValue(0.5)})
+    timelineBox.tempoTrack.events.refer(collection.owners)
+    timelineBox.tempoTrack.enabled.setValue(true)
+    boxGraph.endTransaction()
+    expect(xml(write(skeleton))).toContain('TempoAutomation')
+    packer.write.mockClear()
+    boxGraph.beginTransaction()
+    const unit = boxGraph.boxes().find(box => box instanceof AudioUnitBox && box.type.getValue() === AudioUnitType.Instrument) as AudioUnitBox
+    const track = TrackBox.create(boxGraph, UUID.generate(), box => {box.tracks.refer(unit.tracks); box.target.refer(unit.volume); box.type.setValue(3); box.index.setValue(1)})
+    ValueRegionBox.create(boxGraph, UUID.generate(), box => {box.regions.refer(track.regions); box.events.refer(collection.owners); box.duration.setValue(q); box.loopDuration.setValue(q)})
+    boxGraph.endTransaction()
+    expect(() => write(skeleton)).toThrow(/Unsupported parameter automation region/)
+    expect(packer.write).not.toHaveBeenCalled()
+})
+it("B03 refuses launcher clips even without arrangement regions", async () => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    const {boxGraph} = skeleton
+    boxGraph.beginTransaction()
+    boxGraph.boxes().filter(box => box instanceof NoteRegionBox).forEach(box => box.delete())
+    boxGraph.endTransaction()
+    expect(() => write(skeleton)).not.toThrow()
+    packer.write.mockClear()
+    boxGraph.beginTransaction()
+    const track = boxGraph.boxes().find(box => box instanceof TrackBox) as TrackBox
+    const collection = NoteEventCollectionBox.create(boxGraph, UUID.generate())
+    NoteEventBox.create(boxGraph, UUID.generate(), box => {box.events.refer(collection.events)})
+    NoteClipBox.create(boxGraph, UUID.generate(), box => {box.clips.refer(track.clips); box.events.refer(collection.owners); box.duration.setValue(q)})
+    boxGraph.endTransaction()
+    expect(() => write(skeleton)).toThrow(/Unsupported launcher clip/)
+    expect(packer.write).not.toHaveBeenCalled()
 })
