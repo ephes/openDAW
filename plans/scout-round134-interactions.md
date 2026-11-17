@@ -48,3 +48,16 @@ Deliberate effect-header deletion remains a single undoable graph edit with
 contiguous surviving effect indexes. Component tests use actual graph boxes,
 BoxEditing and NumberInput, with counted mounts/row subscriptions at the view
 boundary. jsdom's missing contenteditable inheritance is covered by Chromium.
+
+## Sample range and waveform loading (B04)
+
+Sample endpoint hit testing compares absolute distances while retaining the
+signed pointer-to-marker offset. Stationary grabs on either side of either
+marker preserve normal and reversed ranges; updates use the current canvas
+width, clamp to [0, 1], and retain the existing approve/cancel edit boundary.
+
+SlotEditor owns one replaceable file-loader subscription. Selecting a new file
+invalidates immediately, releases the previous loader and observes loaded peaks
+for another draw. Teardown releases the loader without changing sample data.
+The component regressions cover both handle sides, reverse ranges, near markers,
+resize, cancel/approve and out-of-order A/B completion with counted observers.

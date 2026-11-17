@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Preserve signed grab offsets when dragging sample endpoints; repaint the sample editor when its current file finishes loading and retire replaced loader subscriptions.
+
 - Retire DevicePanel selection and MIDI CC row subscriptions with their views; preserve parameter text editing, composition and handled key events when effects are selected.
 
 - Use monotonic elapsed time for menu activation and accept only primary-button actions, preserving the 250 ms guard for each submenu.

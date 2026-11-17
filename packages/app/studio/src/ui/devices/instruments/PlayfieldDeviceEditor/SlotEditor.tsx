@@ -1,6 +1,6 @@
 import css from "./SlotEditor.sass?inline"
 import {Dragging, Html} from "@opendaw/lib-dom"
-import {asDefined, clamp, Lifecycle, Option} from "@opendaw/lib-std"
+import {asDefined, clamp, Lifecycle, Option, Terminator} from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
 import {StudioService} from "@/service/StudioService.ts"
 import {Icon} from "@/ui/components/Icon"
@@ -41,6 +41,7 @@ export const SlotEditor = ({lifecycle, service, adapter}: Construct) => {
     const playbackContext: CanvasRenderingContext2D = asDefined(playbackCanvas.getContext("2d"))
     const waveformPainter = new CanvasPainter(waveformCanvas, painter =>
         SlotUtils.waveform(painter, adapter, adapter.indexField.getValue() % 12, true))
+    const fileLifecycle = lifecycle.own(new Terminator())
     const sampleSelector = new SampleSelector(service, SampleSelectStrategy.forPointerField(adapter.box.file))
     const createParameterLabel = (parameter: AutomatableParameterFieldAdapter) => (
         <div className="parameter-label">
@@ -68,21 +69,23 @@ export const SlotEditor = ({lifecycle, service, adapter}: Construct) => {
             const {left, width} = waveformCanvas.getBoundingClientRect()
             const dl = clientX - (left + sampleStart.getValue() * width)
             const dr = clientX - (left + sampleEnd.getValue() * width)
-            let min = SnapValueThresholdInPixels
+            let distance = SnapValueThresholdInPixels
+            let grabOffset = 0
             let dir = 0
-            if (min > Math.abs(dl)) {
-                min = dl
+            if (distance > Math.abs(dl)) {
+                distance = Math.abs(dl)
+                grabOffset = dl
                 dir = -1
             }
-            if (Math.abs(min) > Math.abs(dr)) {
-                min = Math.abs(dr)
+            if (distance > Math.abs(dr)) {
+                grabOffset = dr
                 dir = 1
             }
             if (dir === 0) {return Option.None}
             return Option.wrap({
                 update: ({clientX}: Dragging.Event): void => {
                     const {left, width} = waveformCanvas.getBoundingClientRect()
-                    const ratio = clamp((clientX - min - left) / width, 0.0, 1.0)
+                    const ratio = clamp((clientX - grabOffset - left) / width, 0.0, 1.0)
                     editing.modify(() => {
                         if (dir === -1) {
                             sampleStart.setValue(ratio)
@@ -99,7 +102,13 @@ export const SlotEditor = ({lifecycle, service, adapter}: Construct) => {
             if (!pointer.isAttached()) {return}
             userEditingManager.audioUnit.edit(deviceAdapter.audioUnitBoxAdapter().box.editing)
         }),
-        adapter.box.file.subscribe(waveformPainter.requestUpdate),
+        adapter.box.file.catchupAndSubscribe(() => {
+            fileLifecycle.terminate()
+            waveformPainter.requestUpdate()
+            adapter.file().ifSome(file => fileLifecycle.own(file.getOrCreateLoader().subscribe(state => {
+                if (state.type === "loaded") {waveformPainter.requestUpdate()}
+            })))
+        }),
         sampleStart.subscribe(waveformPainter.requestUpdate),
         sampleEnd.subscribe(waveformPainter.requestUpdate),
         service.project.liveStreamReceiver.subscribeFloats(adapter.address, array => {
