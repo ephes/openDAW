@@ -73,11 +73,13 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         this.#terminator.own(context.boxGraph.subscribeToAllUpdatesImmediate({
             onUpdate: (update: Update) => {
                 const uuid = update.type === "new" || update.type === "delete" ? update.uuid : update.address.uuid
-                const id = UUID.toString(uuid)
-                this.#unindexBox(id)
-                context.boxGraph.findBox(uuid).ifSome(box => {
-                    if (box instanceof ValueEventBox) {this.#indexBox(box)}
-                })
+                const box = context.boxGraph.findBox(uuid).unwrapOrNull()
+                if (box instanceof ValueEventBox) {
+                    this.#indexBox(box)
+                } else if (box === null && this.#indexedBoxes.size > 0) {
+                    // Only value event boxes are indexed; any other live box is irrelevant here.
+                    this.#unindexBox(UUID.toString(uuid))
+                }
             }
         }))
         this.#terminator.own(context.boxGraph.subscribeTransaction({

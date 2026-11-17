@@ -5,9 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
-- Settle initial script load/default compile and external reload failures into the current error icon without unhandled rejections; retire stale UI callbacks on disposal and permit explicit retry.
+- Settle initial script load/default compile and external reload failures into the current error icon without unhandled rejections; retire stale UI callbacks on disposal, keep Compile working from the code editor after the device panel remounts, and permit explicit retry.
 
-- Draw, capture and drag tempo curve handles using stored BPM interpolation on logarithmic axes, consistently across viewport clipping.
+- Draw, capture, label and drag tempo curve handles using stored BPM interpolation on logarithmic axes, consistently across viewport clipping.
 
 - Restore visible automation points after failed deletion/moves and capture the nearest automation/property node; equal-distance ties retain the first candidate, with selected-note priority unchanged.
 

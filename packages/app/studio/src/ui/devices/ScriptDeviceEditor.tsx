@@ -98,8 +98,11 @@ export const ScriptDeviceEditor = ({lifecycle, service, adapter, deviceHost, con
         errorIcon.classList.toggle("hidden", message.length === 0)
         errorIcon.title = message
     }
+    // Background work stops with this UI. An explicit compile may arrive from the code
+    // editor after this device UI was disposed (opening the code screen remounts it):
+    // it still compiles and rejects to its caller, but leaves this retired UI untouched.
     const settle = async (operation: () => Promise<void>, propagate = false): Promise<void> => {
-        if (!active) {return}
+        if (!active && !propagate) {return}
         const ticket = ++request
         try {
             await operation()

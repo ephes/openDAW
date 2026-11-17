@@ -167,3 +167,19 @@ it("reports an explicit compile refusal to its caller and permits retry", async 
     expect(error.classList.contains("hidden")).toBe(true)
     f.lifecycle.terminate()
 })
+
+it("still compiles through the code handler of a disposed editor without touching its retired UI", async () => {
+    const f = setup("class Processor {}")
+    const {element, error} = f.mount()
+    await flush()
+    element.querySelector<HTMLButtonElement>("button")!.click()
+    // Opening the code screen remounts the device panel, which disposes this editor.
+    f.lifecycle.terminate()
+    await f.compile("class Processor {} // after disposal")
+    expect(f.compileCall).toHaveBeenCalledTimes(1)
+    expect(f.compileCall.mock.calls[0][3]).toBe("class Processor {} // after disposal")
+    f.compileCall.mockRejectedValueOnce(new Error("refused after disposal"))
+    await expect(f.compile("class Processor {} // bad")).rejects.toThrow("refused after disposal")
+    expect(error.classList.contains("hidden")).toBe(true)
+    expect(error.title).toBe("")
+})
