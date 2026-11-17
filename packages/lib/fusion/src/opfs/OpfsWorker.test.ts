@@ -67,6 +67,14 @@ const createMockFileSystem = () => {
         name,
         isSameEntry: async (_other: FileSystemHandle) => false,
         getFile: async () => new File([fileEntry.data.slice()], name),
+        createWritable: async () => {
+            let staged = new Uint8Array(0)
+            return {
+                write: async (data: Uint8Array) => {fail("atomic-write"); staged = data.slice()},
+                close: async () => {fail("atomic-close"); fileEntry.data = staged},
+                abort: async () => {fail("atomic-abort")}
+            }
+        },
         createSyncAccessHandle: async () => {
             maximumActive = Math.max(maximumActive, ++active)
             await opened()
@@ -479,4 +487,23 @@ it("propagates root access failures from list and delete", async () => {
     vi.stubGlobal("navigator", {storage: {getDirectory: async () => {throw error}}})
     await expect(protocol.list("projects/v1")).rejects.toBe(error)
     await expect(protocol.delete("projects/v1/project")).rejects.toBe(error)
+})
+
+describe("atomic OPFS publication", () => {
+    it.each(["atomic-write", "atomic-close"])("preserves the prior bytes on %s failure and releases the queue", async fault => {
+        await protocol.writeAtomic("pack.json", new Uint8Array([1, 2, 3]))
+        mockFs.faults.set(fault, new Error("injected publication"))
+        await expect(protocol.writeAtomic("pack.json", new Uint8Array([4, 5]))).rejects.toThrow("injected publication")
+        expect(await protocol.read("pack.json")).toEqual(new Uint8Array([1, 2, 3]))
+        mockFs.faults.clear()
+        await protocol.writeAtomic("pack.json", new Uint8Array([4, 5]))
+        expect(await protocol.read("pack.json")).toEqual(new Uint8Array([4, 5]))
+    })
+    it("writes only the admitted subview and preserves the primary failure if abort fails", async () => {
+        await protocol.writeAtomic("view.bin", new Uint8Array([1, 2, 3]).subarray(1, 2))
+        expect(await protocol.read("view.bin")).toEqual(new Uint8Array([2]))
+        mockFs.faults.set("atomic-write", new Error("primary"))
+        mockFs.faults.set("atomic-abort", new Error("cleanup"))
+        await expect(protocol.writeAtomic("view.bin", new Uint8Array([4]))).rejects.toThrow("primary")
+    })
 })

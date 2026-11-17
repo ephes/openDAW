@@ -8,7 +8,7 @@ import {NamTone3000} from "./NamTone3000"
 import {selectToneUrl} from "./ToneSelection"
 import {showTone3000Dialog} from "./Tone3000Dialog"
 
-vi.mock("@opendaw/studio-core", () => ({Workers: {Opfs: {exists: vi.fn(async () => false), read: vi.fn(), write: vi.fn(async () => {})}}}))
+vi.mock("@opendaw/studio-core", () => ({Workers: {Opfs: {exists: vi.fn(async () => false), read: vi.fn(), write: vi.fn(async () => {}), writeAtomic: vi.fn(), list: vi.fn(async () => []), delete: vi.fn(async () => {})}}}))
 vi.mock("./Tone3000Dialog", () => ({showTone3000Dialog: vi.fn(async () => {})}))
 vi.mock("./ToneSelection", () => ({selectToneUrl: vi.fn(async () => "https://example.test/tone")}))
 afterEach(() => {vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals()})
@@ -21,10 +21,12 @@ const fixture = () => {
         return NeuralAmpDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.model.refer(model)})
     }).unwrap()
     const adapter = {box} as NeuralAmpDeviceBoxAdapter
+    vi.stubGlobal("navigator", {locks: {request: async (_name: string, _options: LockOptions, callback: () => Promise<unknown>) => callback()}})
     const files = new Map<string, Uint8Array>()
     vi.mocked(Workers.Opfs.exists).mockImplementation(async path => files.has(path))
     vi.mocked(Workers.Opfs.read).mockImplementation(async path => files.get(path)!)
     vi.mocked(Workers.Opfs.write).mockImplementation(async (path, bytes) => {files.set(path, bytes)})
+    vi.mocked(Workers.Opfs.writeAtomic).mockImplementation(async (path, bytes) => {files.set(path, bytes)})
     vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL) => new Response(String(url).endsWith("tone")
         ? JSON.stringify({id: 1, title: "Synthetic", updated_at: "v1", models: [{id: 1, name: "New", size: "standard", model_url: "https://example.test/model"}]})
         : JSON.stringify({version: "0.5.4", architecture: "WaveNet", config: {}, weights: [1]}))))

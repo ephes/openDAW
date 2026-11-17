@@ -27,6 +27,23 @@ export namespace OpfsWorker {
                 })
             }
 
+            async writeAtomic(path: string, data: Uint8Array): Promise<void> {
+                await this.#acquireLock(path, async canonical => {
+                    const segments = pathToSegments(canonical)
+                    const folder = await this.#resolveFolder(segments.slice(0, -1), {create: true})
+                    const file = await folder.getFileHandle(asDefined(segments.at(-1)), {create: true})
+                    // createWritable stages bytes; close publishes the replacement atomically.
+                    const writer = await file.createWritable({keepExistingData: false})
+                    try {
+                        await writer.write(data as Uint8Array<ArrayBuffer>)
+                        await writer.close()
+                    } catch (error) {
+                        try {await writer.abort()} catch { /* Preserve the publication error. */ }
+                        throw error
+                    }
+                })
+            }
+
             async read(path: string, maxBytes = OpfsProtocol.ReadLimits.Project): Promise<Uint8Array> {
                 if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {throw new Error("Invalid OPFS read budget")}
                 return await this.#acquireLock(path, async path => {

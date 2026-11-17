@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Add FIFO-owned atomic OPFS file publication with browser staged writes; preserve prior files on write/close failure and abort failed temporary writers.
+
 - Clear per-address typed-array payload caches on stream disconnect and termination.
 
 - Bind stream handles to individual registrations across reconnects and deliver each package to a stable listener snapshot that skips listeners removed mid-frame.

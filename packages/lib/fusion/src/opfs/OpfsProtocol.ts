@@ -6,6 +6,7 @@ export namespace OpfsProtocol {
 }
 
 export interface OpfsProtocol {
+    writeAtomic(path: string, data: Uint8Array): Promise<void>
     write(path: string, data: Uint8Array): Promise<void>
     read(path: string, maxBytes?: number): Promise<Uint8Array>
     exists(path: string): Promise<boolean>

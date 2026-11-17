@@ -29,3 +29,34 @@ test("isolated selectors deliver reverse callbacks only to their owning selectio
     ])
     await expect.poll(() => popups.every(popup => popup.isClosed())).toBe(true)
 })
+
+test("modular previews, graph transactions and deferred views retain current owners", async ({page}) => {
+    await page.goto("/")
+    const result = await page.evaluate(async () => {
+        // @ts-expect-error Vite serves the synthetic fixture.
+        return (await import("/r130-modular.ts")).modularProbe()
+    })
+    expect(result.cancelled.after).toEqual(result.cancelled.before)
+    expect(result.cancelled.wiring).toBe(false)
+    expect(result.undo).toBe(true); expect(result.redo).toBe(true)
+    expect(result.remaining).toBe(3); expect(result.retired).toBe(0)
+    expect(result.livePreview).toBe(3); expect(result.afterBlur).toBe(2)
+    expect(result.removed).toBe(true)
+})
+
+test("real worker OPFS publishes complete packs and preserves the prior revision on failure", async ({page, context}) => {
+    await context.route("https://example.test/**", route => route.fulfill({
+        status: route.request().url().endsWith("v2") ? 503 : 200, contentType: "application/json",
+        headers: {"Access-Control-Allow-Origin": "*", "Cross-Origin-Resource-Policy": "cross-origin"},
+        body: JSON.stringify({version: "0.5.4", architecture: "WaveNet", config: {}, weights: [1], metadata: {name: "v1"}})
+    }))
+    await page.goto("/")
+    const result = await page.evaluate(async () => {
+        // @ts-expect-error Vite serves the synthetic fixture.
+        return (await import("/r130-opfs.ts")).opfsProbe()
+    })
+    expect(result.replacement).toEqual([5])
+    expect(result.failed).toBe(true)
+    expect(result.current).toEqual(result.prior)
+    expect(result.model).toContain("v1")
+})

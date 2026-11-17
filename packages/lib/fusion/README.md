@@ -75,3 +75,13 @@ frame, removals apply at once. See [live stream contracts](src/live-stream/READM
 
 Receiver disconnect also releases its per-address typed-array cache; reconnects
 never reuse payload arrays from an earlier connection.
+
+`writeAtomic(path, bytes)` stages a complete file with the standard browser
+`FileSystemFileHandle.createWritable` API and publishes it on successful close.
+It shares the canonical-path admission and FIFO with other OPFS operations, writes
+only the supplied subview, and aborts the staged writer on failure. It requires
+browser support for `createWritable`; absence rejects without overwriting an
+existing file. It provides a single-file publication boundary, not a multi-file
+transaction. Tone3000 writes immutable revision files before atomically publishing
+its manifest, so an interrupted staged update preserves the previous complete
+pack. Ordinary `write` remains an in-place write.

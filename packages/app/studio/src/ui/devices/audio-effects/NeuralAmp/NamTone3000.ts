@@ -8,14 +8,15 @@ import {Workers} from "@opendaw/studio-core"
 import {selectToneUrl} from "./ToneSelection"
 import {showTone3000Dialog} from "./Tone3000Dialog"
 
-type ToneModel = { id: number, name: string, size: string, model_url: string }
-type ToneResponse = { id: number, title: string, updated_at: string, models: ReadonlyArray<ToneModel> }
+import {admitModel, admitTone, downloadModel, fetchTone, ToneResponse, ToneTransferLimits} from "./ToneTransfer"
+export {downloadModel, fetchTone} from "./ToneTransfer"
 
 export type PackMeta = {
     toneId: number
     title: string
     updatedAt: string
     cacheRevision?: string
+    cacheFormat?: 1
     models: ReadonlyArray<{ id: number, name: string, size: string, model_url: string }>
 }
 
@@ -28,24 +29,19 @@ const readPackId = (packId: string): number => {
     return Number(packId)
 }
 
-const fetchTone = async (toneUrl: string): Promise<ToneResponse> => {
-    const response = await fetch(toneUrl)
-    if (!response.ok) {throw new Error(`Failed to fetch tone: ${response.status}`)}
-    return response.json()
-}
-
-const downloadModel = async (modelUrl: string, signal?: AbortSignal): Promise<string> => {
-    const response = await fetch(modelUrl, signal ? {signal} : undefined)
-    if (!response.ok) {throw new Error(`Failed to download model: ${response.status}`)}
-    return response.text()
-}
-
-const readPackMeta = async (toneId: number): Promise<PackMeta | null> => {
+const readPackMeta = async (toneId: number, requireComplete = true): Promise<PackMeta | null> => {
     const path = packMetaPath(toneId)
     if (!await Workers.Opfs.exists(path)) {return null}
     const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Metadata)
     const meta: PackMeta = JSON.parse(new TextDecoder().decode(bytes))
+    const admitted = admitTone({id: meta?.toneId, title: meta?.title, updated_at: meta?.updatedAt, models: meta?.models})
+    if (admitted.id !== toneId) {throw new Error("Mismatched cached pack")}
+    if (meta.cacheFormat !== undefined && meta.cacheFormat !== 1) {throw new Error("Unsupported cached pack")}
+    if (meta.cacheFormat === 1 && !meta.cacheRevision) {throw new Error("Missing cached pack revision")}
     if (meta.cacheRevision !== undefined && !UUID.validateString(meta.cacheRevision)) {throw new Error("Invalid cache revision")}
+    if (requireComplete && meta.cacheFormat === 1 && !await Workers.Opfs.exists(modelPath(toneId, meta.cacheRevision!, pickDefaultModel(meta).id))) {
+        throw new Error("Incomplete cached pack — re-select pack to recover")
+    }
     return meta
 }
 
@@ -61,7 +57,7 @@ export const readModelFromPack = async (packId: string, modelId: number, signal?
     if (meta === null) {throw new Error("Pack metadata not found")}
     const entry = meta.models.find(entry => entry.id === modelId)
     if (!isDefined(entry)) {throw new Error("Model not in pack")}
-    const path = meta.cacheRevision ? modelPath(toneId, meta.cacheRevision, modelId) : null
+    const path = meta.cacheFormat === 1 && meta.cacheRevision ? modelPath(toneId, meta.cacheRevision, modelId) : null
     const checkRevision = async () => {
         signal?.throwIfAborted()
         const current = await readPackMeta(toneId)
@@ -69,39 +65,64 @@ export const readModelFromPack = async (packId: string, modelId: number, signal?
         signal?.throwIfAborted()
     }
     if (path !== null && await Workers.Opfs.exists(path)) {
-        const bytes = await Workers.Opfs.read(path, OpfsProtocol.ReadLimits.Media)
+        const bytes = await Workers.Opfs.read(path, ToneTransferLimits.Model)
         await checkRevision()
-        return new TextDecoder().decode(bytes)
+        return admitModel(new TextDecoder("utf-8", {fatal: true}).decode(bytes))
     }
     if (entry.model_url.length === 0) {throw new Error("Model URL not available — re-select pack to refresh URLs")}
     const text = await downloadModel(entry.model_url, signal)
     await checkRevision()
-    if (path !== null) {await Workers.Opfs.write(path, new TextEncoder().encode(text))}
+    if (path !== null) {
+        await navigator.locks.request(`opendaw:tone3000:${toneId}`, {signal}, async () => {
+            await checkRevision()
+            await Workers.Opfs.writeAtomic(path, new TextEncoder().encode(text))
+        })
+    }
     await checkRevision()
     return text
 }
 
-export const storePackToOpfs = async (tone: ToneResponse, signal?: AbortSignal): Promise<PackMeta> => {
-    const toneId = tone.id
-    const existingMeta = await readPackMeta(toneId)
-    const meta: PackMeta = {
-        toneId,
-        title: tone.title,
-        updatedAt: tone.updated_at,
-        cacheRevision: existingMeta?.updatedAt === tone.updated_at && existingMeta.cacheRevision
-            ? existingMeta.cacheRevision : crypto.randomUUID(),
-        models: tone.models.map(model => ({
-            id: model.id, name: model.name, size: model.size, model_url: model.model_url
-        }))
-    }
-    signal?.throwIfAborted()
-    await Workers.Opfs.write(packMetaPath(toneId), new TextEncoder().encode(JSON.stringify(meta)))
-    const defaultModel = pickDefaultModel(meta)
-    if (!await Workers.Opfs.exists(modelPath(toneId, meta.cacheRevision!, defaultModel.id))) {
-        const text = await downloadModel(defaultModel.model_url, signal)
-        await Workers.Opfs.write(modelPath(toneId, meta.cacheRevision!, defaultModel.id), new TextEncoder().encode(text))
-    }
-    return meta
+export const storePackToOpfs = async (input: ToneResponse, signal?: AbortSignal): Promise<PackMeta> => {
+    const tone = admitTone(input)
+    return navigator.locks.request(`opendaw:tone3000:${tone.id}`, {signal}, async () => {
+        signal?.throwIfAborted()
+        const existingMeta = await readPackMeta(tone.id, false)
+        const revisions = `${packPath(tone.id)}/revisions`
+        // Only the current complete revision survives recovery; abandoned staging
+        // is removed before allocating another revision, under an origin-wide lock.
+        for (const entry of await Workers.Opfs.list(revisions)) {
+            if (entry.kind === "directory" && entry.name !== existingMeta?.cacheRevision) {
+                await Workers.Opfs.delete(`${revisions}/${entry.name}`)
+            }
+        }
+        const same = existingMeta?.cacheFormat === 1 && existingMeta.updatedAt === tone.updated_at
+        const revision = same ? existingMeta.cacheRevision! : crypto.randomUUID()
+        const meta: PackMeta = {toneId: tone.id, title: tone.title, updatedAt: tone.updated_at,
+            cacheRevision: revision, cacheFormat: 1, models: tone.models}
+        const defaultModel = pickDefaultModel(meta)
+        const manifest = new TextEncoder().encode(JSON.stringify(meta))
+        if (manifest.byteLength > ToneTransferLimits.Metadata) {throw new Error("Tone3000 metadata byte limit exceeded")}
+        try {
+            const path = modelPath(tone.id, revision, defaultModel.id)
+            if (!same || !await Workers.Opfs.exists(path)) {
+                const data = await downloadModel(defaultModel.model_url, signal)
+                signal?.throwIfAborted()
+                await Workers.Opfs.writeAtomic(path, new TextEncoder().encode(data))
+            }
+            signal?.throwIfAborted()
+            await Workers.Opfs.writeAtomic(packMetaPath(tone.id), manifest)
+            return meta
+        } catch (error) {
+            // A close failure may have published. Never delete a potentially
+            // current complete revision; a future attempt recovers unused staging.
+            try {
+                if (!same && (await readPackMeta(tone.id, false))?.cacheRevision !== revision) {
+                    await Workers.Opfs.delete(`${revisions}/${revision}`)
+                }
+            } catch { /* Keep uncertain bytes for recovery under the next lock. */ }
+            throw error
+        }
+    })
 }
 
 const pickDefaultModel = (meta: PackMeta): PackMeta["models"][number] => {
@@ -111,7 +132,7 @@ const pickDefaultModel = (meta: PackMeta): PackMeta["models"][number] => {
 
 export const scanCachedModels = async (packId: string, meta: PackMeta): Promise<ReadonlySet<number>> => {
     const toneId = readPackId(packId)
-    if (!meta.cacheRevision) {return new Set()}
+    if (meta.cacheFormat !== 1 || !meta.cacheRevision) {return new Set()}
     const entries = await Workers.Opfs.list(`${packPath(toneId)}/revisions/${meta.cacheRevision}/models`)
         .catch(() => [] as ReadonlyArray<{name: string, kind: string}>)
     const fileNames = new Set(entries.filter(entry => entry.kind === "file").map(entry => entry.name))
@@ -152,7 +173,7 @@ export namespace NamTone3000 {
                 checkOwner()
                 const toneUrl = await selectToneUrl(ownerSignal)
                 checkOwner()
-                const tone = await fetchTone(toneUrl)
+                const tone = await fetchTone(toneUrl, ownerSignal)
                 checkOwner()
                 if (tone.models.length === 0) {return}
                 const meta = await storePackToOpfs(tone, ownerSignal)

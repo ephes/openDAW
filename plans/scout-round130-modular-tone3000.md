@@ -60,3 +60,64 @@ An unchanged revision retains cache hits. Legacy unversioned model files are
 never trusted as current: reselect the pack online to establish its revision.
 Existing project-embedded models continue to work offline. Legacy metadata may
 still supply download URLs, but legacy bytes are not promoted into the new cache.
+
+## Complete pack publication and recovery
+
+Pack writers share an origin-wide Web Lock per tone ID. A new revision stages
+its validated default model first, then atomically replaces `pack.json` last.
+`OpfsProtocol.writeAtomic` uses the browser's `createWritable` swap-on-close API,
+inside the existing worker FIFO; failed writes abort the temporary writer.
+Optional model downloads also publish atomically and recheck the current revision
+under that lock. The normal `write` API retains its previous semantics.
+
+Prepublication failure leaves the previous complete manifest and bytes usable.
+A close failure with an uncertain outcome retains potentially current bytes;
+reopening sees either the old complete pack or the new complete pack. An
+interruption can leave one unreferenced staging revision. The next selection
+removes all noncurrent revision directories before staging another. Cleanup
+failure stops that attempt; it does not allocate further staging. The previous
+revision may remain until the next selection, so storage holds current plus one
+staging/previous revision between attempts. Legacy unversioned files are left
+untouched and never used as revision evidence.
+
+## Transfer admission
+
+Metadata allows 1 MiB and 15 seconds total; each NAM model allows 16 MiB and
+60 seconds total. Deadlines include response headers and all body reads and never
+reset on trickling chunks. Caller cancellation composes with both. Actual streamed
+bytes are counted even with missing or dishonest Content-Length. Overflow,
+non-success HTTP, invalid UTF-8, malformed JSON or unsupported shape is refused
+before persistence. Readers/timers/listeners are released; a late response from a
+noncooperative transport has its body cancelled.
+
+Packs require positive safe integer IDs, nonempty titles/names (at most 512
+characters), a nonempty revision string (at most 128 characters), and 1–256 unique
+model IDs. Known sizes are standard/lite/feather/nano/custom. Transfer URLs must be
+HTTPS, without credentials, at most 8192 characters; signed CDN URLs are allowed.
+NAM JSON requires version/architecture strings, an object config and a nonempty
+finite numeric weights array. This admits the transfer structure; the existing
+NAM engine remains responsible for architecture/config compatibility.
+
+## Qualification and clerk follow-up
+
+- Locked setup: `npm ci --ignore-scripts`.
+- Full local contract: `npm run build`, then `npm run lint` and `npm test`.
+- Browser contract: `npm run test:browser` (synthetic modular views, isolated
+  parallel callbacks and real worker OPFS; no account or real captures).
+- Chromium cannot launch in the worker sandbox: macOS denies bootstrap registration
+  of `org.chromium.Chromium.MachPortRendezvousServer` (Permission denied 1100).
+  The clerk must run the browser contract outside the sandbox. The fixtures are
+  committed for that run; no browser pass is claimed.
+- Baseline regression runs failed for B01/B02, S06, B04 and both B05 slices;
+  targeted corrected tests pass. S05's reliable external-popup-close detection
+  remains an owner decision as described above.
+
+Full qualification completed: locked install, root build (24 tasks), lint (24
+package tasks plus browser lint), and unit suites (44 tasks, including 414 Studio
+tests) succeeded. The browser command was attempted and failed before executing
+any test because Chromium cannot launch in the sandbox. The new browser fixtures
+also pass a static TypeScript check with the app's ambient browser declarations.
+No push, merge, release, deployment or external review was run in this worker.
+
+Browser API references: [COOP and severed window handles](https://developer.mozilla.org/en-US/docs/Web/API/Window/open#return_value)
+and [staged createWritable publication](https://developer.mozilla.org/en-US/docs/Web/API/FileSystemFileHandle/createWritable).
