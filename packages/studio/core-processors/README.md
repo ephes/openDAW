@@ -194,3 +194,12 @@ Fold oversampling retains all 31 halfband taps and uses aligned chronological ev
 phases at each 2x stage. Real-processor impulse/tone regressions compare 2x/4x/8x
 with direct FIR plus the fold transfer, including uneven nonzero-offset spans.
 The corrected response changes existing projects' Fold sound/latency on rebuild.
+
+### Compressor sample clock
+
+Automatic attack/release evaluate crest energy and smooth their coefficients once
+per input sample, then smooth that sample's attenuation. Future samples never
+choose earlier coefficients; event/render partitions do not change the output.
+Manual ballistics retain their attack/release values. The CTAG block APIs are
+called with single-sample spans to preserve this causal ordering without allocating
+coefficient buffers on the audio thread.

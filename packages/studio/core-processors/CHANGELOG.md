@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Advance compressor automatic attack/release causally per sample, independent of render/event partitions.
+
 - Correct Fold oversampling gain/phase through complete aligned halfband stages; validate real 2x/4x/8x processing against direct FIR.
 
 - Honor disabled auxiliary sends while retaining saved gain and pan, with ramped enable changes.

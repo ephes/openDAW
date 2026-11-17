@@ -8,10 +8,10 @@ import {Block} from "../../processing"
 let Compressor: typeof import("./CompressorDeviceProcessor").CompressorDeviceProcessor
 beforeAll(async () => {Object.assign(globalThis, {sampleRate: 48000}); Compressor = (await import("./CompressorDeviceProcessor")).CompressorDeviceProcessor})
 const terminable = () => ({terminate() {}})
-function fixture(auto: boolean, lookahead: boolean) {
+function fixture(auto: boolean, lookahead: boolean, options: Partial<{automakeup: boolean, autoattack: boolean, autorelease: boolean}> = {}) {
     const address = Address.compose(UUID.generate())
     const params = {lookahead, automakeup: auto, autoattack: auto, autorelease: auto,
-        inputgain: 0, threshold: -10, ratio: 4, knee: 6, attack: 2, release: 140, makeup: 0, mix: 1}
+        inputgain: 0, threshold: -10, ratio: 4, knee: 6, attack: 2, release: 140, makeup: 0, mix: 1, ...options}
     const namedParameter = Object.fromEntries(Object.entries(params).map(([name, value]) => [name, {
         address, getValue: () => value, subscribe: terminable, valueMapping: {x: (x: number) => x},
         field: {pointerHub: {catchupAndSubscribe: terminable}}
@@ -41,4 +41,28 @@ it.each([[false, false], [false, true], [true, false], [true, true]])("reset dis
             warm.processor.processAudio(block(a, b)); freshSignal.processor.processAudio(block(a, b))
             warm.processor.audioOutput.channels().forEach((ch, c) => expect(ch).toEqual(freshSignal.processor.audioOutput.getChannel(c)))
         }
+})
+
+const partitions = [0, 1, 9, 10, 31, 67, 68, 113, 128]
+function renderAutomatic(options: Partial<{automakeup: boolean, autoattack: boolean, autorelease: boolean}>, boundaries: number[], late = false) {
+    const f = fixture(false, false, options)
+    const result: number[] = []
+    for (let q = 0; q < 12; q++) {
+        f.input.channels().forEach((channel, c) => channel.forEach((_, i) => {
+            const n = q * 128 + i
+            channel[i] = n < 96 ? 0.01 : (late && n >= 400 ? 0.001 :
+                (n % 193 < 7 ? 0.95 : 0.08) * Math.sin(n * 0.17)) * (c ? -0.6 : 1)
+        }))
+        for (let b = 1; b < boundaries.length; b++) f.processor.processAudio(block(boundaries[b - 1], boundaries[b]))
+        result.push(...f.processor.audioOutput.getChannel(0))
+    }
+    f.processor.terminate()
+    return result
+}
+it.each([[true, false], [false, true], [true, true]])("causal auto ballistics follow samples (attack=%s, release=%s)", (autoattack, autorelease) => {
+    const options = {autoattack, autorelease, automakeup: false}
+    const whole = renderAutomatic(options, [0, 128])
+    expect(renderAutomatic(options, partitions)).toEqual(whole)
+    // Editing future detector samples must not change an earlier gain.
+    expect(renderAutomatic(options, [0, 128], true).slice(0, 400)).toEqual(whole.slice(0, 400))
 })

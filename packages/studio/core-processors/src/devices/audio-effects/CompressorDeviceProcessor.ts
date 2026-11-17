@@ -239,14 +239,14 @@ export class CompressorDeviceProcessor extends AudioProcessor implements AudioEf
             }
         }
 
-        // Calculate crest factor on max amplitude values
-        this.#ballistics.processCrestFactor(this.#sidechainSignal, s0, s1)
-
-        // Compute attenuation - converts sidechain from linear to logarithmic
-        this.#gainComputer.applyCompressionToBuffer(this.#sidechainSignal, s0, s1)
-
-        // Smooth attenuation - still logarithmic
-        this.#ballistics.applyBallistics(this.#sidechainSignal, s0, s1)
+        // Advance the detector causally: each coefficient sees only this sample's
+        // linear level and prior history, before smoothing its logarithmic attenuation.
+        // Render/event boundaries must not change the control clock.
+        for (let i = s0; i < s1; i++) {
+            this.#ballistics.processCrestFactor(this.#sidechainSignal, i, i + 1)
+            this.#gainComputer.applyCompressionToBuffer(this.#sidechainSignal, i, i + 1)
+            this.#ballistics.applyBallistics(this.#sidechainSignal, i, i + 1)
+        }
 
         this.#redMin = this.#sidechainSignal[s1 - 1]
 

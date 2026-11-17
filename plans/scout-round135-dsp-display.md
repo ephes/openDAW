@@ -19,3 +19,10 @@ snapshots are regenerated only after those independent oracle checks pass.
 The delay regression warms identical ramp histories, slews 0→10 for five frames,
 then retargets to 5. The old code continues moving and fails the stationary reference.
 Cancellation now retires its delta/countdown, including partitioned continuation.
+
+## B02
+
+Real Compressor regressions independently enable auto attack, auto release and both
+(with automatic makeup disabled). Whole and uneven spans fail before the sample
+clock fix; a changed future suffix also tests causal prefix equality. Continuation
+for twelve quanta checks retained state, rather than only a block average.
