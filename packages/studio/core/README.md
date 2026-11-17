@@ -598,10 +598,12 @@ graph construction or resource packing.
 Every declared channel/send destination must resolve to a bus channel, including
 forward references and primary-output sends. Intentionally absent channel outputs
 remain disconnected. Feedback routing (including a primary send with a return
-path) is refused before native-state reads or graph construction. The disabled
-self-send slot that Bitwig writes on every FX/return channel carries no signal and
-is not imported; an enabled self-send is refused as feedback. Supported primary
-sends retain enable, pre/post, level and pan.
+path) is refused before native-state reads or graph construction. Bitwig writes
+disabled send slots between all FX/return channels, including self-sends. A
+disabled send that would close a cycle carries no signal and is not imported
+(document order decides which reciprocal slot remains); enabled cycles, including
+enabled self-sends, are refused as feedback. Supported primary sends retain
+enable, pre/post, level and pan.
 
 Child tracks are traversed under regular, effect and master parents. Each child
 retains its own declared routing and arrangement identity. Native instrument

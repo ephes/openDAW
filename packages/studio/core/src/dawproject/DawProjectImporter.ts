@@ -189,8 +189,7 @@ export namespace DawProjectImport {
             // Flatten only a transparent source window; the outer clip owns placement/trim.
             const inner = content.clips[0]
             const sourceEnd = clip.loopEnd ?? (clip.playStart ?? 0) + asDefined(clip.duration, "Duration not defined")
-            // playStart, duration and the inner duration are rounded independently when written
-            // with six decimals (and summed in binary floats), so they may disagree by ~1.5 microbeats.
+            // Independently rounded six-decimal coordinates may disagree by ~1.5 microbeats.
             const sourceEndTolerance = 1.5e-6 * (1 + 1e-6)
             assert((inner.time ?? 0) === 0 && (inner.playStart ?? 0) === 0
                 && (inner.loopStart ?? 0) === 0 && inner.loopEnd === undefined && inner.enable !== false
@@ -244,14 +243,10 @@ export namespace DawProjectImport {
     }
 
     // Resolve the complete declared route graph before reading native state or allocating boxes.
-    // Bitwig writes a disabled send slot from every FX/return channel to itself. It carries
-    // no signal, and a native self-send would be feedback once enabled, so it is not imported.
-    // Enabled self-sends and every other cycle are still refused as feedback routing.
-    const admittedSends = (channel: ChannelSchema): ReadonlyArray<SendSchema> =>
-        (channel.sends ?? []).filter(send => !(send.destination !== undefined
-            && send.destination === channel.id && send.enable?.value === false))
-
-    const validateRouting = (tracks: ReadonlyArray<LaneSchema>): ReadonlySet<string> => {
+    // Enabled routes must be acyclic. Bitwig writes disabled send slots between all FX channels
+    // (including self-sends); a disabled send that would close a cycle is dropped, in document order.
+    type Routing = { trackIds: ReadonlySet<string>, sends: ReadonlyMap<ChannelSchema, ReadonlyArray<SendSchema>> }
+    const validateRouting = (tracks: ReadonlyArray<LaneSchema>): Routing => {
         const trackIds = new Set<string>()
         const channels = new Map<string, ChannelSchema>()
         const collect = (lanes: ReadonlyArray<LaneSchema>): void => lanes.forEach(lane => {
@@ -266,16 +261,18 @@ export namespace DawProjectImport {
             collect(lane.tracks ?? [])
         })
         collect(tracks)
+        const isEnabled = (send: SendSchema): boolean => send.enable?.value !== false
         const routes = new Map<string, string[]>()
         channels.forEach((channel, id) => {
-            const targets = [channel.destination, ...admittedSends(channel).map(send =>
+            const sends = channel.sends ?? []
+            const targets = [channel.destination, ...sends.map(send =>
                 asDefined(send.destination, "Send routing destination is undefined"))].filter(isDefined)
             targets.forEach(target => {
                 const destination = channels.get(target)
                 assert(destination !== undefined && (destination.role === ChannelRole.EFFECT || destination.role === ChannelRole.MASTER),
                     `Unsupported routing destination '${target}': expected a declared bus channel`)
             })
-            routes.set(id, targets)
+            routes.set(id, [channel.destination, ...sends.filter(isEnabled).map(send => send.destination)].filter(isDefined))
         })
         const visiting = new Set<string>(), visited = new Set<string>()
         const visit = (id: string): void => {
@@ -287,15 +284,32 @@ export namespace DawProjectImport {
             visited.add(id)
         }
         channels.forEach((_, id) => visit(id))
-        return trackIds
+        const reaches = (from: string, to: string): boolean => {
+            const seen = new Set<string>()
+            const walk = (id: string): boolean => {
+                if (id === to) {return true}
+                if (seen.has(id)) {return false}
+                seen.add(id)
+                return (routes.get(id) ?? []).some(walk)
+            }
+            return walk(from)
+        }
+        const admitted = new Map<ChannelSchema, ReadonlyArray<SendSchema>>()
+        channels.forEach((channel, id) => admitted.set(channel, (channel.sends ?? []).filter(send => {
+            if (isEnabled(send)) {return true}
+            const target = asDefined(send.destination)
+            if (reaches(target, id)) {return false}
+            asDefined(routes.get(id)).push(target)
+            return true
+        })))
+        return {trackIds, sends: admitted}
     }
 
     const markerHue = (marker: MarkerSchema): number => {
         assert(!marker.comment, "Unsupported marker comment: native markers cannot retain comments")
         if (marker.color === undefined) {return 0}
         assert(/^#[0-9a-f]{6}$/i.test(marker.color), "Unsupported marker color")
-        // Native markers keep only an integer hue (full saturation, 60% lightness). Like clip
-        // colors, other DAWs' colors map to their nearest hue instead of refusing the project.
+        // Like clip colors, foreign colors map to the nearest native hue.
         return Math.round(Color.hexToHsl(marker.color).h) % 360
     }
 
@@ -306,7 +320,7 @@ export namespace DawProjectImport {
             assert(markers.track === undefined, "Unsupported marker track reference: markers belong to the arrangement")
             markers.marker?.forEach(marker => {beatTimeToPulses(marker.time); markerHue(marker)})
         }
-        const trackIds = validateRouting(schema.structure)
+        const {trackIds, sends: admittedSends} = validateRouting(schema.structure)
         if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes, "beats", undefined, trackIds)}
         if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
         if (schema.arrangement?.timeSignatureAutomation !== undefined) {requireBeats(schema.arrangement.timeSignatureAutomation.timeUnit ?? "beats")}
@@ -543,13 +557,13 @@ export namespace DawProjectImport {
                 if (channel.role === ChannelRole.REGULAR) {
                     const {audioUnitBox} = createInstrumentUnit(track, AudioUnitType.Instrument, toAudioUnitCapture(boxGraph, track.contentType))
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
-                    createSends(audioUnitBox, admittedSends(channel))
+                    createSends(audioUnitBox, admittedSends.get(channel) ?? [])
                     ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.EFFECT) {
                     const {audioBusBox, audioUnitBox} = createAudioBusUnit(track, AudioUnitType.Aux, IconSymbol.Effects)
                     registerAudioBus(channelId, audioBusBox)
                     registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
-                    createSends(audioUnitBox, admittedSends(channel))
+                    createSends(audioUnitBox, admittedSends.get(channel) ?? [])
                     ifDefined(channel.destination, target => outputPointers.push({target, pointer: audioUnitBox.output}))
                 } else if (channel.role === ChannelRole.MASTER) {
                     const isMostLikelyPrimaryOutput = primaryAudioBusUnitOption.isEmpty()
@@ -562,7 +576,7 @@ export namespace DawProjectImport {
                         registerAudioBus(channelId, audioBusBox)
                         registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                         audioUnitBox.output.refer(rootBox.outputDevice)
-                        createSends(audioUnitBox, admittedSends(channel))
+                        createSends(audioUnitBox, admittedSends.get(channel) ?? [])
                         primaryAudioBusUnitOption = Option.wrap(audioBusUnit)
                     } else {
                         const audioBusUnit = createAudioBusUnit(track, AudioUnitType.Bus, IconSymbol.AudioBus)
@@ -571,7 +585,7 @@ export namespace DawProjectImport {
                         registerAudioUnit(asDefined(track.id, "Track must have an Id."), audioUnitBox)
                         ifDefined(channel.destination, destination =>
                             outputPointers.push({target: destination, pointer: audioUnitBox.output}))
-                        createSends(audioUnitBox, admittedSends(channel))
+                        createSends(audioUnitBox, admittedSends.get(channel) ?? [])
                     }
                 } else {
                     return panic(`Unknown channel role ('${channel.role}')`)

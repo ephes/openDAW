@@ -85,17 +85,38 @@ it('B02 retains primary sends including forward targets and all send state', asy
     const exported = write(skeleton)
     check((await read(xml(exported))).skeleton.boxGraph)
 })
-it('B02 refuses primary feedback routing before constructing a graph', async () => {
+it('B02 refuses enabled primary feedback routing before constructing a graph', async () => {
     const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
-    await expect(read(source('', primarySend + aux.replace('role="effect"', 'role="effect" destination="master"')))).rejects.toThrow(/feedback routing/i)
+    const enabledSend = primarySend.replace('<Enable value="false"/>', '')
+    await expect(read(source('', enabledSend + aux.replace('role="effect"', 'role="effect" destination="master"')))).rejects.toThrow(/feedback routing/i)
     expect(begin).not.toHaveBeenCalled()
     expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it('B02 drops a disabled primary send that would close a feedback cycle', async () => {
+    const {skeleton} = await read(source('', regular + primarySend + aux.replace('role="effect"', 'role="effect" destination="master"')))
+    expect(skeleton.boxGraph.boxes().filter(box => box instanceof AuxSendBox)).toHaveLength(0)
+    skeleton.boxGraph.verifyPointers()
 })
 const selfSend = (enable: string) => aux.replace('role="effect"/>', `role="effect" destination="master"><Sends><Send destination="aux-channel" type="post"><Enable value="${enable}"/><Volume value="0" unit="linear"/></Send></Sends></Channel>`)
 it('B02 drops the disabled self-send slot that Bitwig writes for FX channels', async () => {
     const {skeleton} = await read(source('', regular + master + selfSend('false')))
     expect(skeleton.boxGraph.boxes().filter(box => box instanceof AuxSendBox)).toHaveLength(0)
     skeleton.boxGraph.verifyPointers()
+})
+const fx = (id: string, sends: ReadonlyArray<[string, string]>) => `<Track id="${id}" contentType="audio"><Channel id="${id}-channel" role="effect" destination="master"><Sends>${sends.map(([target, enable]) => `<Send destination="${target}-channel" type="post"><Enable value="${enable}"/><Volume value="0" unit="linear"/></Send>`).join('')}</Sends></Channel></Track>`
+it('B02 imports Bitwig return tracks with reciprocal disabled send slots', async () => {
+    const sends = (enable: string): Array<[string, string]> => [['fx1', 'false'], ['fx2', enable]]
+    const {skeleton} = await read(source('', regular + master + fx('fx1', sends('true')) + fx('fx2', sends('false'))))
+    // fx1 -> fx2 is enabled; the disabled slots fx1 -> fx1, fx2 -> fx1 and fx2 -> fx2 would close cycles.
+    const auxSends = skeleton.boxGraph.boxes().filter(box => box instanceof AuxSendBox)
+    expect(auxSends.map(send => send.enabled.getValue())).toEqual([true])
+    skeleton.boxGraph.verifyPointers()
+    const disabled = await read(source('', regular + master + fx('fx1', sends('false')) + fx('fx2', sends('false'))))
+    // Document order keeps the first acyclic disabled slot (fx1 -> fx2) and drops its reverse.
+    expect(disabled.skeleton.boxGraph.boxes().filter(box => box instanceof AuxSendBox).map(send => send.enabled.getValue())).toEqual([false])
+})
+it('B02 refuses enabled reciprocal sends as feedback routing', async () => {
+    await expect(read(source('', regular + master + fx('fx1', [['fx2', 'true']]) + fx('fx2', [['fx1', 'true']])))).rejects.toThrow(/feedback routing/i)
 })
 it('B02 refuses an enabled self-send as feedback routing before construction', async () => {
     const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')

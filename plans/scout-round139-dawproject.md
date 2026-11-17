@@ -89,9 +89,10 @@ execution and cross-family review; no subscription review agent was run here.
 Review of the merged bundle reversed four refusals that blocked real projects:
 
 - The EQ fixture is an unmodified Bitwig Studio export. Bitwig writes a disabled,
-  zero-gain self-send slot on every FX/return channel, so refusing it blocked every
-  Bitwig project with return tracks. Disabled self-sends are now dropped before
-  route accounting; enabled self-sends and all other cycles still refuse.
+  zero-gain send slot from every channel to every FX/return channel (including
+  itself), so refusing it blocked every Bitwig project with return tracks. Enabled
+  routes must still be acyclic; a disabled send that would close a cycle is now
+  dropped in document order, other disabled sends import disabled.
 - Bitwig writes beat times with six decimals. Admission now tolerates half a
   microbeat around a pulse (triplets such as `0.333333`) and still refuses real
   sub-pulse offsets and positive times collapsing to zero.
