@@ -618,6 +618,16 @@ Single nested clip wrappers flatten only when the inner source starts at zero,
 has no trim/loop/mute transform and covers the entire outer playback window.
 Nontransparent wrappers refuse before graph or asset publication.
 Automation point times must fit nonnegative integer int32 pulses (960 pulses per
-quarter note); sub-pulse coordinates are refused rather than rounded to zero.
+quarter note); only floating-point arithmetic roundoff is tolerated. Sub-pulse
+coordinates are refused rather than rounded to zero.
 Signature changes must additionally fall on whole bar boundaries under the
 preceding signature; an exact zero sets the base signature.
+
+Ordinary arrangement markers import/export in beats with labels and native hue
+colors, and survive native save/reopen. Colors must be representable by integer
+hue at 100% saturation and 60% lightness (for example `#ff3333` and `#33ff33`);
+other colors and nonempty comments refuse before graph construction. Empty
+collections are allowed. Marker times use the same integer pulse admission as
+automation; non-beat collections refuse. Export refuses repeat play counts,
+disabled nonempty marker tracks and markers outside the current arrangement
+track before writing any resources.

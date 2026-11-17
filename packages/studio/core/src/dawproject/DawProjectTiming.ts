@@ -8,8 +8,13 @@ export const requireTempoBpm = (value: number): void => {
 }
 
 export const beatTimeToPulses = (time: number): number => {
-    const pulses = time * PPQN.Quarter
-    assert(Number.isFinite(time) && time >= 0 && Number.isInteger(pulses) && pulses <= 0x7fffffff,
+    const scaled = time * PPQN.Quarter
+    const pulses = Math.round(scaled)
+    // Native integer / PPQN / XML number / PPQN may differ by a couple of ulps.
+    // A relative tolerance still refuses tiny positive sub-pulse times near zero.
+    const roundoff = Number.EPSILON * Math.abs(scaled) * 2
+    assert(Number.isFinite(time) && time >= 0 && pulses <= 0x7fffffff
+        && Math.abs(scaled - pulses) <= roundoff,
         "Unsupported timeline coordinate: time must fit nonnegative native integer pulses")
     return pulses
 }

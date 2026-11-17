@@ -3,8 +3,8 @@ import {BoxGraph} from "@opendaw/lib-box"
 import {Xml} from "@opendaw/lib-xml"
 import {FileReferenceSchema, ProjectSchema, RealPointSchema, TrackSchema} from "@opendaw/lib-dawproject"
 import {PPQN, ValueEvent} from "@opendaw/lib-dsp"
-import {InterpolationFieldAdapter, InstrumentFactories, SampleLoaderManager, TempoGridCursor, TrackType} from "@opendaw/studio-adapters"
-import {ApparatDeviceBox, AudioUnitBox, AuxSendBox, MIDIOutputDeviceBox, NoteEventBox, NoteRegionBox, SoundfontDeviceBox, TrackBox, ValueEventBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
+import {InterpolationFieldAdapter, InstrumentFactories, ProjectSkeleton, SampleLoaderManager, TempoGridCursor, TrackType} from "@opendaw/studio-adapters"
+import {ApparatDeviceBox, AudioUnitBox, AuxSendBox, MarkerBox, MIDIOutputDeviceBox, NoteEventBox, NoteRegionBox, SoundfontDeviceBox, TrackBox, ValueEventBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
 import {UUID} from "@opendaw/lib-std"
 import {DawProjectImport} from "./DawProjectImporter"
 import {DawProjectExporter} from "./DawProjectExporter"
@@ -190,7 +190,7 @@ it('B05 retains a transparent nested wrapper at its independent audible position
     expect(region.position.getValue() + note.position.getValue()).toBe(2 * q)
     expect(region.duration.getValue()).toBe(4 * q)
 })
-it.each(['', 'time="garbage"', 'time="Infinity"', 'time="NaN"', 'time="1e400"', 'time="3000000"', 'time="-1"', 'time="0.0001"'])(
+it.each(['', 'time="garbage"', 'time="Infinity"', 'time="NaN"', 'time="1e400"', 'time="3000000"', 'time="-1"', 'time="0.0001"', 'time="1e-20"'])(
     'B05 refuses invalid automation coordinates before construction: %s', async time => {
         const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
         for (const [tag, point] of [['TempoAutomation', `<RealPoint ${time} value="120"/>`], ['TimeSignatureAutomation', `<TimeSignaturePoint ${time} numerator="3" denominator="4"/>`]]) {
@@ -210,4 +210,80 @@ it('B05 refuses signature times that cannot be represented as native whole bars'
     const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
     await expect(read(source('<TimeSignatureAutomation><TimeSignaturePoint time="0.5" numerator="3" denominator="4"/></TimeSignatureAutomation>'))).rejects.toThrow(/signature.*time/i)
     expect(begin).not.toHaveBeenCalled()
+})
+
+const markerValues = (skeleton: Awaited<ReturnType<typeof read>>['skeleton']) => skeleton.boxGraph.boxes()
+    .filter(box => box instanceof MarkerBox).sort((a, b) => a.position.getValue() - b.position.getValue()).map(box => [box.position.getValue(), box.label.getValue(), box.hue.getValue(), box.plays.getValue()])
+it('B06 imports labeled beat markers and preserves their native state on save/reopen', async () => {
+    const {skeleton} = await read(source('<Markers timeUnit="beats"><Marker time="2" name="Verse" color="#ff3333"/><Marker time="4.5" name="Chorus" color="#33ff33"/></Markers>'))
+    expect(markerValues(skeleton)).toEqual([[2 * q, 'Verse', 0, 1], [4.5 * q, 'Chorus', 120, 1]])
+    const reopened = ProjectSkeleton.decode(ProjectSkeleton.encode(skeleton.boxGraph))
+    expect(markerValues(reopened)).toEqual(markerValues(skeleton))
+    expect(() => reopened.boxGraph.verifyPointers()).not.toThrow()
+})
+it.each([
+    '<Markers timeUnit="seconds"><Marker time="2" name="Verse"/></Markers>',
+    '<Markers><Marker time="2" comment="cannot retain"/></Markers>',
+    '<Markers><Marker time="2" color="#abcdef"/></Markers>',
+    '<Markers><Marker time="2" color="garbage"/></Markers>',
+    '<Markers><Marker time="-1"/></Markers>',
+    '<Markers><Marker time="3000000"/></Markers>',
+    '<Markers><Marker time="0.0001"/></Markers>'
+])('B06 refuses unrepresentable marker timing or attributes before construction', async markers => {
+    const begin = vi.spyOn(BoxGraph.prototype, 'beginTransaction')
+    await expect(read(source(markers))).rejects.toThrow(/marker|coordinate|time unit/i)
+    expect(begin).not.toHaveBeenCalled()
+    expect(resources.fromPath).not.toHaveBeenCalled()
+})
+it('B06 accepts an empty marker collection', async () => {
+    const {skeleton} = await read(source('<Markers/>'))
+    expect(markerValues(skeleton)).toEqual([])
+    expect(write(skeleton).arrangement!.markers).toBeUndefined()
+})
+it('B06 exports independently constructed native markers as literal beat coordinates', async () => {
+    const {skeleton} = await read(source())
+    const {boxGraph, mandatoryBoxes: {timelineBox}} = skeleton
+    boxGraph.beginTransaction()
+    MarkerBox.create(boxGraph, UUID.generate(), box => {box.track.refer(timelineBox.markerTrack.markers); box.position.setValue(2 * q); box.label.setValue('Verse'); box.hue.setValue(120)})
+    boxGraph.endTransaction()
+    const element = Xml.toElement('Project', write(skeleton))
+    const marker = element.querySelector('Arrangement > Markers > Marker')!
+    expect(marker).not.toBeNull()
+    expect(marker.getAttribute('time')).toBe('2')
+    expect(marker.getAttribute('name')).toBe('Verse')
+    expect(marker.getAttribute('color')).toBe('#33ff33')
+    expect(marker.parentElement!.getAttribute('timeUnit')).toBe('beats')
+})
+it.each([0, 2])('B06 refuses native repeat play count %s before packing resources', async plays => {
+    const {skeleton} = await read(source())
+    const {boxGraph, mandatoryBoxes: {timelineBox}} = skeleton
+    boxGraph.beginTransaction()
+    MarkerBox.create(boxGraph, UUID.generate(), box => {box.track.refer(timelineBox.markerTrack.markers); box.plays.setValue(plays)})
+    boxGraph.endTransaction()
+    packer.write.mockClear()
+    expect(() => write(skeleton)).toThrow(/marker.*repeat/i)
+    expect(packer.write).not.toHaveBeenCalled()
+})
+it('B06 refuses a disabled nonempty native marker track before packing', async () => {
+    const {skeleton} = await read(source())
+    const {boxGraph, mandatoryBoxes: {timelineBox}} = skeleton
+    boxGraph.beginTransaction()
+    timelineBox.markerTrack.enabled.setValue(false)
+    MarkerBox.create(boxGraph, UUID.generate(), box => box.track.refer(timelineBox.markerTrack.markers))
+    boxGraph.endTransaction()
+    expect(() => write(skeleton)).toThrow(/marker track/i)
+    expect(packer.write).not.toHaveBeenCalled()
+})
+
+it('B05/B06 retains native integer pulses through floating beat serialization', async () => {
+    const {skeleton} = await read(source(`<TempoAutomation><RealPoint time="${31 / q}" value="120"/><RealPoint time="${123 / q}" value="180"/></TempoAutomation>`))
+    const positions = skeleton.boxGraph.boxes().filter(box => box instanceof ValueEventBox).map(box => box.position.getValue()).sort((a, b) => a - b)
+    expect(positions).toEqual([31, 123])
+    skeleton.boxGraph.beginTransaction()
+    MarkerBox.create(skeleton.boxGraph, UUID.generate(), box => {
+        box.track.refer(skeleton.mandatoryBoxes.timelineBox.markerTrack.markers); box.position.setValue(31)
+    })
+    skeleton.boxGraph.endTransaction()
+    const result = await read(xml(write(skeleton)))
+    expect(markerValues(result.skeleton)[0][0]).toBe(31)
 })

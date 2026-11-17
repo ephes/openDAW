@@ -31,6 +31,7 @@ import {
     EqualizerSchema,
     LaneSchema,
     LanesSchema,
+    MarkerSchema,
     NotesSchema,
     PointsSchema,
     ProjectSchema,
@@ -56,6 +57,7 @@ import {
     CaptureAudioBox,
     CaptureMidiBox,
     GrooveShuffleBox,
+    MarkerBox,
     NoteEventBox,
     NoteEventCollectionBox,
     NoteRegionBox,
@@ -278,7 +280,23 @@ export namespace DawProjectImport {
         return trackIds
     }
 
+    const markerHue = (marker: MarkerSchema): number => {
+        assert(!marker.comment, "Unsupported marker comment: native markers cannot retain comments")
+        if (marker.color === undefined) {return 0}
+        assert(/^#[0-9a-f]{6}$/i.test(marker.color), "Unsupported marker color")
+        const hue = Math.round(Color.hexToHsl(marker.color).h)
+        assert(Color.hslToHex(hue, 1, 0.6).toLowerCase() === marker.color.toLowerCase(),
+            "Unsupported marker color: native markers retain integer hue at full saturation and 60% lightness")
+        return hue
+    }
+
     export const read = async (schema: ProjectSchema, resources: DawProject.ResourceProvider): Promise<Result> => {
+        const markers = schema.arrangement?.markers
+        if (markers !== undefined) {
+            requireBeats(markers.timeUnit ?? "beats")
+            assert(markers.track === undefined, "Unsupported marker track reference: markers belong to the arrangement")
+            markers.marker?.forEach(marker => {beatTimeToPulses(marker.time); markerHue(marker)})
+        }
         const trackIds = validateRouting(schema.structure)
         if (schema.arrangement?.lanes !== undefined) {validateTimeline(schema.arrangement.lanes, "beats", undefined, trackIds)}
         if (schema.arrangement?.tempoAutomation !== undefined) {requireBeats(schema.arrangement.tempoAutomation.timeUnit ?? "beats")}
@@ -554,6 +572,12 @@ export namespace DawProjectImport {
         readTracks(schema.structure, 0)
 
         const readArrangement = (arrangement: ArrangementSchema): Promise<unknown> => {
+            arrangement.markers?.marker?.forEach(marker => MarkerBox.create(boxGraph, UUID.generate(), box => {
+                box.track.refer(timelineBox.markerTrack.markers)
+                box.position.setValue(beatTimeToPulses(marker.time))
+                box.label.setValue(marker.name ?? "")
+                box.hue.setValue(markerHue(marker))
+            }))
             const readTrackRegions = ({clips}: ClipsSchema, trackId: string): Promise<unknown> => {
                 const audioUnitBox = asDefined(audioUnits.get(trackId), `Cannot find track for '${trackId}'`)
                 if (audioUnitBox.type.getValue() === AudioUnitType.Output) {return Promise.resolve()}

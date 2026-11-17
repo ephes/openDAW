@@ -59,3 +59,27 @@ is native bar-relative, so non-bar changes refuse instead of snapping to a later
 bar. All Point XML subtypes share required finite numeric conversion.
 The new failure cases were run red before implementation; positive wrapper and
 valid timing cases retain their prior behavior. The same full gates follow.
+
+## B06: arrangement markers
+
+Correct the typed marker container. Import two labeled/colors markers, check native
+save/reopen and reject unsupported coordinates, seconds, comments and colors.
+Independently create native markers and inspect literal XML; repeat counts and
+disabled nonempty tracks refuse before the first packer write. Markerless export
+remains supported. All new failure cases were run before the fix. Native hue
+colors are intentionally restricted to the exact representable palette.
+
+The synthetic Chromium fixture `tests/browser/r139.spec.ts` combines child tracks,
+nested lanes/wrappers, primary sends, literal BPM playback timing, markers, native
+save/reopen and export/reimport. It also checks early refusal without resource
+reads. Run `npm run test:browser -- tests/browser/scout99.spec.ts tests/browser/r139.spec.ts`
+outside the sandbox; the same Chromium Mach-port denial prevents execution here.
+
+An additional red regression found that integer pulse 31 (and 123) can return a
+small binary floating residue after beat serialization. Admission now rounds only
+within two relative machine epsilons, preserving native pulse positions while
+continuing to refuse actual sub-pulse coordinates, including tiny positive times.
+Final local validation passes locked installation, full build, lint and tests;
+Chromium remains blocked by sandbox Mach-port registration. Browser fixture lint
+and standalone TypeScript checks also pass. The outside clerk owns browser
+execution and cross-family review; no subscription review agent was run here.

@@ -19,6 +19,8 @@ import {
     DeviceSchema,
     FileReferenceSchema,
     LanesSchema,
+    MarkerSchema,
+    MarkersSchema,
     NoteSchema,
     NotesSchema,
     ParameterEncoder,
@@ -49,6 +51,7 @@ import {
     AudioUnitBox,
     AuxSendBox,
     BoxVisitor,
+    MarkerBox,
     NoteEventBox,
     NoteEventCollectionBox,
     NoteRegionBox,
@@ -61,7 +64,7 @@ import {
 import {ColorCodes, DeviceBoxUtils, InterpolationFieldAdapter, ProjectSkeleton, SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitExportLayout} from "./AudioUnitExportLayout"
 import {DeviceIO} from "./DeviceIO"
-import {requireTempoBpm} from "./DawProjectTiming"
+import {beatTimeToPulses, requireTempoBpm} from "./DawProjectTiming"
 import {WavFile} from "@opendaw/lib-dsp"
 
 export namespace DawProjectExporter {
@@ -80,6 +83,13 @@ export namespace DawProjectExporter {
         })
         // Admit source coordinates before publishing any media or device state.
         boxGraph.boxes().forEach(box => box.accept<BoxVisitor>({
+            visitMarkerBox: marker => {
+                assert(marker.plays.getValue() === 1, "Unsupported marker repeat: DAWproject cannot encode native play counts")
+                assert(timelineBox.markerTrack.enabled.getValue()
+                    && marker.track.targetVertex.contains(timelineBox.markerTrack.markers),
+                "Unsupported marker track: expected the enabled arrangement marker track")
+                beatTimeToPulses(marker.position.getValue() / PPQN.Quarter)
+            },
             visitNoteEventBox: note => {
                 assert(note.playCount.getValue() === 1 && note.playCurve.getValue() === 0
                     && note.cent.getValue() === 0 && note.chance.getValue() === 100
@@ -342,6 +352,22 @@ export namespace DawProjectExporter {
                 }, ClipSchema)]
             }, ClipsSchema)
 
+        const writeMarkers = (): Optional<MarkersSchema> => {
+            const markers = timelineBox.markerTrack.markers.pointerHub.incoming()
+                .map(({box}) => asInstanceOf(box, MarkerBox))
+                .sort((a, b) => a.position.getValue() - b.position.getValue())
+            if (markers.length === 0) {return undefined}
+            return Xml.element({
+                timeUnit: TimeUnit.BEATS,
+                marker: markers.map(marker => Xml.element({
+                    id: ids.getOrCreate(marker.address),
+                    time: marker.position.getValue() / PPQN.Quarter,
+                    name: marker.label.getValue(),
+                    color: Color.hslToHex(marker.hue.getValue(), 1, 0.6)
+                }, MarkerSchema))
+            }, MarkersSchema)
+        }
+
         const writeTempoAutomation = (): Optional<PointsSchema> => {
             const {tempoTrack} = timelineBox
             if (!tempoTrack.enabled.getValue()) {return undefined}
@@ -429,6 +455,7 @@ export namespace DawProjectExporter {
             transport: writeTransport(),
             structure: writeStructure(),
             arrangement: Xml.element({
+                markers: writeMarkers(),
                 tempoAutomation: writeTempoAutomation(),
                 timeSignatureAutomation: writeSignatureAutomation(),
                 lanes: Xml.element({

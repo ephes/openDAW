@@ -10,3 +10,7 @@ File path, so identity-based media paths do not replace human sample labels.
 Every automation Point subtype requires a finite numeric `time`; missing, blank
 or malformed values are refused while parsing, and zero remains a numeric zero.
 Studio additionally admits only times representable by its native pulse fields.
+
+Arrangement `markers` is a `MarkersSchema` timeline container whose `marker` array
+contains typed `MarkerSchema` elements. The container retains its `timeUnit`;
+individual marker times use required finite numeric conversion.
