@@ -48,3 +48,29 @@ test("Markdown keeps native query/fragment destinations and modified clicks", as
     await page.getByRole("link", {name: "query", exact: true}).click()
     await expect(page).toHaveURL(/\/manuals\/topic\?mode=x#section$/)
 })
+
+for (const cancel of ["pointercancel", "lostpointercapture"]) {
+    test(`auto gain retires ${cancel} and keeps normal capture release completion`, async ({page}) => {
+        await page.clock.install()
+        await page.evaluate(async () => {
+            // @ts-expect-error Vite serves the synthetic fixture.
+            Object.assign(window, {gain: await (await import("/r120-studio.ts")).setupGain()})
+        })
+        const read = () => page.evaluate(() => (window as unknown as {gain: {read(): unknown}}).gain.read())
+        await page.locator("#gain").hover()
+        await page.mouse.down()
+        await page.locator("#gain").dispatchEvent(cancel, {pointerId: 1})
+        await page.locator("#gain").dispatchEvent("lostpointercapture", {pointerId: 1})
+        expect(await read()).toEqual({volume: 0, edits: 0, listeners: 0, probing: false})
+        await page.mouse.up()
+        await page.mouse.down()
+        await page.evaluate(() => (window as unknown as {gain: {peaks(p: number[]): void}}).gain.peaks([0.5, 0.5]))
+        await page.mouse.up()
+        await page.clock.fastForward(1000)
+        const state = await read() as {volume: number, edits: number, listeners: number}
+        expect(state.volume).toBeCloseTo(5.9206, 4)
+        expect(state.edits).toBe(1)
+        expect(state.listeners).toBe(0)
+        await page.evaluate(() => (window as unknown as {gain: {close(): void}}).gain.close())
+    })
+}

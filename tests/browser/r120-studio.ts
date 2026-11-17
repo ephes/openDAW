@@ -41,3 +41,25 @@ export const setupLinks = () => {
         return event.defaultPrevented
     }
 }
+
+export const setupGain = async () => {
+    const {AutoGainButton} = await import("@/ui/devices/audio-effects/StereoTool/AutoGainButton")
+    const lifecycle = new Terminator()
+    const listeners = new Set<(peaks: Float32Array) => void>()
+    let volume = 0, edits = 0
+    const element = AutoGainButton({lifecycle,
+        project: {editing: {modify: (change: () => void) => {edits++; change()}}, liveStreamReceiver: {
+            subscribeFloats: (_: unknown, listener: (peaks: Float32Array) => void) => {
+                listeners.add(listener); return {terminate: () => {listeners.delete(listener)}}
+            }
+        }} as unknown as import("@opendaw/studio-core").Project,
+        adapter: ({address: {}, namedParameter: {volume: {getValue: () => volume, setValue: (value: number) => {volume = value}}}} as unknown as import("@opendaw/studio-adapters").StereoToolDeviceBoxAdapter)
+    }) as HTMLElement
+    const button = element.querySelector<HTMLElement>('[class^="AutoGainButton"]')!
+    button.id = "gain"
+    button.style.cssText = "width:100px;height:100px"
+    document.body.replaceChildren(element)
+    return {read: () => ({volume, edits, listeners: listeners.size, probing: button.classList.contains("probing")}),
+        peaks: (peaks: number[]) => listeners.forEach(listener => listener(new Float32Array(peaks))),
+        close: () => lifecycle.terminate()}
+}

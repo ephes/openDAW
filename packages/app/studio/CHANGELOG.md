@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retire cancelled auto-gain probes and ignore unrelated pointers; reject malformed meter frames and nonfinite gain edits.
+
 - Preserve Markdown on preview saves and commit notes on edit exit; retain local-link queries, fragments and modified-click behavior.
 
 - Share lazy inference installation across first callers and retry failures; retire latency polling with its audio context or studio surface.

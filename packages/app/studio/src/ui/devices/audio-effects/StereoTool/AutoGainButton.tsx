@@ -28,6 +28,8 @@ export const AutoGainButton = ({lifecycle, project: {editing, liveStreamReceiver
     let max = 0.0
     let startTime = 0.0
     let canProbe = true
+    let pointerId: number | undefined
+    let released = false
     const probing = lifecycle.own(new Terminator())
     const minDuration = 1000 // ms
     const targetDb = -0.1
@@ -37,12 +39,18 @@ export const AutoGainButton = ({lifecycle, project: {editing, liveStreamReceiver
         autoGainButton.classList.add("probing")
         canProbe = false
     }
-    const stopProbing = () => {
+    const retireProbing = () => {
+        pointerId = undefined
         probing.terminate()
         autoGainButton.classList.remove("probing")
         canProbe = true
+    }
+    const stopProbing = () => {
+        if (canProbe) {return}
+        retireProbing()
         const volume = adapter.namedParameter.volume
         const normalizeDb = (volume.getValue() - gainToDb(max)) + targetDb
+        if (!Number.isFinite(normalizeDb)) {return}
         if (normalizeDb > 48.0) {
             console.debug("greater than 48db. do nothing.")
         } else if (normalizeDb > 12.0) {
@@ -53,20 +61,35 @@ export const AutoGainButton = ({lifecycle, project: {editing, liveStreamReceiver
         }
     }
     lifecycle.ownAll(
+        {terminate: retireProbing},
         Events.subscribe(autoGainButton, "pointerdown", (event: PointerEvent) => {
             if (!canProbe) {return}
             autoGainButton.setPointerCapture(event.pointerId)
+            pointerId = event.pointerId
+            released = false
             startProbing()
             probing.ownAll(
-                liveStreamReceiver.subscribeFloats(adapter.address, peaks => max = Math.max(peaks[0], peaks[1], max)),
-                Events.subscribe(autoGainButton, "pointerup", () => {
+                liveStreamReceiver.subscribeFloats(adapter.address, peaks => {
+                    if (peaks.length < 2 || !Number.isFinite(peaks[0]) || !Number.isFinite(peaks[1])
+                        || peaks[0] < 0 || peaks[1] < 0) {return}
+                    max = Math.max(peaks[0], peaks[1], max)
+                }),
+                Events.subscribe(autoGainButton, "pointerup", (event: PointerEvent) => {
+                    if (event.pointerId !== pointerId || released) {return}
+                    released = true
                     const duration = Date.now() - startTime
                     if (duration < minDuration) {
                         probing.own(Runtime.scheduleTimeout(stopProbing, minDuration - duration))
                     } else {
                         stopProbing()
                     }
-                }, {once: true})
+                }),
+                Events.subscribe(autoGainButton, "pointercancel", (event: PointerEvent) => {
+                    if (event.pointerId === pointerId) {retireProbing()}
+                }),
+                Events.subscribe(autoGainButton, "lostpointercapture", (event: PointerEvent) => {
+                    if (event.pointerId === pointerId && !released) {retireProbing()}
+                })
             )
         })
     )

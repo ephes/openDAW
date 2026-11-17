@@ -32,3 +32,17 @@ Modified/non-primary clicks, explicit targets and downloads retain browser
 behavior. `MarkdownNavigation.test.ts` covers routing and native admission.
 `tests/browser/r120.spec.ts` adds real notes, shortcut and fragment fixtures;
 Chromium launch is blocked here by macOS Mach port sandbox refusal.
+
+## B03: auto-gain probes
+
+A probe belongs to one pointer. Cancellation, premature capture loss and teardown
+retire subscriptions and timers without editing; unrelated pointers are ignored.
+Capture loss following a normal release leaves its one-second minimum measurement
+completion intact. Cleanup is idempotent and a new gesture can start immediately.
+
+Only two finite nonnegative channel peaks contribute evidence. Invalid frames are
+ignored; silence/no usable evidence and any nonfinite computed gain cause no edit.
+Valid stereo evidence retains the existing target and gain limits.
+`AutoGainButton.test.tsx` covers these paths with fake meters/timers; separate
+cancellation and finite-evidence regressions fail before their respective fixes.
+The browser fixture also drives real mouse capture/release and cancellation.

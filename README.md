@@ -513,3 +513,7 @@ See [round 120 contracts and validation](plans/scout-round120-studio-lifecycle.m
 Notepad preview saves preserve the original Markdown. Leaving edit mode, blurring
 or closing the panel commits editable text. Markdown links with query strings or
 fragments use native navigation; modified clicks retain browser behavior.
+
+Stereo Tool auto gain cancels measurement on pointer cancellation or premature
+capture loss. A normal short release still completes the one-second measurement.
+Invalid meter frames are ignored and gain edits require finite evidence.
