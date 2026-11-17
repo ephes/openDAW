@@ -95,16 +95,15 @@ isolates the raw key boundary from deferred studio-chain rendering; the unit
 component tests separately cover mounting/profile/row lifetimes. Browser fixture
 and spec also pass a separate TypeScript check with the studio's ambient types.
 
-**Blocked acceptance, not a passing check:** both
-`npm run test:browser -- tests/browser/r134.spec.ts` and the full
-`npm run test:browser` were attempted. Chromium exits before any test body with
-macOS `bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer…:
-Permission denied (1100)` (SIGTRAP). The full run reports 43 failed launches.
-The outside merge clerk must run `npm run test:browser`, including all three
-round-134 journeys, in an environment allowed to launch Chromium. No sandbox
-bypass or external service access was attempted.
+The implementation sandbox could not launch Chromium (macOS
+`bootstrap_check_in … Permission denied (1100)`), so browser acceptance ran at
+merge time instead.
 
-Detailed red/green and gate logs are retained at
-`/Users/jochen/workspaces/ws-work-planning/coordination/codex/logs/cx-r134-opendaw/`.
-All implementation and validation files are handed off on the local branch;
-no push, merge, release, version bump or review CLI invocation was performed.
+## Merge validation (2026-11-17)
+
+Outside the sandbox, `npx turbo build --force`, `npm run lint` and
+`npx turbo run test --force` passed. The full `npm run test:browser` passed
+42 of 43 tests, including all three round-134 journeys. The one failure,
+`tests/browser/scripts.spec.ts` (`'script-contracts' is not defined in
+AudioWorkletGlobalScope`), already fails on the unchanged integration branch and
+is unrelated to this round.
