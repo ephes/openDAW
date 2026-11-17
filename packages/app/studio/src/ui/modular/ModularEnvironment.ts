@@ -100,8 +100,14 @@ export class ModularEnvironment implements Terminable {
         }))
     }
 
-    setWiringPreview(preview: WiringPreview): void {
+    setWiringPreview(preview: WiringPreview): Terminable {
+        this.#gesture?.terminate()
         this.#wiringPreview = Option.wrap(preview)
+        return {terminate: () => {
+            if (this.#wiringPreview.unwrapOrNull() !== preview) {return}
+            this.#gesture?.terminate()
+            this.#wiringPreview = Option.None
+        }}
     }
 
     registerModule(viewAdapter: ModuleViewAdapter): void {
@@ -124,6 +130,7 @@ export class ModularEnvironment implements Terminable {
     }
 
     findConnectorByViewAddress(address: Address): ConnectorViewAdapter {return this.#connectors.get(address)}
+    findConnectorViewOrNull(address: Address): Nullable<ConnectorViewAdapter> {return this.#connectors.getOrNull(address)}
 
     findConnectorViewByEventTarget(target: Nullable<EventTarget>): Nullable<ConnectorViewAdapter> {
         if (target === null) {return null}

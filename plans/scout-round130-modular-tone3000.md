@@ -19,3 +19,12 @@ untouched; a removed or changed endpoint cannot receive a late connection.
 
 Validation: `npm test --workspace=@opendaw/app-studio -- --run src/ui/modular/ModularEnvironment.test.ts`
 (fails on the original implementation, passes after the repair).
+
+Each wire view owns its module x/y/collapsed subscriptions and deferred redraws.
+Removed connections retire their pending first draw; queued callbacks verify the
+same view instance and current endpoints. Closing a view clears its queues and
+subscriptions even when the graph survives. Preview registration is an owned
+handle: closing an older view does not clear a newer view's registration.
+
+Validation: the modular test directory additionally covers controlled frame
+queues, add/remove/undo, removed endpoints and repeated live graph views.
