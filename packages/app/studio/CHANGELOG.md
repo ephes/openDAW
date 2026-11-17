@@ -5,6 +5,16 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Bound and validate latency history; stop optional polling on storage or beacon refusal without entering the application error path.
+
+- Request microphone capture when permission introspection is unsupported; the studio input-stream helper requests selected devices exactly (track recording keeps its default-input fallback).
+
+- Retire cancelled auto-gain probes and ignore unrelated pointers; reject malformed meter frames and nonfinite gain edits.
+
+- Preserve Markdown on preview saves and commit notes on edit exit; route local links with their queries and fragments without reloading; keep same-page fragments and modified clicks native.
+
+- Share lazy inference installation across first callers and retry failures; retire latency polling with its audio context or studio surface.
+
 - Include the first slope-drag motion, retire changed automation segments and remove full-track loop-resize diagnostic snapshots.
 
 - Move and copy the original surviving note selection, preserve chord intervals at MIDI edges and keep audition aligned with preview, including copy origins after a selection change.

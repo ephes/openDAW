@@ -502,3 +502,28 @@ code and resource changes. Failed or superseded installations preserve the prior
 device; default/unit edits preserve parameter identity. See the
 [adapter script contracts](packages/studio/adapters/README.md) for numeric admission,
 resource naming, domain changes and intentional undo/load semantics.
+
+### Studio startup and interaction ownership
+
+Inference is loaded and installed once across concurrent first callers; failed
+installation can be retried. Latency reporting owns one timer per audio context,
+registered with the studio surface and retired when either owner closes.
+See [round 120 contracts and validation](plans/scout-round120-studio-lifecycle.md).
+
+Notepad preview saves preserve the original Markdown. Leaving edit mode, blurring
+or closing the panel commits editable text. Local Markdown links keep their query
+strings and fragments in the URL through in-app routing without reloading the
+studio (the routed page opens at its top); same-page fragments scroll natively and modified clicks retain browser behavior.
+
+Stereo Tool auto gain cancels measurement on pointer cancellation or premature
+capture loss. A normal short release still completes the one-second measurement.
+Invalid meter frames are ignored and gain edits require finite evidence.
+
+Microphone capture can request permission when the browser lacks microphone
+permission introspection. The studio's input-stream helper requests a selected
+device exactly; track recording still falls back to the default input when the
+selected device is missing. See [permission help](packages/app/studio/public/manuals/permissions.md).
+
+Latency reporting accepts at most 501 integer buckets from 0 to 500 ms in a
+4096-character stored history. Corrupt history, unavailable storage or a throwing
+beacon retires optional reporting for that installation without an app error.

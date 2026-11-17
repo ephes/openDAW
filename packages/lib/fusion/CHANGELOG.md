@@ -5,6 +5,10 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Clear per-address typed-array payload caches on stream disconnect and termination.
+
+- Bind stream handles to individual registrations across reconnects and deliver each package to a stable listener snapshot that skips listeners removed mid-frame.
+
 - Own preference host sync senders/subscriptions and fence queued updates after sync or host disposal, including failed initial sends.
 
 - Admit OPFS read sizes before allocation using caller budgets; preserve primary failures when handle close also fails.

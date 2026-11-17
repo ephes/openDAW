@@ -32,7 +32,7 @@ export class AudioDevices {
             audio: {
                 ...AudioDevices.#DefaultMediaTrackConstraints(sampleRate),
                 channelCount,
-                deviceId
+                deviceId: deviceId === undefined ? undefined : {exact: deviceId}
             } satisfies MediaTrackConstraints
         }))
     }
@@ -56,9 +56,9 @@ export class AudioDevices {
 
     static async #queryPermissions(): Promise<boolean> {
         const headline = "Permission Api"
-        const {status, value: permissionState, error} =
-            await Promises.tryCatch(navigator.permissions.query({name: "microphone"}))
-        if (status === "rejected") {return await Dialogs.info({headline, message: String(error)}) ?? false}
+        const {status, value: permissionState} =
+            await Promises.tryCatch(Promise.resolve().then(() => navigator.permissions.query({name: "microphone"})))
+        if (status === "rejected") {return true}
         console.debug(`Permission state(${permissionState.name}): ${permissionState.state}`)
         if (permissionState.state === "granted") {return true}
         const buttons: ReadonlyArray<Button> = [{
@@ -71,9 +71,10 @@ export class AudioDevices {
             onClick: (handler) => handler.close()
         }]
         if (permissionState.state === "denied") {
-            return await Dialogs.info({
+            await Dialogs.info({
                 headline, message: "Permissions to accept 'microphone / audio devices' has been denied.", buttons
-            }) ?? false
+            })
+            return false
         }
         if (permissionState.state === "prompt") {
             return await Dialogs.info({

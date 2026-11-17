@@ -84,3 +84,7 @@ Inverts the phase of the right channel.
 ### 5.3 LR (Swap)
 
 Swaps left and right channels. Use to correct accidentally reversed stereo recordings or for creative mirroring effects.
+
+Auto Gain measures for at least one second after a normal press/release. Pointer
+cancellation or losing capture while held cancels without changing volume. Invalid
+meter frames and nonfinite normalization results never create a volume edit.

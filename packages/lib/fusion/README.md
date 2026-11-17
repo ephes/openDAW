@@ -68,3 +68,10 @@ Unsubscribing retires the owner before releasing either subscription, so queued
 microtasks cannot send afterward. Host termination retires all active syncs and
 later sync attempts are inert. Active syncs still send an initial snapshot and
 coalesce changes to the latest settings once per microtask.
+
+Live stream subscription handles belong to one registration generation. Each
+package dispatch uses a stable listener snapshot; additions affect the next
+frame, removals apply at once. See [live stream contracts](src/live-stream/README.md).
+
+Receiver disconnect also releases its per-address typed-array cache; reconnects
+never reuse payload arrays from an earlier connection.

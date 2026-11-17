@@ -18,7 +18,7 @@ type Construct = {
 export const renderMarkdown = (element: HTMLElement, text: string, actions?: Record<string, Exec>) => {
     if (Browser.isWindows()) {
         Object.entries(ModfierKeys.Mac)
-            .forEach(([key, value]) => text = text.replaceAll(value, (ModfierKeys.Win as any)[key]))
+            .forEach(([key, value]) => text = text.replaceAll(value, (ModfierKeys.Win as Record<string, string>)[key]))
     }
     const md = markdownit()
     md.use(markdownItTable)
@@ -40,13 +40,18 @@ export const renderMarkdown = (element: HTMLElement, text: string, actions?: Rec
             return
         }
         const url = new URL(a.href)
-        if (url.origin === location.origin) {
-            a.onclick = (event: Event) => {
-                event.preventDefault()
-                RouteLocation.get().navigateTo(url.pathname)
-            }
-        } else {
+        if (url.origin !== location.origin) {
             a.target = "_blank"
+            return
+        }
+        a.onclick = (event: MouseEvent) => {
+            if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey
+                || event.shiftKey || event.altKey || a.hasAttribute("download")
+                || (a.target !== "" && a.target !== "_self")) {return}
+            // Same-document fragments scroll natively; anything else stays in the router to avoid a studio reload.
+            if (url.hash !== "" && url.pathname === location.pathname && url.search === location.search) {return}
+            event.preventDefault()
+            RouteLocation.get().navigateTo(url.pathname + url.search + url.hash)
         }
     })
     element.querySelectorAll("code").forEach(code => {

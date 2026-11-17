@@ -16,7 +16,7 @@ const fixture = () => {
     const port: Port = {onmessage: null, onmessageerror: null, postMessage: vi.fn()}
     const messenger = Messenger.for(port)
     const receiver = new LiveStreamReceiver()
-    const connection = receiver.connect(messenger)
+    let connection = receiver.connect(messenger)
     disposals.push(() => {connection.terminate(); messenger.terminate()})
     const send = (func: string, value: unknown) => port.onmessage?.(new MessageEvent("message", {
         data: {type: "send", returnId: false, func, args: [{value}]}
@@ -41,7 +41,11 @@ const fixture = () => {
         send("sendUpdateData", output.toArrayBuffer())
         Atomics.store(lock, 0, Lock.READ)
     }
-    return {receiver, send, lock, structure, frame}
+    return {receiver, send, lock, structure, frame, reconnect: () => {
+        connection.terminate()
+        connection = receiver.connect(messenger)
+        send("sendShareLock", lock.buffer)
+    }}
 }
 
 describe("LiveStreamReceiver validated frames", () => {
@@ -133,3 +137,73 @@ describe("LiveStreamReceiver validated frames", () => {
         expect(received).toHaveBeenLastCalledWith(6)
     })
 })
+
+const packageTypes = [PackageType.Float, PackageType.Integer, PackageType.FloatArray, PackageType.IntegerArray, PackageType.ByteArray]
+const subscribe = (receiver: LiveStreamReceiver, type: PackageType, listener: (value: unknown) => void) => {
+    switch (type) {
+        case PackageType.Float: return receiver.subscribeFloat(address, listener)
+        case PackageType.Integer: return receiver.subscribeInteger(address, listener)
+        case PackageType.FloatArray: return receiver.subscribeFloats(address, listener)
+        case PackageType.IntegerArray: return receiver.subscribeIntegers(address, listener)
+        case PackageType.ByteArray: return receiver.subscribeByteArray(address, listener)
+    }
+}
+const writePackage = (output: ByteArrayOutput, type: PackageType) => {
+    if (type !== PackageType.Float && type !== PackageType.Integer) {output.writeInt(1)}
+    if (type === PackageType.Float || type === PackageType.FloatArray) {output.writeFloat(7)}
+    else if (type === PackageType.ByteArray) {output.writeByte(7)}
+    else {output.writeInt(7)}
+}
+
+it.each(packageTypes)("delivers a stable frame when its first listener retires itself: type %s", type => {
+    const test = fixture()
+    const deliveries: string[] = []
+    const first = subscribe(test.receiver, type, () => {deliveries.push("first"); first.terminate()})
+    subscribe(test.receiver, type, () => deliveries.push("second"))
+    subscribe(test.receiver, type, () => deliveries.push("third"))
+    test.send("sendUpdateStructure", test.structure(0, [type]))
+    for (let frame = 0; frame < 2; frame++) {
+        test.frame(0, 1, output => writePackage(output, type))
+        test.receiver.dispatch()
+    }
+    expect(deliveries).toEqual(["first", "second", "third", "second", "third"])
+})
+
+it("defers additions and skips listeners removed earlier in the current frame", () => {
+    const test = fixture()
+    const deliveries: string[] = []
+    let firstFrame = true
+    test.receiver.subscribeFloat(address, () => {
+        deliveries.push("first")
+        if (firstFrame) {
+            second.terminate()
+            test.receiver.subscribeFloat(address, () => deliveries.push("new"))
+            firstFrame = false
+        }
+    })
+    const second = test.receiver.subscribeFloat(address, () => deliveries.push("second"))
+    test.send("sendUpdateStructure", test.structure(0, [PackageType.Float]))
+    for (let frame = 0; frame < 2; frame++) {
+        test.frame(0, 1, output => output.writeFloat(7))
+        test.receiver.dispatch()
+    }
+    expect(deliveries).toEqual(["first", "first", "new"])
+})
+
+
+it.each([PackageType.FloatArray, PackageType.IntegerArray, PackageType.ByteArray])(
+    "disconnect releases cached payload generation for array type %s", type => {
+        const test = fixture()
+        const arrays: unknown[] = []
+        for (let generation = 0; generation < 3; generation++) {
+            subscribe(test.receiver, type, value => arrays.push(value))
+            test.send("sendUpdateStructure", test.structure(0, [type]))
+            for (let frame = 0; frame < 2; frame++) {
+                test.frame(0, 1, output => writePackage(output, type))
+                test.receiver.dispatch()
+            }
+            expect(arrays[generation * 2]).toBe(arrays[generation * 2 + 1])
+            if (generation > 0) {expect(arrays[generation * 2]).not.toBe(arrays[(generation - 1) * 2])}
+            test.reconnect()
+        }
+    })
