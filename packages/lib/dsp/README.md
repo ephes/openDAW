@@ -158,3 +158,9 @@ connected components and reports cycles (including self-loops) through hasLoops.
 allocating PCM. `WavFile.inspect` additionally requires the PCM16/24 or float32
 formats that `decodeFloats` supports. Callers impose their own allocation budgets
 before decode.
+
+## Halfband resampling and delay automation
+
+The 2x resampler splits all 31 halfband taps into 16 even and 15 odd taps.
+Cascading those stages provides 4x/8x Fold oversampling. Direct zero-insertion FIR
+regressions pin the impulse and DC response, including the complete filter tail.

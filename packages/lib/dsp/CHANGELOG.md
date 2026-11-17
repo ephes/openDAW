@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Retain every halfband coefficient in the polyphase resampler used by Fold oversampling.
+
 - Expose allocation-free, format-independent WAV geometry and supported-format inspection; reuse them in float decoding and bounded upload admission.
 
 - Retire all incident graph edges before late edge leases; sort processors with iterative linear graph traversal and explicit cycle detection.

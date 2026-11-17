@@ -15,9 +15,9 @@ const HALFBAND_COEFF = new Float32Array([
     0.00854519755, 0.0, -0.00421638042, 0.0, 0.00174689293, 0.0, -0.00048076361
 ])
 
-// Extract only non-zero coefficients for efficient polyphase implementation
-const PHASE0_COEFF = new Float32Array(12)  // Even-indexed taps (including center)
-const PHASE1_COEFF = new Float32Array(11)  // Odd-indexed taps (all zeros in halfband)
+// Split every tap by parity, including the center tap in the odd phase.
+const PHASE0_COEFF = new Float32Array(Math.ceil(HALFBAND_COEFF.length / 2))
+const PHASE1_COEFF = new Float32Array(Math.floor(HALFBAND_COEFF.length / 2))
 
 // Fill polyphase coefficient arrays
 for (let i = 0, p0 = 0, p1 = 0; i < HALFBAND_COEFF.length; i++) {

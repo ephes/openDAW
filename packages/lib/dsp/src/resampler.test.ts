@@ -1,5 +1,6 @@
 import {describe, expect, test} from "vitest"
 import {ResamplerMono, ResamplerStereo} from "./resampler"
+import {upsampleReference} from "./resampler-test-fixture"
 import {RenderQuantum} from "./constants"
 
 describe("Resampler", () => {
@@ -276,4 +277,13 @@ describe("Resampler", () => {
             }
         })
     })
+})
+// The even phase must retain all 16 taps, independently of odd-phase alignment.
+test.each(["impulse", "dc"])("complete even halfband phase: %s", signal => {
+    const input = new Float32Array(128).fill(signal === "dc" ? 1 : 0)
+    input[0] = 1
+    const actual = new Float32Array(256)
+    new ResamplerMono(2).upsample(input, actual, 0, 128)
+    const expected = upsampleReference(input, 2)
+    for (let i = 0; i < actual.length; i += 2) expect(actual[i]).toBeCloseTo(expected[i], 7)
 })
