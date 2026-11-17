@@ -4,6 +4,11 @@ _This package is part of the openDAW SDK_
 
 Standard library providing core utilities and data structures for TypeScript projects.
 
+`Curve.coefficients` returns the exact recurrence `{m: 1, q: 0}` for equal
+endpoints. `Curve.walk` and `Curve.run` therefore keep constant curves (including
+zero-height drawing bounds) finite at every slope; changing curves keep their
+existing interpolation.
+
 ## Core Utilities
 
 * Language primitives, type definitions, and utility functions **lang.ts**

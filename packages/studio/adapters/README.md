@@ -1,5 +1,9 @@
 This package is part of the openDAW SDK
 
+Curved tempo automation with equal endpoint BPM stays constant through contiguous
+grid reads, seeks and neighboring ramp transitions. PPQN/seconds conversion uses
+the same finite constant recurrence as the shared Curve primitive.
+
 Preset import requires an eight-byte header before either magic/version integer is
 read. Short presets use the existing notification or Attempt failure channel and
 do not touch the target graph.
