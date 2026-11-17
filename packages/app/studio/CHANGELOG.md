@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Own modular wiring previews through cancellation and teardown; preserve original routes until a valid, single-undo replacement commits.
+
 - Show disabled auxiliary sends dimmed in the mixer and toggle them with an "Enabled" entry in the send menu.
 
 - Cancel deferred editor focus and search/shortcut connection waits when their view lifetime ends.

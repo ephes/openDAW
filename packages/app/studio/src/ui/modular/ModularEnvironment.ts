@@ -19,11 +19,10 @@ import {
     ModuleConnectorAdapter,
     Modules
 } from "@opendaw/studio-adapters"
-import {Address, Vertex} from "@opendaw/lib-box"
+import {Address} from "@opendaw/lib-box"
 import {Pointers} from "@opendaw/studio-enums"
 import {ModuleConnectionBox} from "@opendaw/studio-boxes"
 import {Camera} from "@/ui/modular/Camera.ts"
-import {Surface} from "@/ui/surface/Surface.tsx"
 import {Events} from "@opendaw/lib-dom"
 import {StudioService} from "@/service/StudioService"
 import {Project} from "@opendaw/studio-core"
@@ -73,6 +72,8 @@ export class ModularEnvironment implements Terminable {
     #wiringPreview: Option<WiringPreview> = Option.None
 
     #isWiring: boolean = false
+    #gesture: Nullable<Terminator> = null
+    #terminated = false
 
     constructor(service: StudioService, modularAdapter: ModularAdapter, camera: Camera) {
         this.#service = service
@@ -136,47 +137,63 @@ export class ModularEnvironment implements Terminable {
     }
 
     beginWiring(adapter: ModuleConnectorAdapter<Pointers, unknown>, pointer: Point): void {
-        const runtime = new Terminator()
-        this.#isWiring = true
-        runtime.own({terminate: () => this.#isWiring = false})
+        this.#beginWiring(adapter, pointer)
+    }
+
+    #beginWiring(adapter: ModuleConnectorAdapter<Pointers, unknown>, pointer: Point,
+                 original?: ModuleConnectionAdapter): void {
+        this.#gesture?.terminate()
+        if (this.#terminated) {return}
         const matchingConnectors = this.findMatchingConnectorViews(adapter)
-        if (matchingConnectors.length === 0) {return}
-        matchingConnectors.forEach(connector => connector.element.classList.add("accepting"))
-        runtime.own({
-            terminate: () => matchingConnectors.forEach(connector => connector.element.classList.remove("accepting"))
-        })
-        const preview = runtime.own(this.#wiringPreview.unwrap("No preview set.")
-            .begin(this.#connectors.get(adapter.address), pointer))
-        let lock: Option<ConnectorViewAdapter> = Option.None
-        const owner = Surface.get().owner // TODO we need a reference to the owner
-        runtime.own(Events.subscribe(owner, "pointerover", event => {
-            const view: Nullable<ConnectorViewAdapter> = this.findConnectorViewByEventTarget(event.target)
-            if (isDefined(view) && matchingConnectors.includes(view)) {
-                lock = Option.wrap(view)
-            } else {
-                lock = Option.None
-            }
-        }, {capture: true}))
-        runtime.own(Events.subscribe(owner, "pointermove", event => preview.update(lock.match({
-            none: () => Point.fromClient(event),
-            some: ({pinPoint: {x, y}}) => this.#camera.localToGlobal(x, y)
-        }), lock.nonEmpty()), {capture: true}))
-        runtime.own(Events.subscribe(owner, "pointerup", event => {
-            const view: Nullable<ConnectorViewAdapter> = this.findConnectorViewByEventTarget(event.target)
-            if (isDefined(view)) {
-                this.#connect(adapter, view.adapter)
-            }
+        const sourceView = this.#connectors.getOrNull(adapter.address)
+        if (matchingConnectors.length === 0 || sourceView === null || this.#wiringPreview.isEmpty()) {return}
+        const originalSource = original?.box.source.targetVertex.unwrapOrNull()
+        const originalTarget = original?.box.target.targetVertex.unwrapOrNull()
+        const runtime = new Terminator()
+        this.#gesture = runtime
+        this.#isWiring = true
+        runtime.own({terminate: () => {
+            if (this.#gesture !== runtime) {return}
+            this.#gesture = null
+            this.#isWiring = false
+        }})
+        try {
+            matchingConnectors.forEach(connector => connector.element.classList.add("accepting"))
+            runtime.own({terminate: () => matchingConnectors.forEach(connector => connector.element.classList.remove("accepting"))})
+            const preview = runtime.own(this.#wiringPreview.unwrap().begin(sourceView, pointer))
+            let lock: Option<ConnectorViewAdapter> = Option.None
+            const owner = sourceView.element.ownerDocument.defaultView!
+            runtime.own(Events.subscribe(owner, "pointerover", event => {
+                const view = this.findConnectorViewByEventTarget(event.target)
+                lock = isDefined(view) && matchingConnectors.includes(view) ? Option.wrap(view) : Option.None
+            }, {capture: true}))
+            runtime.own(Events.subscribe(owner, "pointermove", event => preview.update(lock.match({
+                none: () => Point.fromClient(event),
+                some: ({pinPoint: {x, y}}) => this.#camera.localToGlobal(x, y)
+            }), lock.nonEmpty()), {capture: true}))
+            runtime.own(Events.subscribe(owner, "pointerup", event => {
+                try {
+                    const view = this.findConnectorViewByEventTarget(event.target)
+                    if (isDefined(view) && matchingConnectors.includes(view)
+                        && (!original || (original.box.source.targetVertex.unwrapOrNull() === originalSource
+                            && original.box.target.targetVertex.unwrapOrNull() === originalTarget))) {
+                        this.#connect(adapter, view.adapter, original)
+                    }
+                } finally {runtime.terminate()}
+            }, {capture: true}))
+            runtime.own(Events.subscribe(owner, "pointercancel", () => runtime.terminate(), {capture: true}))
+            runtime.own(Events.subscribe(owner, "blur", () => runtime.terminate()))
+        } catch (error) {
             runtime.terminate()
-        }, {capture: true}))
+            throw error
+        }
     }
 
     beginRewiring(connection: ModuleConnectionAdapter, connectorAdapter: ModuleConnectorAdapter<Pointers, unknown>, pointer: Point) {
-        const vertex: Vertex = connection.source.address.equals(connectorAdapter.address)
-            ? connection.target
-            : connection.source
-        const connector: ModuleConnectorAdapter<Pointers, unknown> = this.findConnectorByViewAddress(vertex.address).adapter
-        this.#service.project.editing.modify(() => connection.box.delete())
-        this.beginWiring(connector, pointer)
+        const vertex = connection.source.address.equals(connectorAdapter.address) ? connection.target : connection.source
+        const connector = this.#connectors.getOrNull(vertex.address)
+        if (connector === null) {this.#gesture?.terminate(); return}
+        this.#beginWiring(connector.adapter, pointer, connection)
     }
 
     highlightWire(connection: ModuleConnectionAdapter): Terminable {
@@ -193,13 +210,15 @@ export class ModularEnvironment implements Terminable {
     get modularAdapter(): ModularAdapter {return this.#modularAdapter}
 
     terminate(): void {
+        this.#terminated = true
+        this.#gesture?.terminate()
         this.#wiringPreview = Option.None
         this.#modules.forEach(entry => entry.lifecycle.terminate())
         this.#modules.clear()
         this.#terminator.terminate()
     }
 
-    #connect(adapter: ModuleConnectorAdapter<Pointers, unknown>, other: ModuleConnectorAdapter<Pointers, unknown>): void {
+    #connect(adapter: ModuleConnectorAdapter<Pointers, unknown>, other: ModuleConnectorAdapter<Pointers, unknown>, original?: ModuleConnectionAdapter): void {
         if (adapter === other) {
             console.debug("Cannot connect same connector")
             return
@@ -208,17 +227,27 @@ export class ModularEnvironment implements Terminable {
             console.debug("Cannot connect mismatching connectors")
             return
         }
+        const {editing, boxGraph} = this.#service.project
+        const owns = (connector: ModuleConnectorAdapter<Pointers, unknown>) =>
+            boxGraph.findBox(connector.address.uuid).unwrapOrNull() === connector.field.box
+            && this.#modularAdapter.modules.some(module => module.box === connector.field.box)
+            && this.#connectors.getOrNull(connector.address)?.adapter === connector
+        if (!owns(adapter) || !owns(other)) {return}
+        if (original && (!this.#modularAdapter.connections.includes(original)
+            || boxGraph.findBox(original.uuid).unwrapOrNull() !== original.box)) {return}
         const source = adapter.direction === Direction.Output ? adapter : other
         const target = other.direction === Direction.Input ? other : adapter
         if (source.connections.some(connection => connection.box.target.targetVertex.unwrap().address.equals(target.address))) {
             // TODO showInfoDialog("Connection already exists")
             return
         }
-        const {editing, boxGraph} = this.#service.project
-        editing.modify(() => ModuleConnectionBox.create(boxGraph, UUID.generate(), box => {
-            box.collection.refer(this.#modularAdapter.box.connections)
-            box.source.refer(source.field)
-            box.target.refer(target.field)
-        }))
+        editing.modify(() => {
+            original?.box.delete()
+            ModuleConnectionBox.create(boxGraph, UUID.generate(), box => {
+                box.collection.refer(this.#modularAdapter.box.connections)
+                box.source.refer(source.field)
+                box.target.refer(target.field)
+            })
+        })
     }
 }
