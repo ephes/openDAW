@@ -5,6 +5,7 @@ import {NeuralAmpModelBox} from "@opendaw/studio-boxes"
 import {BoxGraph} from "@opendaw/lib-box"
 import {NeuralAmpDeviceBoxAdapter} from "@opendaw/studio-adapters"
 import {Workers} from "@opendaw/studio-core"
+import {selectToneUrl} from "./ToneSelection"
 import {showTone3000Dialog} from "./Tone3000Dialog"
 
 type ToneModel = { id: number, name: string, size: string, model_url: string }
@@ -17,28 +18,9 @@ export type PackMeta = {
     models: ReadonlyArray<{ id: number, name: string, size: string, model_url: string }>
 }
 
-const AppId = "openDAW"
-const SelectEndpoint = "https://www.tone3000.com/api/v1/select"
-const StorageKey = "tone3000_tone_url"
-const StorageDoneKey = "tone3000_done"
-
 const packPath = (toneId: number): string => `tone3000/${toneId}`
 const packMetaPath = (toneId: number): string => `${packPath(toneId)}/pack.json`
 const modelPath = (toneId: number, modelId: number): string => `${packPath(toneId)}/models/${modelId}.nam`
-
-const waitForToneUrl = (): Promise<string> => {
-    return new Promise<string>((resolve) => {
-        localStorage.removeItem(StorageKey)
-        localStorage.removeItem(StorageDoneKey)
-        const onStorage = (event: StorageEvent) => {
-            if (event.key === StorageKey && event.newValue !== null) {
-                window.removeEventListener("storage", onStorage)
-                resolve(event.newValue)
-            }
-        }
-        window.addEventListener("storage", onStorage)
-    })
-}
 
 const fetchTone = async (toneUrl: string): Promise<ToneResponse> => {
     const response = await fetch(toneUrl)
@@ -130,16 +112,23 @@ export const scanCachedModels = async (packId: string, meta: PackMeta): Promise<
 }
 
 export namespace NamTone3000 {
-    export const browse = (boxGraph: BoxGraph, editing: Editing, adapter: NeuralAmpDeviceBoxAdapter) => async () => {
-        const {status} = await Promises.tryCatch(showTone3000Dialog())
-        if (status === "rejected") {return}
+    export const browse = (boxGraph: BoxGraph, editing: Editing, adapter: NeuralAmpDeviceBoxAdapter, signal?: AbortSignal) => {
+        let current: AbortController | null = null
+        return async () => {
+        current?.abort(Errors.AbortError)
+        const controller = new AbortController()
+        current = controller
+        const retire = () => controller.abort(Errors.AbortError)
+        signal?.addEventListener("abort", retire, {once: true})
+        if (signal?.aborted) {retire()}
+        const ownerSignal = controller.signal
+        const deletion = adapter.box.subscribeDeletion(() => controller.abort(Errors.AbortError))
         try {
-            const redirectUrl = `${window.location.origin}/tone3000-callback.html`
-            const url = `${SelectEndpoint}?app_id=${AppId}&redirect_url=${encodeURIComponent(redirectUrl)}&platform=nam`
-            const toneUrlPromise = waitForToneUrl()
-            window.open(url, "tone3000")
-            const toneUrl = await toneUrlPromise
-            localStorage.setItem(StorageDoneKey, "true")
+            ownerSignal.throwIfAborted()
+            const {status} = await Promises.tryCatch(showTone3000Dialog())
+            if (status === "rejected") {return}
+            ownerSignal.throwIfAborted()
+            const toneUrl = await selectToneUrl(ownerSignal)
             const tone = await fetchTone(toneUrl)
             if (tone.models.length === 0) {return}
             const meta = await storePackToOpfs(tone)
@@ -166,6 +155,11 @@ export namespace NamTone3000 {
         } catch (error) {
             if (Errors.isAbort(error)) {return}
             console.error("Failed to load NAM model from Tone 3000:", error)
+        } finally {
+            deletion.terminate()
+            signal?.removeEventListener("abort", retire)
+            if (current === controller) {current = null}
+        }
         }
     }
 

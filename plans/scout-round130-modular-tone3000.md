@@ -28,3 +28,20 @@ handle: closing an older view does not clear a newer view's registration.
 
 Validation: the modular test directory additionally covers controlled frame
 queues, add/remove/undo, removed endpoints and repeated live graph views.
+
+## Tone3000 selection
+
+The redirect carries a random per-selection `selection` query parameter. Both
+storage publication and acknowledgement use keys suffixed with that identity;
+no global keys are cleared. The callback listens before publishing and removes
+its listener/timer on acknowledgement, page exit, refusal or five-minute expiry.
+The caller owns a finite cancellable exchange and its popup, with editor/device
+retirement and supersession releasing the wait.
+
+S05 limitation requiring an owner decision: Studio's COOP `same-origin` severs
+WindowProxy handles on cross-origin navigation. `popup.closed` therefore cannot
+reliably distinguish an open external selector from user closure. Do not poll it:
+that would abort valid selections. A local relay with an extra user click could
+own a reliably observable same-origin popup, but changes the user flow. S05's
+close-detection scope is deferred pending that choice. Scoped callback ownership
+(S06) and finite cancellation do not depend on that decision.

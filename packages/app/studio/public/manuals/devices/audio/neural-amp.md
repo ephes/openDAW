@@ -137,3 +137,12 @@ processed span to dry bypass and reports the failure once. Later blocks stay
 bypassed. Select a different valid model, or reopen the project, to recover;
 re-selecting the same model, reset and Mono edits keep the failed model
 bypassed.
+
+### Tone 3000 selection lifetime
+
+Each selection has its own callback identity, so two devices can select packs
+independently. The callback acknowledges only its own selection. Blocked popups,
+a five-minute timeout, device deletion or closing the editor cancel the pending
+selection. Start again after cancellation. Because browser cross-origin isolation
+can detach a popup's window handle, closing the external selector alone may wait
+until the timeout; an unrelated later callback cannot complete that selection.

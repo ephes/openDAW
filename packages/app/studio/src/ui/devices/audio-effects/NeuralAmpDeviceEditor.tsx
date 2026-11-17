@@ -106,7 +106,9 @@ export const NeuralAmpDeviceEditor = ({lifecycle, service, adapter, deviceHost}:
     }))
     updateModel()
     updatePackMeta()
-    const browseApi = NamTone3000.browse(boxGraph, editing, adapter)
+    const browseController = new AbortController()
+    lifecycle.own({terminate: () => browseController.abort(Errors.AbortError)})
+    const browseApi = NamTone3000.browse(boxGraph, editing, adapter, browseController.signal)
     const browseLocal = NamLocal.browse(boxGraph, editing, adapter)
     const showModelInfo = () => {
         const current = model.getValue()

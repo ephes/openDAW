@@ -13,20 +13,39 @@
 <p id="status">Receiving tone...</p>
 <script>
     const status = document.getElementById("status")
-    const toneUrl = new URLSearchParams(window.location.search).get("tone_url")
-    if (toneUrl) {
-        status.textContent = "Sending NAM to device..."
-        localStorage.setItem("tone3000_tone_url", toneUrl)
-        window.addEventListener("storage", (event) => {
-            if (event.key === "tone3000_done") {
-                status.textContent = "Done!"
-                localStorage.removeItem("tone3000_tone_url")
-                localStorage.removeItem("tone3000_done")
-                window.close()
-            }
-        })
+    const params = new URLSearchParams(window.location.search)
+    const toneUrl = params.get("tone_url")
+    const selection = params.get("selection")
+    if (toneUrl && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selection || "")) {
+        const key = `tone3000_tone_url:${selection}`
+        const doneKey = `tone3000_done:${selection}`
+        const cleanup = () => {
+            clearTimeout(timeout)
+            window.removeEventListener("storage", onStorage)
+            window.removeEventListener("pagehide", cleanup)
+            try {localStorage.removeItem(key); localStorage.removeItem(doneKey)} catch { /* Optional cleanup. */ }
+        }
+        const onStorage = event => {
+            if (event.storageArea !== localStorage || event.key !== doneKey || event.newValue !== "true") {return}
+            status.textContent = "Done!"
+            cleanup()
+            window.close()
+        }
+        const timeout = setTimeout(() => {
+            cleanup()
+            status.textContent = "Selection expired. Please select again in openDAW."
+        }, 5 * 60_000)
+        window.addEventListener("storage", onStorage)
+        window.addEventListener("pagehide", cleanup)
+        try {
+            status.textContent = "Sending NAM to device..."
+            localStorage.setItem(key, toneUrl)
+        } catch {
+            cleanup()
+            status.textContent = "Error: Browser storage is unavailable."
+        }
     } else {
-        status.textContent = "Error: No tone selected."
+        status.textContent = "Error: No owned tone selection."
     }
 </script>
 </body>

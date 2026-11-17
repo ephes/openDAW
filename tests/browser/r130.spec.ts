@@ -1,0 +1,31 @@
+import {expect, test} from "@playwright/test"
+
+test("isolated selectors deliver reverse callbacks only to their owning selection", async ({page, context}) => {
+    await context.route("https://www.tone3000.com/**", route => route.fulfill({
+        contentType: "text/html", body: "<p>Synthetic external selector</p>"
+    }))
+    await page.goto("/")
+    const popups: import("@playwright/test").Page[] = []
+    page.on("popup", popup => popups.push(popup))
+    await page.evaluate(async () => {
+        // @ts-expect-error Vite serves the synthetic fixture.
+        const {setup} = await import("/r130-selection.ts")
+        Object.assign(window, {toneSelection: setup()})
+    })
+    await expect.poll(() => popups.length).toBe(2)
+    await Promise.all(popups.map(popup => popup.waitForLoadState()))
+    const redirects = popups.map(popup => new URL(new URL(popup.url()).searchParams.get("redirect_url")!))
+    expect(redirects[0].searchParams.get("selection")).not.toBe(redirects[1].searchParams.get("selection"))
+    // COOP may sever the external WindowProxy. That must not cancel a valid selection.
+    await page.waitForTimeout(400)
+    redirects[1].searchParams.set("tone_url", "https://example.test/second")
+    await popups[1].goto(redirects[1].href).catch(error => {if (!popups[1].isClosed()) {throw error}})
+    await expect.poll(() => page.evaluate(() => (window as unknown as {toneSelection: {selections: unknown[]}}).toneSelection.selections)).toEqual([{index: 1, value: "https://example.test/second"}])
+    expect(popups[0].isClosed()).toBe(false)
+    redirects[0].searchParams.set("tone_url", "https://example.test/first")
+    await popups[0].goto(redirects[0].href).catch(error => {if (!popups[0].isClosed()) {throw error}})
+    await expect.poll(() => page.evaluate(() => (window as unknown as {toneSelection: {selections: unknown[]}}).toneSelection.selections)).toEqual([
+        {index: 1, value: "https://example.test/second"}, {index: 0, value: "https://example.test/first"}
+    ])
+    await expect.poll(() => popups.every(popup => popup.isClosed())).toBe(true)
+})

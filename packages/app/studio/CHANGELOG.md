@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Scope Tone3000 callbacks and acknowledgements to one selection; cancel blocked, expired and retired selection waits after at most five minutes.
+
 - Release modular wire observers and deferred draws with their view; ignore removed connections and preserve newer preview registrations.
 
 - Own modular wiring previews through cancellation and teardown; preserve original routes until a valid, single-undo replacement commits.
