@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Serve a transfer request only for a sample or soundfont the session's asset reader shares; refuse unknown asset types and contain malformed or failing peer requests instead of raising unhandled rejections in the serving studio.
+
 - Settle duplicate requests explicitly, clean failed/stalled offers, and prevent provider resurrection after termination.
 
 - Bound peer/archive ingestion with validated identities, transfer metadata and actual expanded-byte budgets.

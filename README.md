@@ -304,7 +304,10 @@ slope edits retire when their source segment changes. See the
 
 Room joins preserve shared map identities and unwind failed setup. Only the latest
 connection intent can install a room; unused results and retired room projects
-close their transport/document. Recovery-log failures stop capture visibly, and
+close their transport/document. Peer asset transfers serve only samples and
+soundfonts that the room project references (`RoomAssetReader`); requests for other
+local assets, unknown asset types or malformed requests are refused without
+disturbing the serving studio. Recovery-log failures stop capture visibly, and
 commit counts advance only after file closure succeeds. See the
 [core contracts](packages/studio/core/README.md#live-room-admission-and-ownership)
 and [round 98 validation plan](plans/scout-round98-room-lifecycle.md).

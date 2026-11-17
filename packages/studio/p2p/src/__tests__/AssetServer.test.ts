@@ -230,3 +230,81 @@ describe("AssetServer channel-close safety", () => {
         server.terminate()
     })
 })
+
+describe("AssetServer request authority", () => {
+    beforeEach(() => {lastIncomingChannel = null})
+    afterEach(() => {vi.restoreAllMocks()})
+
+    const settle = async () => {
+        for (let tick = 0; tick < 20; tick++) {await Promise.resolve()}
+        await new Promise(resolve => setTimeout(resolve, 0))
+    }
+
+    const startServer = (reader: AssetReader) => {
+        const socket = createMockSocket()
+        const signaling = new AssetSignaling(socket, "assets:room")
+        const server = new AssetServer(signaling, "peer-local", reader)
+        return {socket, server}
+    }
+
+    it("neither reads nor sends an asset its reader does not share", async () => {
+        const readSoundfont = vi.fn(async () => [new ArrayBuffer(8), {}] as never)
+        const readSample = vi.fn(async () => [new ArrayBuffer(8), {}] as never)
+        const sendSpy = vi.spyOn(AssetPeerConnection.prototype, "sendWithBackpressure").mockResolvedValue(true as never)
+        const {socket, server} = startServer({
+            hasSample: async () => false, hasSoundfont: async () => false, readSample, readSoundfont
+        })
+        const channel = await openConnection(socket, "peer-remote", "peer-local")
+        for (const assetType of ["sample", "soundfont"]) {
+            channel.onmessage!({data: JSON.stringify({type: "transfer-request", uuid: UUID.toString(UUID.generate()), assetType})})
+        }
+        await settle()
+        expect(readSample).not.toHaveBeenCalled()
+        expect(readSoundfont).not.toHaveBeenCalled()
+        expect(sendSpy).not.toHaveBeenCalled()
+        server.terminate()
+    })
+
+    it("refuses unknown asset types instead of treating them as soundfonts", async () => {
+        const readSoundfont = vi.fn(async () => [new ArrayBuffer(8), {}] as never)
+        const sendSpy = vi.spyOn(AssetPeerConnection.prototype, "sendWithBackpressure").mockResolvedValue(true as never)
+        const {socket, server} = startServer({
+            hasSample: async () => true, hasSoundfont: async () => true,
+            readSample: async () => {throw new Error("not used")}, readSoundfont
+        })
+        const channel = await openConnection(socket, "peer-remote", "peer-local")
+        channel.onmessage!({data: JSON.stringify({type: "transfer-request", uuid: UUID.toString(UUID.generate()), assetType: "preset"})})
+        await settle()
+        expect(readSoundfont).not.toHaveBeenCalled()
+        expect(sendSpy).not.toHaveBeenCalled()
+        server.terminate()
+    })
+
+    it("contains malformed or failing peer requests instead of rejecting globally", async () => {
+        const rejections: Array<unknown> = []
+        const record = (reason: unknown) => {rejections.push(reason)}
+        process.on("unhandledRejection", record)
+        vi.spyOn(AssetPeerConnection.prototype, "sendWithBackpressure").mockResolvedValue(true as never)
+        const {socket, server} = startServer({
+            hasSample: async () => true, hasSoundfont: async () => true,
+            readSample: async () => {throw new Error("synthetic missing sample")},
+            readSoundfont: async () => {throw new Error("synthetic missing soundfont")}
+        })
+        try {
+            const channel = await openConnection(socket, "peer-remote", "peer-local")
+            for (const data of [
+                "{not json",
+                "null",
+                JSON.stringify({type: "transfer-request", uuid: "not-a-uuid", assetType: "sample"}),
+                JSON.stringify({type: "transfer-request", uuid: 42, assetType: "sample"}),
+                JSON.stringify({type: "transfer-request", uuid: UUID.toString(UUID.generate()), assetType: "sample"}),
+                JSON.stringify({type: "transfer-request", uuid: UUID.toString(UUID.generate()), assetType: "soundfont"})
+            ]) {channel.onmessage!({data})}
+            await settle()
+            expect(rejections).toEqual([])
+        } finally {
+            process.off("unhandledRejection", record)
+            server.terminate()
+        }
+    })
+})
