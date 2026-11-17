@@ -1,4 +1,4 @@
-import {Procedure} from "@opendaw/lib-std"
+import {Lifecycle, Procedure} from "@opendaw/lib-std"
 import {Inject} from "./inject"
 
 export type DomElement = HTMLElement | SVGElement
@@ -26,7 +26,8 @@ type ExtractProperties<T extends Element> = Partial<{
 }> & {
     ref?: Inject.Ref<T>
     onInit?: Procedure<T> // runs immediately after the element is created
-    onConnect?: Procedure<T> // runs immediately after the element is connected to the DOM (caution, it waits forever!)
+    onConnect?: Procedure<T> // runs once on the first frame after connection
+    onConnectLifecycle?: Lifecycle // cancels a pending connection wait on owner disposal
 } & Record<string, unknown>
 
 declare global {

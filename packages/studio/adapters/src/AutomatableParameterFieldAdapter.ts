@@ -51,7 +51,7 @@ export class AutomatableParameterFieldAdapter<T extends PrimitiveValues = any> i
     #trackBoxAdapter: Option<TrackBoxAdapter> = Option.None
     #automationHandle: Option<Terminable> = Option.None
     #controlledValue: Nullable<unitValue> = null
-    #midiControlled: boolean = false
+    #midiControlCount: number = 0
 
     constructor(context: BoxAdaptersContext,
                 field: PrimitiveField<T, PointerTypes>,
@@ -119,12 +119,13 @@ export class AutomatableParameterFieldAdapter<T extends PrimitiveValues = any> i
     }
 
     registerMidiControl(): Terminable {
-        this.#controlSource.proxy.onControlSourceAdd("midi")
-        this.#midiControlled = true
+        if (++this.#midiControlCount === 1) {this.#controlSource.proxy.onControlSourceAdd("midi")}
+        let active = true
         return {
             terminate: () => {
-                this.#midiControlled = false
-                this.#controlSource.proxy.onControlSourceRemove("midi")
+                if (!active) {return}
+                active = false
+                if (--this.#midiControlCount === 0) {this.#controlSource.proxy.onControlSourceRemove("midi")}
             }
         }
     }
@@ -174,7 +175,7 @@ export class AutomatableParameterFieldAdapter<T extends PrimitiveValues = any> i
     }
 
     catchupAndSubscribeControlSources(observer: ControlSourceListener): Subscription {
-        if (this.#midiControlled) {observer.onControlSourceAdd("midi")}
+        if (this.#midiControlCount > 0) {observer.onControlSourceAdd("midi")}
         this.#field.pointerHub.filter(...ExternalControlTypes)
             .forEach(pointer => observer.onControlSourceAdd(mapPointerToControlSource(pointer.pointerType)))
         return this.#controlSource.subscribe(observer)

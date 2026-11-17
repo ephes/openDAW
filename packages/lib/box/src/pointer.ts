@@ -110,7 +110,13 @@ export class PointerField<P extends PointerTypes = PointerTypes> extends Field<U
     }
     set targetVertex(option: Option<Vertex>) {
         if (option.nonEmpty()) {
-            const issue = PointerHub.validate(this, option.unwrap())
+            const target = option.unwrap()
+            if (target.graph !== this.graph) {panic("Pointer target belongs to a foreign graph")}
+            const current = this.graph.findVertex(target.address).contains(target)
+                || (this.graph.constructingBox(target.box) && this.graph.findBox(target.address.uuid).isEmpty()
+                    && target.box.searchVertex(target.address.fieldKeys).contains(target))
+            if (!current) {panic("Pointer target is not a current graph vertex")}
+            const issue = PointerHub.validate(this, target)
             if (issue.nonEmpty()) {
                 panic(issue.unwrap())
             }

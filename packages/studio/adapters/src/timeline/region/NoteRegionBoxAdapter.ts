@@ -95,6 +95,7 @@ export class NoteRegionBoxAdapter
     isValueRegion(): this is ValueRegionBoxAdapter {return false}
 
     moveContentStart(delta: ppqn): void {
+        this.consolidate()
         this.optCollection.ifSome(collection => collection.events.asArray()
             .forEach(event => event.box.position.setValue(event.position - delta)))
         this.position = this.position + delta
@@ -203,14 +204,11 @@ export class NoteRegionBoxAdapter
         const graph = this.#context.boxGraph
         const sorted = regions.toSorted(RegionCollection.Comparator)
         const first = Arrays.getFirst(sorted, "Internal error (no first)")
-        const last = Arrays.getLast(sorted, "Internal error (no last)")
         const rangeMin = first.position
-        const rangeMax = last.position + last.duration
+        const rangeMax = sorted.reduce((end, region) => Math.max(end, region.position + region.duration), rangeMin)
         const trackBoxAdapter = first.trackBoxAdapter.unwrap()
         const collectionBox = NoteEventCollectionBox.create(graph, UUID.generate())
-        const overlapping = Array.from(trackBoxAdapter.regions.collection.iterateRange(rangeMin, rangeMax))
-        overlapping
-            .filter(region => region.isSelected)
+        sorted
             .forEach(anyRegion => {
                     const region = anyRegion as NoteRegionBoxAdapter // we made that sure in canFlatten
                     for (const {
@@ -229,7 +227,7 @@ export class NoteRegionBoxAdapter
                     }
                 }
             )
-        overlapping.forEach(({box}) => box.delete())
+        sorted.forEach(({box}) => box.delete())
         return Option.wrap(NoteRegionBox.create(graph, UUID.generate(), box => {
             box.position.setValue(rangeMin)
             box.duration.setValue(rangeMax - rangeMin)

@@ -70,7 +70,7 @@ export class BoxGraph<BoxMap = any> {
     readonly #deletionListeners: SortedSet<UUID.Bytes, { uuid: UUID.Bytes, listeners: Set<Exec> }>
 
     #inTransaction: boolean = false
-    #constructingBox: boolean = false
+    #constructingBox: Option<Box> = Option.None
     #rollingBack: boolean = false
 
     constructor(boxFactory: Option<BoxFactory<BoxMap>> = Option.None) {
@@ -124,7 +124,9 @@ export class BoxGraph<BoxMap = any> {
     }
 
     inTransaction(): boolean {return this.#inTransaction}
-    constructingBox(): boolean {return this.#constructingBox}
+    constructingBox(box?: Box): boolean {
+        return isDefined(box) ? this.#constructingBox.contains(box) : this.#constructingBox.nonEmpty()
+    }
 
     createBox(name: keyof BoxMap, uuid: UUID.Bytes, constructor: Procedure<Box>): Box {
         return this.#boxFactory.unwrap("No box-factory installed")(name as keyof BoxMap, this, uuid, constructor)
@@ -132,12 +134,12 @@ export class BoxGraph<BoxMap = any> {
 
     stageBox<B extends Box>(box: B, constructor?: Procedure<B>): B {
         this.#assertTransaction()
-        assert(!this.#constructingBox, "Cannot construct box while other box is constructing")
+        assert(this.#constructingBox.isEmpty(), "Cannot construct box while other box is constructing")
         if (isDefined(constructor)) {
             const deferred = this.#deferredPointerUpdates.length
-            this.#constructingBox = true
+            this.#constructingBox = Option.wrap(box)
             const result = tryCatch(() => constructor(box))
-            this.#constructingBox = false
+            this.#constructingBox = Option.None
             if (result.status === "failure") {
                 this.#discardConstruction(box, deferred)
                 throw result.error
@@ -215,7 +217,7 @@ export class BoxGraph<BoxMap = any> {
 
     onPrimitiveValueUpdate<V extends PrimitiveValues>(field: PrimitiveField<V, PointerTypes>, oldValue: V, newValue: V): void {
         this.#assertTransaction()
-        if (field.isAttached() && !this.#constructingBox) {
+        if (field.isAttached() && this.#constructingBox.isEmpty()) {
             const update = new PrimitiveUpdate<V>(field.address, field.serialization(), oldValue, newValue)
             if (!this.#rollingBack) {this.#transactionUpdates.push(update)}
             this.#dispatchers.dispatch(update)
@@ -229,7 +231,7 @@ export class BoxGraph<BoxMap = any> {
         if (oldValue.nonEmpty()) {this.#edges.disconnect(pointerField)}
         if (newValue.nonEmpty()) {this.#edges.connect(pointerField, newValue.unwrap())}
         const update = new PointerUpdate(pointerField.address, oldValue, newValue)
-        if (this.#constructingBox) {
+        if (this.#constructingBox.nonEmpty()) {
             this.#deferredPointerUpdates.push({pointerField, update})
         } else {
             if (!this.#rollingBack) {this.#transactionUpdates.push(update)}

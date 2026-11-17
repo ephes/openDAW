@@ -74,7 +74,7 @@ const editShortcut = async (definitions: ShortcutDefinitions,
             <div style={{display: "flex", flexDirection: "column", rowGap: "0.75em"}}>
                 <h3 style={{color: Colors.orange.toString()}}>Shortcut for "{original.description}"</h3>
                 <div style={{color: Colors.blue.toString(), height: "1.25em", display: "flex", columnGap: "1px"}}
-                     onConnect={element => {
+                     onConnectLifecycle={lifecycle} onConnect={element => {
                          lifecycle.own(Events.subscribe(Surface.get(element).owner, "keydown", event => {
                              Shortcut.fromEvent(event).ifSome(newShortcut => {
                                  shortcut.setValue(newShortcut)

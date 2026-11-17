@@ -1,4 +1,4 @@
-import {canWrite, isDefined, panic, Procedure, safeWrite} from "@opendaw/lib-std"
+import {canWrite, isDefined, Lifecycle, Optional, panic, Procedure, safeWrite} from "@opendaw/lib-std"
 import {Html} from "@opendaw/lib-dom"
 import {SupportedSvgTags} from "./supported-svg-tags"
 import {Inject} from "./inject"
@@ -117,17 +117,28 @@ const transferAttributes = (element: DomElement, attributes: Readonly<Record<str
             }
         } else if (key === "onConnect") {
             if (value instanceof Function && value.length === 1) {
+                const onConnect = value as Procedure<DomElement>
+                let active = true
                 const check = () => {
+                    if (!active) {return}
                     if (element.isConnected) {
-                        (value as Procedure<DomElement>)(element)
+                        active = false
+                        onConnect(element)
                     } else {
-                        requestAnimationFrame(check)
+                        frame = requestAnimationFrame(check)
                     }
                 }
-                requestAnimationFrame(check)
+                let frame = requestAnimationFrame(check)
+                const lifecycle = attributes.onConnectLifecycle as Optional<Lifecycle>
+                lifecycle?.own({terminate: () => {
+                    active = false
+                    cancelAnimationFrame(frame)
+                }})
             } else {
                 return panic("value of 'onLoad' must be a Function with a single argument")
             }
+        } else if (key === "onConnectLifecycle") {
+            return
         } else if (value instanceof Inject.Attribute) {
             value.addTarget(element, key)
         } else {

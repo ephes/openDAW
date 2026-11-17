@@ -87,3 +87,34 @@ are checked per call, so validation adds constant work on the audio thread.
 Signature moves to occupied bars are refused without graph edits. Other moves
 retain the absolute bar positions of every untouched signature event; undo/redo
 restores the original order and relative distances.
+
+### Flattening selected regions
+
+Note and automation flattening replaces exactly the supplied selected regions on
+one track. Other overlapping regions, including selected regions outside that
+source list, keep their boxes and content. The replacement spans the earliest
+start through the greatest complete endpoint, including nested and disjoint
+regions. Copied notes retain their ratchet count and curve; explicit ratchet
+consolidation still produces single notes.
+
+Content-start trims isolate mirrored note/value collections before changing event
+coordinates. Musical audio trims clone shared play modes and their warp markers.
+Each selected region is translated once; other regions and clips retain their
+content. Seconds-based audio trims continue to change only the region offset.
+Automation preroll uses the first unmuted value region; all-muted tracks return
+the supplied fallback. Enabled regions retain their holding-value behavior.
+
+### Soundfont adapter ownership
+
+Every font transition retires the prior loader observation, including switches to
+cached fonts and clearing the file. Only the current loader generation publishes
+font/preset state. Adapter termination releases file/preset pointer observers and
+its loader observation once; queued old callbacks are inert. Shared loaders are
+not invalidated or terminated by an adapter.
+
+### MIDI control registrations
+
+Each `registerMidiControl()` call owns one idempotent handle. Control-source
+listeners see one aggregate MIDI-add transition on the first registration and one
+remove transition on the last release. Catchup observes the aggregate presence
+even after another owner has released its handle.

@@ -5,6 +5,14 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Give MIDI control registrations independent idempotent owners with aggregate presence notifications.
+
+- Retire soundfont loader observations on every transition and release pointer observers on adapter termination; fence stale loader callbacks and already queued pointer callbacks.
+
+- Isolate shared note/value and warp-marker content on start trims; ignore muted automation regions in preroll.
+
+- Flatten only supplied note/automation regions over their full union, retaining other overlaps. Preserve ratchet curves when copying note content.
+
 - Skip constant tempo exterior spans in closed form and reject non-finite, unsupported or nonprogressing cursor input with RangeError. Same-position tempo step pairs remain valid.
 - Refuse signature moves onto occupied bars, preserving later absolute bar positions.
 

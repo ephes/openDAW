@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Cancel deferred editor focus and search/shortcut connection waits when their view lifetime ends.
+
 - Count monotonic elapsed room minutes, carry fractions and resume current rooms after BFCache suspension without counting time away. Fall back to keepalive fetch on refused beacons and keep identity persistence optional when storage fails.
 
 - Bound selected sample source and decoded PCM to 64 MiB before decode/encode (any browser-decodable WAV layout); report definite upload refusals with their server reason; own one upload attempt until completion and retire it with its page. Reject malformed shortcut context imports atomically.

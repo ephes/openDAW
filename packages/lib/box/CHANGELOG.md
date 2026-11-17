@@ -5,6 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject foreign and retired pointer target objects before address mutation, retaining current-constructor references and explicit transfer remapping.
+- Bound recovery update counts, strings, paths and attachments before allocation; reject unknown tags, truncation and trailing payload bytes.
+
 - Verify graph notifications follow shared listener isolation while retaining transactional failure recovery through fail-fast vertex callbacks.
 
 - Preflight canonical known box and nested object JSON keys and exact fixed-array shapes; roll back failed graph JSON imports instead of accepting partial boxes.

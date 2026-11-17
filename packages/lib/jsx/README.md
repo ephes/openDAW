@@ -80,3 +80,12 @@ Termination detaches all bindings without removing their last DOM values; a late
 explicit binding starts afresh. Class-list injectors own the complete `class`
 attribute, with the same add/remove/toggle behavior for HTML and SVG. Their
 termination also stops updates while preserving the last rendered classes.
+
+### Deferred connection ownership
+
+`onConnect` runs once on the first animation frame that sees the element connected.
+Pass `onConnectLifecycle={lifecycle}` on the same native element whenever a view
+can be discarded before insertion. The lifecycle cancels its pending frame and
+fences already queued callbacks; attaching a retired element cannot invoke it or
+steal focus. The lifecycle attribute is consumed by JSX, never written to the DOM.
+Without an owner, the compatibility callback still waits until first connection.

@@ -38,6 +38,8 @@ export class SoundfontDeviceBoxAdapter implements InstrumentDeviceBoxAdapter {
     readonly #preset: MutableObservableOption<Preset>
 
     #loaderSubscription: Subscription = Terminable.Empty
+    #loaderGeneration: number = 0
+    #terminated: boolean = false
 
     constructor(context: BoxAdaptersContext, box: SoundfontDeviceBox) {
         this.#context = context
@@ -51,13 +53,18 @@ export class SoundfontDeviceBoxAdapter implements InstrumentDeviceBoxAdapter {
 
         this.#terminator.ownAll(
             this.#loader.subscribe(this.#loaderObserver),
-            this.#box.file.catchupAndSubscribe(({targetVertex}) =>
+            this.#box.file.catchupAndSubscribe(({targetVertex}) => {
+                if (this.#terminated) {return}
                 this.#loader.wrapOption(targetVertex.map(({box}) =>
-                    context.soundfontManager.getOrCreate(box.address.uuid)))),
-            this.#box.presetIndex.catchupAndSubscribe(owner => this.#soundfont.match({
-                none: () => this.#preset.clear(),
-                some: soundfont => this.#preset.wrap(soundfont.presets[owner.getValue()] ?? soundfont.presets[0])
-            }))
+                    context.soundfontManager.getOrCreate(box.address.uuid)))
+            }),
+            this.#box.presetIndex.catchupAndSubscribe(owner => {
+                if (this.#terminated) {return}
+                this.#soundfont.match({
+                    none: () => this.#preset.clear(),
+                    some: soundfont => this.#preset.wrap(soundfont.presets[owner.getValue()] ?? soundfont.presets[0])
+                })
+            })
         )
     }
     get loader(): ObservableOption<SoundfontLoader> {return this.#loader}
@@ -86,6 +93,10 @@ export class SoundfontDeviceBoxAdapter implements InstrumentDeviceBoxAdapter {
     }
 
     terminate(): void {
+        if (this.#terminated) {return}
+        this.#terminated = true
+        this.#loaderGeneration++
+        this.#terminator.terminate()
         this.#loaderSubscription.terminate()
         this.#loaderSubscription = Terminable.Empty
         this.#parametric.terminate()
@@ -95,34 +106,38 @@ export class SoundfontDeviceBoxAdapter implements InstrumentDeviceBoxAdapter {
         return {} as const
     }
 
-    readonly #loaderObserver = (loader: Option<SoundfontLoader>) => loader.match({
-        none: () => {
-            this.#preset.clear()
-            this.#soundfont.clear()
-        },
-        some: loader => loader.soundfont.match({
-            none: () => {
-                this.#preset.clear()
-                this.#soundfont.clear()
-                this.#loaderSubscription.terminate()
-                this.#loaderSubscription = loader.subscribe(state => {
+    readonly #loaderObserver = (option: Option<SoundfontLoader>) => {
+        const generation = ++this.#loaderGeneration
+        this.#loaderSubscription.terminate()
+        this.#loaderSubscription = Terminable.Empty
+        if (this.#terminated) {return}
+        const current = () => !this.#terminated && generation === this.#loaderGeneration
+        const publish = (font: Option<SoundFont2>) => {
+            if (!current()) {return}
+            this.#soundfont.wrapOption(font)
+            if (!current()) {return}
+            this.#preset.wrapOption(font.flatMap(soundfont =>
+                Option.wrap(soundfont.presets[this.presetIndex] ?? soundfont.presets[0])))
+        }
+        option.match({
+            none: () => publish(Option.None),
+            some: loader => {
+                publish(loader.soundfont)
+                if (!current() || loader.soundfont.nonEmpty()) {return}
+                const subscription = loader.subscribe(state => {
+                    if (!current()) {return}
                     if (state.type === "loaded") {
-                        const soundfont = loader.soundfont.unwrap()
-                        this.#preset.wrap(soundfont.presets[this.presetIndex] ?? soundfont.presets[0])
-                        this.#soundfont.wrap(soundfont)
-                    } else if (state.type === "error") {
-                        this.#preset.clear()
-                        this.#soundfont.clear()
-                    } else if (state.type === "idle") {
-                        this.#preset.clear()
-                        this.#soundfont.clear()
+                        publish(loader.soundfont)
+                    } else if (state.type === "error" || state.type === "idle") {
+                        publish(Option.None)
                     }
                 })
-            },
-            some: soundfont => {
-                this.#soundfont.wrap(soundfont)
-                this.#preset.wrap(soundfont.presets[this.presetIndex] ?? soundfont.presets[0])
+                if (current()) {
+                    this.#loaderSubscription = subscription
+                } else {
+                    subscription.terminate()
+                }
             }
         })
-    })
+    }
 }
