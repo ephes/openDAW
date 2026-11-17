@@ -527,3 +527,8 @@ selected device is missing. See [permission help](packages/app/studio/public/man
 Latency reporting accepts at most 501 integer buckets from 0 to 500 ms in a
 4096-character stored history. Corrupt history, unavailable storage or a throwing
 beacon retires optional reporting for that installation without an app error.
+
+### Modular wiring and Tone3000
+
+See the [ownership and cache contracts](plans/scout-round130-modular-tone3000.md)
+for modular gesture transactions and synthetic validation.

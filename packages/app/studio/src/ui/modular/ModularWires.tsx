@@ -14,8 +14,8 @@ import {appendChildren, createElement} from "@opendaw/lib-jsx"
 import {ConnectorViewAdapter, ModularEnvironment, WiringPreview} from "@/ui/modular/ModularEnvironment.ts"
 import {ModuleAdapter, ModuleConnectionAdapter, ModuleConnectorAdapter} from "@opendaw/studio-adapters"
 import {Camera} from "@/ui/modular/Camera.ts"
-import {AnimationFrame, deferNextFrame, Html} from "@opendaw/lib-dom"
-import {Colors} from "@opendaw/studio-enums"
+import {DeferExec, deferNextFrame, Html} from "@opendaw/lib-dom"
+import {Colors, Pointers} from "@opendaw/studio-enums"
 
 const className = Html.adoptStyleSheet(css, "ModularWires")
 
@@ -28,6 +28,7 @@ type Construct = {
 type ConnectionView = {
     adapter: ModuleConnectionAdapter
     wire: SVGPathElement
+    pending: DeferExec
 }
 
 export const ModularWires = ({lifecycle, environment, camera}: Construct) => {
@@ -63,24 +64,28 @@ export const ModularWires = ({lifecycle, environment, camera}: Construct) => {
     }
     const updateConnection = ({box: {source, target}, uuid}: ModuleConnectionAdapter): void => {
         if (vitalSigns.isTerminated) {return}
-        const v1 = source.targetVertex.unwrap("No source vertex")
-        const v2 = target.targetVertex.unwrap("No target vertex")
-        const {pinPoint: p1}: ConnectorViewAdapter = environment.findConnectorByViewAddress(v1.address)
-        const {pinPoint: p2}: ConnectorViewAdapter = environment.findConnectorByViewAddress(v2.address)
-        updateWirePath(connections.get(uuid).wire, p1, p2)
+        const view = connections.getOrNull(uuid)
+        if (view === null || view.adapter.box.source !== source || view.adapter.box.target !== target) {return}
+        const v1 = source.targetVertex.unwrapOrNull()
+        const v2 = target.targetVertex.unwrapOrNull()
+        if (v1 === null || v2 === null) {return}
+        const p1 = environment.findConnectorViewOrNull(v1.address)
+        const p2 = environment.findConnectorViewOrNull(v2.address)
+        if (p1 === null || p2 === null) {return}
+        updateWirePath(view.wire, p1.pinPoint, p2.pinPoint)
     }
     const updateQueue: Set<ModuleAdapter> = new Set()
-    const updateDefer = deferNextFrame(() => {
+    const updateDefer = lifecycle.own(deferNextFrame(() => {
         const connections: Set<ModuleConnectionAdapter> = new Set()
         updateQueue.forEach(moduleAdapter => {
-            const collector = (connector: ModuleConnectorAdapter<any, any>) =>
+            const collector = (connector: ModuleConnectorAdapter<Pointers, unknown>) =>
                 connector.connections.forEach(connection => connections.add(connection))
             moduleAdapter.inputs.forEach(collector)
             moduleAdapter.outputs.forEach(collector)
         })
         updateQueue.clear()
         connections.forEach(connection => updateConnection(connection))
-    })
+    }))
     const modules: SortedSet<UUID.Bytes, {
         uuid: UUID.Bytes,
         subscriptions: Subscription
@@ -105,17 +110,32 @@ export const ModularWires = ({lifecycle, environment, camera}: Construct) => {
         onConnectionAdded: (adapter: ModuleConnectionAdapter) => {
             const wire: SVGPathElement = <path stroke={Colors.blue}/>
             wires.appendChild(wire)
-            const added = connections.add({adapter, wire})
+            const view = {adapter, wire, pending: deferNextFrame(() => {
+                if (connections.getOrNull(adapter.uuid) === view) {updateConnection(adapter)}
+            })}
+            const added = connections.add(view)
             assert(added, "Could not add connection")
-            AnimationFrame.once(() => updateConnection(adapter))
+            view.pending.request()
         },
-        onConnectionRemoved: (adapter: ModuleConnectionAdapter) =>
-            connections.removeByKey(adapter.uuid).wire.remove()
+        onConnectionRemoved: (adapter: ModuleConnectionAdapter) => {
+            const view = connections.removeByKey(adapter.uuid)
+            view.pending.terminate()
+            view.wire.remove()
+        }
     }))
+    lifecycle.own({terminate: () => {
+        vitalSigns.terminate()
+        updateDefer.terminate()
+        updateQueue.clear()
+        modules.forEach(entry => entry.subscriptions.terminate())
+        modules.clear()
+        connections.forEach(view => {view.pending.terminate(); view.wire.remove()})
+        connections.clear()
+    }})
     lifecycle.own(Html.watchResize(svg, ({contentRect}) =>
         svg.setAttribute("viewBox", `0 0 ${contentRect.width} ${contentRect.height}`)))
 
-    environment.setWiringPreview({
+    lifecycle.own(environment.setWiringPreview({
         begin: (connector: ConnectorViewAdapter, pointer: Point) => {
             const path: SVGLineElement = <line stroke={Colors.blue}/>
             wires.appendChild(path)
@@ -127,10 +147,11 @@ export const ModularWires = ({lifecycle, environment, camera}: Construct) => {
             })
         },
         highlight: (connection: UUID.Bytes): Terminable => {
-            connections.get(connection).wire.classList.add("highlight")
-            return {terminate: () => connections.get(connection).wire.classList.remove("highlight")}
+            const wire = connections.get(connection).wire
+            wire.classList.add("highlight")
+            return {terminate: () => wire.classList.remove("highlight")}
         }
-    } satisfies WiringPreview)
+    } satisfies WiringPreview))
     appendChildren(wires, (
         <g stroke="rgba(255, 255, 255, 0.1)">
             <line x1={-3} x2={3} y1={0} y2={0}/>

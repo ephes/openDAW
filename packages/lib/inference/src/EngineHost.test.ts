@@ -7,6 +7,7 @@ import {tensor} from "./Tensor"
 
 class FakeOpfs implements OpfsProtocol {
     readonly files = new Map<string, Uint8Array>()
+    async writeAtomic(path: string, data: Uint8Array): Promise<void> {return this.write(path, data)}
     async write(path: string, data: Uint8Array): Promise<void> {this.files.set(path, data)}
     async read(path: string): Promise<Uint8Array> {
         const data = this.files.get(path)

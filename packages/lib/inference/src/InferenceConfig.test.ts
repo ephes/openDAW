@@ -4,6 +4,7 @@ import {installInferenceConfig, requireInferenceConfig} from "./InferenceConfig"
 
 const fakeOpfs = (): OpfsProtocol => ({
     write: async () => {},
+    writeAtomic: async () => {},
     read: async () => new Uint8Array(0),
     exists: async () => false,
     delete: async () => {},

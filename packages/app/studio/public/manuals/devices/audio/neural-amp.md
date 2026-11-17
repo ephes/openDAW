@@ -137,3 +137,34 @@ processed span to dry bypass and reports the failure once. Later blocks stay
 bypassed. Select a different valid model, or reopen the project, to recover;
 re-selecting the same model, reset and Mono edits keep the failed model
 bypassed.
+
+### Tone 3000 selection lifetime
+
+Each selection has its own callback identity, so two devices can select packs
+independently. The callback acknowledges only its own selection. Blocked popups,
+a five-minute timeout, device deletion or closing the editor cancel the pending
+selection. Start again after cancellation. Because browser cross-origin isolation
+can detach a popup's window handle, closing the external selector alone may wait
+until the timeout; an unrelated later callback cannot complete that selection.
+
+### Cached pack revisions
+
+A refreshed pack downloads new bytes when its revision changes, including models
+whose IDs stayed the same. Unchanged revisions keep their cache hits. Older
+unversioned caches require an online pack re-selection; models already embedded
+in saved projects remain available offline. A pending browse cannot replace a
+model selected more recently or modify a removed device.
+
+### Pack downloads and recovery
+
+A pack becomes current only after its complete default model is stored. Failed or
+cancelled updates keep the previous complete pack usable. If the browser closes
+during an update, the next selection cleans up unfinished staging; the last
+complete revision stays current until another complete revision replaces it.
+Optional models are downloaded only for the currently selected pack revision.
+
+Metadata transfers allow 1 MiB and 15 seconds; model transfers allow 16 MiB and
+60 seconds each, including headers and the complete body. Oversized, stalled or
+malformed transfers are refused without publishing partial packs. Retry by
+selecting the pack again. Pack metadata supports up to 256 distinct models with
+standard, lite, feather, nano or custom sizes and HTTPS download URLs.

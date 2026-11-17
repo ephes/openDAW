@@ -565,3 +565,7 @@ finite nonnegative extents up to the clip duration, with explicit fadeTimeUnit=b
 for nonzero fades, and become linear region envelopes. Nonzero fades without a
 unit or in seconds, note fades and inner-wrapper fades are refused. Overlapping
 linear fades use the quieter envelope, matching local playback.
+
+The worker OPFS facade exposes `writeAtomic(path, bytes)` for complete single-file
+publication. It forwards to the fusion worker's staged browser writer, sharing
+its canonical path validation and FIFO. See the [fusion storage contract](../../lib/fusion/README.md).

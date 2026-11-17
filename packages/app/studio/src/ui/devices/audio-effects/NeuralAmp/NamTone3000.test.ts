@@ -25,19 +25,17 @@ const fixture = () => {
 }
 it.each(["read", "hash", "delete"])("does not install after retirement during %s", async stage => {
     const f = fixture(), gate = Promise.withResolvers<never>()
-    if (stage === "hash") {
-        vi.mocked(Workers.Opfs.read).mockResolvedValue(new TextEncoder().encode("{}"))
-        vi.spyOn(UUID, "sha256").mockReturnValue(gate.promise)
-    } else {
-        vi.mocked(Workers.Opfs.read).mockReturnValue(gate.promise)
-        vi.spyOn(UUID, "sha256").mockResolvedValue(UUID.generate())
-    }
+    const meta = new TextEncoder().encode(JSON.stringify({toneId: 1, title: "Synthetic", updatedAt: "v1", cacheFormat: 1, cacheRevision: "00000000-0000-4000-8000-000000000001", models: [{id: 1, name: "Next", size: "standard", model_url: "https://example.test/model"}]}))
+    vi.mocked(Workers.Opfs.read).mockImplementation(path => path.endsWith("pack.json") ? Promise.resolve(meta)
+        : stage === "hash" ? Promise.resolve(new TextEncoder().encode(JSON.stringify({version: "0.5.4", architecture: "WaveNet", config: {}, weights: [1]}))) : gate.promise)
+    if (stage === "hash") {vi.spyOn(UUID, "sha256").mockReturnValue(gate.promise)}
+    else {vi.spyOn(UUID, "sha256").mockResolvedValue(UUID.generate())}
     const pending = f.run()
     await vi.waitFor(() => expect(stage === "hash" ? UUID.sha256 : Workers.Opfs.read).toHaveBeenCalled())
     if (stage === "delete") {f.editing.modify(() => f.box.delete())}
     else {f.controller.abort(Errors.AbortError)}
     const before = new Uint8Array(f.graph.toArrayBuffer())
-    gate.resolve((stage === "hash" ? UUID.generate() : new TextEncoder().encode("{}")) as never)
+    gate.resolve((stage === "hash" ? UUID.generate() : new TextEncoder().encode(JSON.stringify({version: "0.5.4", architecture: "WaveNet", config: {}, weights: [1]}))) as never)
     await expect(pending).rejects.toSatisfy(Errors.isAbort)
     expect(new Uint8Array(f.graph.toArrayBuffer())).toEqual(before)
 })

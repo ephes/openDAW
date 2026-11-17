@@ -43,6 +43,7 @@ export class Workers {
         return Communicator
             .sender<OpfsProtocol>(this.messenger.unwrap("Workers are not installed").channel("opfs"),
                 router => new class implements OpfsProtocol {
+                    writeAtomic(path: string, data: Uint8Array): Promise<void> {return router.dispatchAndReturn(this.writeAtomic, path, data)}
                     write(path: string, data: Uint8Array): Promise<void> {return router.dispatchAndReturn(this.write, path, data)}
                     read(path: string, maxBytes?: number): Promise<Uint8Array> {
                         return router.dispatchAndReturn(this.read, path, maxBytes)
