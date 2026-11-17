@@ -37,8 +37,9 @@ const paste = (element: HTMLElement, text: string) => {
 export const controls = async () => {
     const {project, close} = projectFixture()
     const lifecycle = new Terminator()
-    const file = project.editing.modify(() => AudioFileBox.create(project.boxGraph, UUID.generate(), box => box.fileName.setValue("original"))).unwrap()
-    const text = TextInput({lifecycle, model: EditWrapper.forValue(project.editing, file.fileName), maxChars: 12})
+    const {label} = project.primaryAudioBusBox
+    project.editing.modify(() => label.setValue("original"))
+    const text = TextInput({lifecycle, model: EditWrapper.forValue(project.editing, label), maxChars: 12})
     document.body.append(text)
     const input = text.firstElementChild as HTMLElement
     input.focus()
@@ -68,7 +69,7 @@ export const controls = async () => {
     }
     assert(!paste(text, JSON.stringify({app: "openDAW", content: "text", value: "x".repeat(13)})), "bounded text")
     lifecycle.terminate()
-    project.editing.modify(() => file.fileName.setValue("closed"))
+    project.editing.modify(() => label.setValue("closed"))
     assert(input.textContent === "typing", "retired text subscription")
     text.remove()
     await close()
