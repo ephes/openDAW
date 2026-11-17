@@ -569,3 +569,11 @@ linear fades use the quieter envelope, matching local playback.
 The worker OPFS facade exposes `writeAtomic(path, bytes)` for complete single-file
 publication. It forwards to the fusion worker's staged browser writer, sharing
 its canonical path validation and FIFO. See the [fusion storage contract](../../lib/fusion/README.md).
+
+### Automation curve geometry
+
+`ValueStreamRenderer.render` evaluates stored values before applying `valueToY`.
+Unknown/nonlinear axes use at most one sample per visible device pixel plus
+segment endpoints; offscreen duration does not increase sampling. Callers may
+pass `affineValueAxis=true` for a known affine axis to retain the two-endpoint
+linear path. Rendering never edits events.

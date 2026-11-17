@@ -1,8 +1,9 @@
 import {expect, it, vi} from "vitest"
 import {BoxEditing} from "@opendaw/lib-box"
-import {UUID} from "@opendaw/lib-std"
+import {UUID, ValueMapping} from "@opendaw/lib-std"
 import {Interpolation} from "@opendaw/lib-dsp"
 import {ValueEventBox, ValueEventCollectionBox} from "@opendaw/studio-boxes"
+import {TempoGridCursor} from "../../VaryingTempoMap"
 import {ProjectSkeleton} from "../../project/ProjectSkeleton"
 import {BoxAdapters} from "../../BoxAdapters"
 import {BoxAdaptersContext} from "../../BoxAdaptersContext"
@@ -85,4 +86,36 @@ it.each([100, 200, 400])("does not scan existing events for each of %i new keys"
             expect(inspections.mock.calls.length).toBeLessThan(size * 10)
         })
     } finally {inspections.mockRestore()}
+})
+
+// Display space is deliberately nonlinear; storage and playback still use BPM.
+it.each([Interpolation.Linear, Interpolation.Curve(0.2), Interpolation.Curve(0.8), Interpolation.None])(
+    "preserves stored tempo samples and time conversion after a cut: %j", interpolation => {
+        const f = valueFixture()
+        const mapping = {x: (bpm: number) => Math.log(bpm / 60) / Math.log(4),
+            y: (x: number) => 60 * 4 ** x} as ValueMapping<number>
+        f.editing.modify(() => {
+            f.collection.createEvent({position: 0, index: 0, value: 60, interpolation})
+            f.collection.createEvent({position: 3840, index: 0, value: 240, interpolation: Interpolation.None})
+        })
+        const positions = Array.from({length: 129}, (_, i) => i * 30)
+        const before = positions.map(p => f.collection.valueAt(p, 120))
+        const elapsed = new TempoGridCursor().integrate(f.collection.events.asArray(), 0, 3840, 120)
+        // Stored values and slopes use Float32 fields; allow their roundoff.
+        const check = () => {
+            positions.forEach((p, i) => expect(f.collection.valueAt(p, 120)).toBeCloseTo(before[i], 4))
+            expect(new TempoGridCursor().integrate(f.collection.events.asArray(), 0, 3840, 120)).toBeCloseTo(elapsed, 7)
+        }
+        f.editing.modify(() => f.collection.cut(1440, mapping))
+        check()
+        f.editing.undo(); check()
+        f.editing.redo(); check()
+    })
+
+it("retains identity-mapped parameter interpolation when cutting", () => {
+    const f = valueFixture()
+    f.editing.modify(() => {f.create(0, 0, 0.2); f.create(100, 0, 0.8)})
+    f.editing.modify(() => f.collection.cut(50))
+    expect(f.collection.valueAt(25, -1)).toBeCloseTo(0.35)
+    expect(f.collection.valueAt(75, -1)).toBeCloseTo(0.65)
 })

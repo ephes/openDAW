@@ -128,3 +128,9 @@ lookup follows immediate graph updates rather than scanning notified adapters.
 After an aborted graph transaction, collections rebuild their editor index from
 the restored pointers, including replacement box instances. Editors may still
 remove points temporarily to avoid collisions during promotion and batch moves.
+
+Tempo and parameter cuts interpolate in the stored value domain and split both
+curve slopes there. The optional historical display-mapping argument to `cut`
+is accepted for compatibility and does not affect interpolation. Logarithmic
+tempo display changes neither BPM playback nor the tempo-map time conversion
+when inserting an unchanged point (within Float32 storage precision).

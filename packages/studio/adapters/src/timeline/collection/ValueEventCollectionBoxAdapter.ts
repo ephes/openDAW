@@ -110,7 +110,8 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         return this.#context.boxAdapters.adapterFor(boxCopy, ValueEventCollectionBoxAdapter)
     }
 
-    cut(position: ppqn, eventMapping: ValueMapping<number> = ValueMapping.unipolar()): Option<ValueEventBoxAdapter> {
+    /** The legacy display-mapping argument is accepted for compatibility; interpolation uses stored values. */
+    cut(position: ppqn, _eventMapping: ValueMapping<number> = ValueMapping.unipolar()): Option<ValueEventBoxAdapter> {
         const low = this.events.lowerEqual(position)
         const high = this.events.greaterEqual(position)
         if (null === high) {
@@ -143,13 +144,10 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         if (low.interpolation.type === "linear") {
             const {position: p0} = low
             const {position: p1} = high
-            // Convert to normalized space for interpolation
-            const n0 = eventMapping.x(low.value)
-            const n1 = eventMapping.x(high.value)
-            const normalizedValue = linear(n0, n1, (position - p0) / (p1 - p0))
+            const value = linear(low.value, high.value, (position - p0) / (p1 - p0))
             return Option.wrap(this.createEvent({
                 position,
-                value: eventMapping.y(normalizedValue),
+                value,
                 index: 0,
                 interpolation: low.interpolation
             }))
@@ -157,9 +155,10 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
         if (low.interpolation.type === "curve") {
             const {position: p0} = low
             const {position: p1} = high
-            // Convert to normalized space for curve calculation
-            const y0 = eventMapping.x(low.value)
-            const y1 = eventMapping.x(high.value)
+            // Playback interpolates stored values; the display mapping must not
+            // change the function when an unchanged point splits a segment.
+            const y0 = low.value
+            const y1 = high.value
             const steps = p1 - p0
             const cutOffset = position - p0
             const curve = Curve.byHalf(steps, y0, Curve.valueAt({
@@ -173,7 +172,7 @@ export class ValueEventCollectionBoxAdapter implements BoxAdapter {
             InterpolationFieldAdapter.write(low.box.interpolation, Interpolation.Curve(lowSlope))
             return Option.wrap(this.createEvent({
                 position,
-                value: eventMapping.y(cutValue),
+                value: cutValue,
                 index: 0,
                 interpolation: Interpolation.Curve(Curve.slopeByHalf(cutValue, Curve.valueAt(curve, (cutOffset + steps) * 0.5), y1))
             }))

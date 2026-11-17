@@ -40,8 +40,9 @@ export class ValueSlopeModifier implements ValueModifier {
 
     readonly #notifier: Notifier<void>
 
-    readonly #y0: number
-    readonly #y1: number
+    readonly #valueAxis: ValueAxis
+    readonly #v0: number
+    readonly #v1: number
     readonly #initialMidY: number
     readonly #initialInterpolation: Interpolation
 
@@ -65,9 +66,10 @@ export class ValueSlopeModifier implements ValueModifier {
         const interpolation = reference.interpolation
         this.#initialInterpolation = interpolation
         this.#slope = interpolation.type === "curve" ? interpolation.slope : 0.5
-        this.#y0 = valueAxis.valueToAxis(reference.value)
-        this.#y1 = valueAxis.valueToAxis(this.#successor.value)
-        this.#initialMidY = Curve.normalizedAt(0.5, this.#slope) * (this.#y1 - this.#y0) + this.#y0
+        this.#valueAxis = valueAxis
+        this.#v0 = reference.value
+        this.#v1 = this.#successor.value
+        this.#initialMidY = valueAxis.valueToAxis(Curve.normalizedAt(0.5, this.#slope) * (this.#v1 - this.#v0) + this.#v0)
         const retire = () => {
             this.#valid = false
             this.#segmentLife.terminate()
@@ -114,7 +116,7 @@ export class ValueSlopeModifier implements ValueModifier {
         this.#accumulatedDeltaY += incrementalDelta * (altKey ? 0.1 : 1.0)
         this.#lastLocalY = localY
         const targetY = this.#initialMidY + this.#accumulatedDeltaY
-        let slope = clampUnit(Curve.slopeByHalf(this.#y0, targetY, this.#y1))
+        let slope = clampUnit(Curve.slopeByHalf(this.#v0, this.#valueAxis.axisToValue(targetY), this.#v1))
         if (!altKey && Math.abs(slope - 0.5) < 0.02) {slope = 0.5}
         if (this.#slope !== slope) {
             this.#slope = slope

@@ -159,7 +159,7 @@ export namespace RegionRenderer {
                             context.strokeStyle = contentColor
                             context.beginPath()
                             const adapters = ValueEvent.iterateWindow(events, windowMin, windowMax)
-                            ValueStreamRenderer.render(context, range, adapters, valueToY, contentColor, 0.2, 0.0, pass)
+                            ValueStreamRenderer.render(context, range, adapters, valueToY, contentColor, 0.2, 0.0, pass, true)
                             context.stroke()
                         }
                         context.restore()

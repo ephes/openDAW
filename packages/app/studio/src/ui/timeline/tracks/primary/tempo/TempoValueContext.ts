@@ -20,6 +20,7 @@ export class TempoValueContext implements ValueContext, Terminable {
     readonly stringMapping: StringMapping<number> = StringMapping.numeric({unit: "bpm", fractionDigits: 1})
     readonly valueMapping: ValueMapping<number>
     readonly floating: boolean = true
+    readonly affineValueAxis = false
 
     readonly #min: MutableObservableValue<bpm>
     readonly #max: MutableObservableValue<bpm>
