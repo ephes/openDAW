@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Unwind failed panel factories and popout reconstruction; make retired binding handles inert and termination idempotent.
+
 - Follow current piano track/unit membership and order, retiring current controls and subscriptions on replacement and close.
 
 - Keep native duration, time base and source waveform offset when converting audio regions to clips.

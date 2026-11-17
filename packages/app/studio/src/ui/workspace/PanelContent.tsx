@@ -1,6 +1,6 @@
 import {PanelContentFactory} from "@/ui/workspace/PanelContents.tsx"
 import {DomElement, replaceChildren} from "@opendaw/lib-jsx"
-import {assert, Option, Terminable, Terminator, UUID} from "@opendaw/lib-std"
+import {assert, Option, Terminable, Terminator, tryCatch, UUID} from "@opendaw/lib-std"
 import {PanelType} from "@/ui/workspace/PanelType.ts"
 import {PanelState} from "@/ui/workspace/PanelState.ts"
 import {Surface} from "../surface/Surface"
@@ -29,7 +29,7 @@ export class PanelContent {
     readonly #factory: PanelContentFactory
     readonly #panelType: PanelType
 
-    readonly #terminator: Terminator
+    #terminator: Terminator
     readonly #id: string
 
     #placeholder: Option<PlaceHolder> = Option.None
@@ -45,20 +45,33 @@ export class PanelContent {
     bind(panelState: PanelState, container: DomElement, listener: PanelContentListener): PanelContentHandler {
         assert(this.#placeholder.isEmpty(),
             `Cannot have panel open in multiple location (${this.#placeholder.unwrapOrNull()?.panelState})`)
-        this.#placeholder = Option.wrap({panelState, container, listener})
-        if (this.isPopout) {
-            listener.onPopout()
-        } else if (panelState.isMinimized) {
-            listener.onMinimized()
-        } else {
-            replaceChildren(container, this.#factory.create(this.#terminator, this.#panelType))
-            listener.onEmbed()
+        const placeholder = {panelState, container, listener}
+        this.#placeholder = Option.wrap(placeholder)
+        const result = tryCatch(() => {
+            if (this.isPopout) {
+                listener.onPopout()
+            } else if (panelState.isMinimized) {
+                listener.onMinimized()
+            } else {
+                this.#replaceContent(container)
+                listener.onEmbed()
+            }
+        })
+        if (result.status === "failure") {
+            this.#onPlaceholderLeaves()
+            throw result.error
         }
+        let active = true
+        const ownsPlaceholder = () => active && this.#placeholder.unwrapOrNull() === placeholder
         return {
-            togglePopout: this.togglePopout.bind(this),
-            toggleMinimize: this.toggleMinimize.bind(this),
-            terminate: this.#onPlaceholderLeaves.bind(this),
-            isPopout: (): boolean => this.isPopout
+            togglePopout: () => {if (ownsPlaceholder()) {this.togglePopout()}},
+            toggleMinimize: () => {if (ownsPlaceholder()) {this.toggleMinimize()}},
+            terminate: () => {
+                if (!ownsPlaceholder()) {return}
+                active = false
+                this.#onPlaceholderLeaves()
+            },
+            isPopout: (): boolean => ownsPlaceholder() && this.isPopout
         } satisfies PanelContentHandler
     }
 
@@ -88,10 +101,12 @@ export class PanelContent {
                         Dialogs.info({message: "Could not open window. Check popup blocker?"}).finally()
                     },
                     some: surface => {
-                        this.#terminator.terminate()
+                        const result = tryCatch(() => this.#replaceContent(surface.ground))
+                        if (result.status === "failure") {
+                            surface.close()
+                            throw result.error
+                        }
                         Html.empty(container)
-                        replaceChildren(surface.ground, this.#factory.create(this.#terminator, this.#panelType))
-                        listener.onPopout()
                         surface.own({
                             terminate: () => {
                                 this.#terminator.terminate()
@@ -99,6 +114,7 @@ export class PanelContent {
                                 this.#onSurfaceCloses()
                             }
                         })
+                        listener.onPopout()
                     }
                 })
         }
@@ -116,7 +132,7 @@ export class PanelContent {
         if (this.isPopout) {
             this.#closePopout()
         } else if (panelState.isMinimized) {
-            replaceChildren(container, this.#factory.create(this.#terminator, this.#panelType))
+            this.#replaceContent(container)
             panelState.isMinimized = false
             listener.onEmbed()
         } else {
@@ -145,10 +161,27 @@ export class PanelContent {
         if (panelState.isMinimized) {
             listener.onMinimized()
         } else {
-            replaceChildren(container, this.#factory.create(this.#terminator, this.#panelType))
+            const result = tryCatch(() => this.#replaceContent(container))
+            if (result.status === "failure") {
+                panelState.isMinimized = true
+                listener.onMinimized()
+                throw result.error
+            }
             panelState.isMinimized = false
             listener.onEmbed()
         }
+    }
+
+    #replaceContent(container: DomElement): void {
+        const candidate = new Terminator()
+        const result = tryCatch(() => replaceChildren(container, this.#factory.create(candidate, this.#panelType)))
+        if (result.status === "failure") {
+            candidate.terminate()
+            throw result.error
+        }
+        const previous = this.#terminator
+        this.#terminator = candidate
+        previous.terminate()
     }
 
     #closePopout(): void {Surface.getById(this.#id).ifSome(surface => surface.close())}

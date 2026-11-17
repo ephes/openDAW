@@ -44,3 +44,11 @@ The piano panel follows current note-track and audio-unit membership/order. It
 rebuilds and retires track controls when membership or exclusions change, and
 closes all current subscriptions when the panel closes. Track labels retain the
 unit label and numbered suffix convention.
+
+### Panel binding ownership
+
+Panel factories create content under a candidate lifecycle. Failed creation
+retires candidate resources and allows retry. Failed popout creation closes the
+candidate window and keeps embedded content; a failed return to embedded content
+leaves the panel minimized so it can be reopened. Binding handles act only on
+their own placeholder and can be terminated repeatedly.
