@@ -31,8 +31,13 @@ export class ErrorHandler {
     }
 
     #looksLikeExtension(error: ErrorInfo): boolean {
-        return ExtensionPatterns.some(pattern =>
-            error.message?.includes(pattern) || error.stack?.includes(pattern))
+        if (ExtensionPatterns.some(pattern =>
+            error.message?.includes(pattern) || error.stack?.includes(pattern))) {return true}
+        // Safari content scripts (Vimari et al.) run in an isolated world: their
+        // stacks carry function names but no source URLs, while our bundle always
+        // emits URLs. A non-empty URL-less stack therefore points to foreign code.
+        const stack = error.stack
+        return stack !== undefined && stack.trim().length > 0 && stack.match(UrlPattern) === null
     }
 
     #hasFirstPartySource(error: ErrorInfo): boolean {

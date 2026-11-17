@@ -44,6 +44,13 @@ describe("fatal error provenance", () => {
         expect(handler().processError("test", new ErrorEvent("error", {message: "ResizeObserver loop completed with undelivered notifications."}))).toBe(false)
         expect(mocks.stop).not.toHaveBeenCalled()
     })
+    it("keeps URL-less isolated-world stacks nonfatal without first-party evidence", () => {
+        const error = new Error("cannot read property")
+        error.stack = "keyHandler@\nonKeyDown@"
+        expect(handler().processError("test", new ErrorEvent("error", {error}))).toBe(false)
+        expect(mocks.stop).not.toHaveBeenCalled()
+        expect(mocks.info).toHaveBeenCalledOnce()
+    })
     it.each([1, 2])("makes one terminal decision for a source-less failure with %s scripts", scripts => {
         document.head.innerHTML = "<script></script>".repeat(scripts)
         expect(handler().processError("test", new Event("processorerror"))).toBe(true)

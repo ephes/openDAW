@@ -4,9 +4,10 @@
 
 First-party stack/source URLs keep errors fatal even with injected script tags,
 extension words in the message or mixed external frames. Script counts and
-source-less stacks alone do not establish extension provenance. Known ignored
-browser/editor failures and positively identified external/extension failures
-remain nonfatal. A fatal handler stops animation and offers recovery once.
+source-less events alone do not establish extension provenance. Known ignored
+browser/editor failures, positively identified external/extension failures and
+non-empty URL-less stacks (Safari isolated-world content scripts) without
+first-party evidence remain nonfatal. A fatal handler stops animation and offers recovery once.
 
 Diagnostic extraction reads only bounded primitive name/message/stack/code/reason
 fields through guarded access. It does not enumerate, serialize, inspect a

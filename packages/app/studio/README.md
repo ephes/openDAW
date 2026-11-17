@@ -71,7 +71,9 @@ retires the model subscription.
 
 First-party stack/source evidence keeps an error fatal despite injected scripts;
 unknown rejection values yield bounded diagnostics even when their getters or
-proxies throw. Source-less failures alone do not establish extension provenance.
+proxies throw. Source-less failures alone do not establish extension provenance;
+non-empty stacks without any source URL (Safari isolated-world content scripts)
+stay nonfatal unless first-party evidence is present.
 Piano keys include exact note onsets and exclude completions in the current loop
 cycle. Invalid stored keyboard layouts use the existing default without changing
 the saved index, including live layout changes and undo.
