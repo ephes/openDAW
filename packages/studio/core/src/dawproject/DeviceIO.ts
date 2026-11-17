@@ -4,6 +4,10 @@ import {BoxIO, TrackBox} from "@opendaw/studio-boxes"
 import {DeviceBox, DeviceBoxUtils} from "@opendaw/studio-adapters"
 
 export namespace DeviceIO {
+    const LegacyAttachments: ReadonlySet<string> = new Set<keyof BoxIO.TypeMap>([
+        "SelectionBox", "MIDIControllerBox", "TrackBox", "ValueRegionBox", "ValueEventCollectionBox"
+    ])
+
     export const exportDevice = (box: Box): ArrayBufferLike => {
         // Selections, controller mappings and automation lanes refer to the device but are not its state.
         const dependencies = Array.from(box.graph.dependenciesOf(box, {
@@ -47,9 +51,14 @@ export namespace DeviceIO {
         }
         rawBoxes.push(readRawBox())
         const numDeps = input.readInt()
-        // Dependent resources and cross-device state need a dedicated import path.
-        assert(numDeps === 0 && input.position === buffer.byteLength,
-            "Unsupported native device dependencies: render or remove dependent resources before interchange")
+        assert(numDeps >= 0 && numDeps <= buffer.byteLength - input.position, "Invalid native device dependency count")
+        const dependencies = Array.from({length: numDeps}, readRawBox)
+        // Earlier exports also wrote selections, controller mappings and empty automation lanes that refer
+        // to the device. They are not device state and are dropped. Dependent resources, cross-device state
+        // and automation events need a dedicated import path.
+        assert(input.position === buffer.byteLength
+            && dependencies.every(({key}) => LegacyAttachments.has(key)),
+        "Unsupported native device dependencies: render or remove dependent resources before interchange")
         // We are going to award all boxes with new UUIDs.
         // Therefore, we need to map all internal pointer targets.
         return PointerField.decodeWith({

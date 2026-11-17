@@ -551,7 +551,11 @@ Audio buses are channels, not native instrument presets. The structural
 `AudioBusBox` instrument entries that earlier openDAW exports wrote on bus
 channels are skipped, so those files still import. Native device state contains
 only the device and the boxes it owns: selections, controller mappings and
-automation lanes that refer to the device are not exported with it. Nonempty generic Points
+automation lanes that refer to the device are not exported with it. Such
+selection, controller-mapping and empty automation-lane records in earlier
+exports are dropped on import; lanes with automation events are refused. Export
+still writes the state of devices with dependent resources (for example a Nano
+with a sample) for other applications, but openDAW refuses to re-import it. Nonempty generic Points
 parameter lanes are refused before graph construction; dedicated tempo and
 time-signature automation remain supported.
 

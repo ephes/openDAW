@@ -6,7 +6,8 @@ import {AudioData, FadingEnvelope, LoopableRegion, PPQN, TimeBase} from "@openda
 import {AudioFileBox, AudioRegionBox, AudioUnitBox, AuxSendBox, DelayDeviceBox, SelectionBox, FoldDeviceBox, NanoDeviceBox, PitchDeviceBox, NoteClipBox, NoteEventBox, NoteEventCollectionBox, NoteRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox, ValueRegionBox} from "@opendaw/studio-boxes"
 import {SampleLoaderManager} from "@opendaw/studio-adapters"
 import {AudioUnitType} from "@opendaw/studio-enums"
-import {Option, UUID} from "@opendaw/lib-std"
+import {ByteArrayOutput, Option, UUID} from "@opendaw/lib-std"
+import {Box} from "@opendaw/lib-box"
 import {DawProjectExporter} from "./DawProjectExporter"
 import {DawProjectImport} from "./DawProjectImporter"
 
@@ -324,4 +325,52 @@ it("B05 round-trips a selected native device with an empty automation lane on it
     expect(delays.map(box => box.feedback.getValue())).toEqual([0.25])
     expect(imported.boxGraph.boxes().filter(box => box instanceof SelectionBox)).toHaveLength(0)
     expect(() => imported.boxGraph.verifyPointers()).not.toThrow()
+})
+// Preset layout written before device export excluded selections and automation lanes.
+const legacyPreset = (device: Box): ArrayBuffer => {
+    const output = ByteArrayOutput.create()
+    output.writeString("openDAW:device")
+    output.writeInt(1)
+    const writeBox = (box: Box) => {
+        UUID.toDataOutput(output, box.address.uuid)
+        output.writeString(box.name)
+        const bytes = box.toArrayBuffer()
+        output.writeInt(bytes.byteLength)
+        output.writeBytes(new Int8Array(bytes))
+    }
+    const dependencies = Array.from(device.graph.dependenciesOf(device).boxes)
+    writeBox(device)
+    output.writeInt(dependencies.length)
+    dependencies.forEach(writeBox)
+    return output.toArrayBuffer() as ArrayBuffer
+}
+const legacyRoundTrip = async (withEvent: boolean) => {
+    const {skeleton} = await DawProjectImport.read(project(), resources)
+    const {boxGraph} = skeleton
+    const unit = boxGraph.boxes().find(box => box instanceof AudioUnitBox && box.type.getValue() === AudioUnitType.Instrument) as AudioUnitBox
+    const [user] = skeleton.mandatoryBoxes.userInterfaceBoxes
+    boxGraph.beginTransaction()
+    const delay = DelayDeviceBox.create(boxGraph, UUID.generate(), box => {box.host.refer(unit.audioEffects); box.index.setValue(0); box.feedback.setValue(0.25)})
+    SelectionBox.create(boxGraph, UUID.generate(), box => {box.selection.refer(user.selection); box.selectable.refer(delay)})
+    const track = TrackBox.create(boxGraph, UUID.generate(), box => {box.tracks.refer(unit.tracks); box.target.refer(delay.feedback); box.type.setValue(3); box.index.setValue(1)})
+    boxGraph.endTransaction()
+    const exported = xml(write(skeleton))
+    boxGraph.beginTransaction()
+    const collection = ValueEventCollectionBox.create(boxGraph, UUID.generate())
+    if (withEvent) {ValueEventBox.create(boxGraph, UUID.generate(), box => {box.events.refer(collection.events); box.value.setValue(0.5)})}
+    ValueRegionBox.create(boxGraph, UUID.generate(), box => {box.regions.refer(track.regions); box.events.refer(collection.owners); box.duration.setValue(q); box.loopDuration.setValue(q)})
+    boxGraph.endTransaction()
+    const legacy = legacyPreset(delay)
+    const path = `presets/${UUID.toString(delay.address.uuid)}`
+    const provider = {...resources, fromPath: (at: string) => ({...resource, path: at, buffer: at === path ? legacy : packedResources.get(at)!})}
+    return DawProjectImport.read(Xml.parse(exported, ProjectSchema), provider)
+}
+it("B05 drops selection and empty automation lane records from earlier native device exports", async () => {
+    const {skeleton: imported} = await legacyRoundTrip(false)
+    expect(imported.boxGraph.boxes().filter(box => box instanceof DelayDeviceBox).map(box => box.feedback.getValue())).toEqual([0.25])
+    expect(imported.boxGraph.boxes().filter(box => box instanceof SelectionBox || box instanceof ValueRegionBox)).toHaveLength(0)
+    expect(() => imported.boxGraph.verifyPointers()).not.toThrow()
+})
+it("B05 refuses earlier native device exports whose automation lane has events", async () => {
+    await expect(legacyRoundTrip(true)).rejects.toThrow(/Unsupported native device state/)
 })
