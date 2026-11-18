@@ -95,7 +95,7 @@ export class FilteredSelection<T extends Addressable> implements Selection<T>, T
 
     isSelected(selectable: T): boolean { return this.#set.hasKey(selectable.address)}
 
-    selected(): ReadonlyArray<T> {return this.#set.values()}
+    selected(): ReadonlyArray<T> {return this.#set.values().slice()}
 
     subscribe(listener: SelectionListener<T>): Terminable {
         return this.#listeners.subscribe(listener)

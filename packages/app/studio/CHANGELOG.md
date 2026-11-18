@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Deselect all entries outside a shrinking timeline selection rectangle in the same update.
+
 - Live rooms share with peers only the samples and soundfonts the room project references, never the rest of local sample/soundfont storage.
 
 - Bundle Monaco's markdown sanitizer with the patched DOMPurify package (3.4.18+) instead of Monaco's vendored 3.1.7 copy; the lockfile overrides every DOMPurify copy to ^3.4.18.

@@ -50,3 +50,34 @@ for (const index of [-1, 0, 1, 2]) {
         })
     }
 }
+
+test("timeline marquee removes every outside entry in one update and cancels shift inversion", async ({page}) => {
+    await page.goto("/")
+    await page.evaluate(async () => {
+        // @ts-expect-error Vite serves the synthetic source fixture.
+        Object.assign(window, {marquee: (await import("/r142-notes.ts")).marquee()})
+    })
+    const read = () => page.evaluate(() => (window as unknown as {marquee: {read(): number[]}}).marquee.read())
+    const start = async () => {
+        await page.mouse.move(10, 10)
+        await page.mouse.down()
+        await page.mouse.move(250, 150)
+        await page.mouse.move(450, 150)
+    }
+    await start()
+    await expect.poll(read).toEqual([0, 1, 2, 3])
+    await page.mouse.move(50, 150)
+    await expect.poll(read).toEqual([])
+    await page.keyboard.press("Escape")
+    await page.mouse.up()
+    await expect.poll(read).toEqual([0, 1, 2])
+
+    await page.keyboard.down("Shift")
+    await start()
+    await expect.poll(read).toEqual([3])
+    await page.keyboard.press("Escape")
+    await page.mouse.up()
+    await page.keyboard.up("Shift")
+    await expect.poll(read).toEqual([0, 1, 2])
+    await page.evaluate(() => (window as unknown as {marquee: {close(): void}}).marquee.close())
+})

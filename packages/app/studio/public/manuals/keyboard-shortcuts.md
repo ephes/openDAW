@@ -7,6 +7,7 @@ Most shortcuts can be listed and customized in the [Shortcut Manager](action://o
 ### General
 
 * Hold Shift and click to toggle selection (add/remove)
+* Shrink the selection rectangle to remove entries outside its current bounds.
 * Hold Shift and drag selection rectangle to invert selection
 
 ### Timeline Regions

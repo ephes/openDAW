@@ -28,6 +28,22 @@ const record = (source: {subscribe(listener: {onSelected(value: Vertex): void, o
 }
 
 describe("selection reentrancy", () => {
+    it("keeps a filtered snapshot stable while deselecting its entries", () => {
+        const {boxGraph, selection, filtered, vertices, editing} = fixture()
+        const fourth = editing.modify(() => AudioBusBox.create(boxGraph, UUID.generate(), box => {
+            const bus = vertices[1] as AudioBusBox
+            box.collection.refer(bus.collection.targetVertex.unwrap())
+            box.output.refer(bus.input)
+        })).unwrap()
+        selection.select(...vertices, fourth)
+        const snapshot = filtered.selected()
+        expect(snapshot).toHaveLength(4)
+        for (const vertex of snapshot) {filtered.deselect(vertex)}
+        expect(filtered.selected()).toEqual([])
+        expect(selection.selected()).toEqual([])
+        expect(snapshot).toHaveLength(4)
+        boxGraph.verifyPointers()
+    })
     it("defers external graph notifications until pointer finalization has finished", async () => {
         const {boxGraph, selection, filtered, first, vertices: [vertex, next]} = fixture()
         selection.subscribe({onSelected: value => {

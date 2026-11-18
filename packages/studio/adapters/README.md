@@ -158,3 +158,6 @@ released on success or failure, and a later explicit retry starts a fresh attemp
 The existing worklet activation fence and graph rollback remain in force.
 
 Base-signature edits use stored events even when signature playback is disabled, preserving the same approximate musical positions as enabled edits. Creating a signature event refuses an occupied snapped boundary without changing the map. Both operations retain the existing editing transaction and history.
+
+Filtered and vertex selection enumeration returns a snapshot. Deselecting entries
+while iterating it updates the live selection without changing the enumeration.
