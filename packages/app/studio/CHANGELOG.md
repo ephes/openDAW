@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Refuse nonfinite numeric text edits, arrow steps and guarded results.
+
 - Restore the opposite audio region fade as the dragged handle retreats from overlap.
 
 - Deselect all entries outside a shrinking timeline selection rectangle in the same update.

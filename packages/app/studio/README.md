@@ -114,3 +114,6 @@ While dragging an audio region fade, the other fade is shortened only as much
 as the current overlap requires. Moving the handle back restores the other fade;
 cancelling restores both original lengths without adding an undo step when the
 gesture owns the pending edit.
+
+Numeric text edits and arrow steps require finite values before and after any
+configured guard. A refused edit restores the current model display.

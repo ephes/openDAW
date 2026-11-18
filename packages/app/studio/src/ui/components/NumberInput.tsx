@@ -29,7 +29,7 @@ type Construct = {
 export const NumberInput = ({
                                 lifecycle, model, negativeWarning, className, maxChars, mapper, step, guard
                             }: Construct) => {
-    step ??= 1.0
+    const increment = step ?? 1.0
     maxChars ??= 3
     mapper ??= StringMapping.numeric({})
     const input: HTMLElement = (
@@ -45,6 +45,17 @@ export const NumberInput = ({
         element.classList.toggle("negative", negativeWarning === true && value < 0)
         input.textContent = mapper.x(value).value
     }
+    const commit = (value: number) => {
+        if (!Number.isFinite(value)) {return}
+        const guarded = guard?.guard(value) ?? value
+        if (Number.isFinite(guarded) && guarded !== model.getValue()) {model.setValue(guarded)}
+    }
+    const stepDraft = (delta: number) => {
+        const result = mapper.y(input.textContent ?? "")
+        if (result.type === "explicit") {commit(result.value + delta)}
+        updateDigits()
+        Html.selectContent(input)
+    }
     lifecycle.ownAll(
         model.subscribe(updateDigits),
         Events.subscribe(element, "focusin", (event: Event) => {
@@ -53,9 +64,9 @@ export const NumberInput = ({
         }),
         Events.subscribe(element, "focusout", (event: Event) => {
             if (!isInstanceOf(event.target, HTMLElement)) {return}
-            const result = mapper.y(event.target.textContent ?? "")
-            if (result.type === "explicit" && !isNaN(result.value)) {
-                model.setValue(isDefined(guard) ? guard.guard(result.value) : result.value)
+            if (input.textContent !== mapper.x(model.getValue()).value) {
+                const result = mapper.y(input.textContent ?? "")
+                if (result.type === "explicit") {commit(result.value)}
             }
             updateDigits()
             Html.unselectContent(event.target)
@@ -76,7 +87,8 @@ export const NumberInput = ({
                     && json.app === "openDAW" && json.content === "number"
                     && typeof json.value === "number" && Number.isFinite(json.value)) {
                     event.preventDefault()
-                    model.setValue(isDefined(guard) ? guard.guard(json.value) : json.value)
+                    commit(json.value)
+                    updateDigits()
                 }
             }
         }),
@@ -87,28 +99,16 @@ export const NumberInput = ({
             switch (event.code) {
                 case "ArrowUp": {
                     event.preventDefault()
-                    const result = mapper.y(target.textContent ?? "")
-                    if (result.type !== "explicit" || isNaN(result.value)) {return}
-                    const nextValue: int = result.value + step
-                    model.setValue(isDefined(guard) ? guard.guard(nextValue) : nextValue)
-                    Html.selectContent(target)
+                    stepDraft(increment)
                     break
                 }
                 case "ArrowDown": {
                     event.preventDefault()
-                    const result = mapper.y(target.textContent ?? "")
-                    if (result.type !== "explicit" || isNaN(result.value)) {return}
-                    const nextValue: int = result.value - step
-                    model.setValue(isDefined(guard) ? guard.guard(nextValue) : nextValue)
-                    Html.selectContent(target)
+                    stepDraft(-increment)
                     break
                 }
                 case "Enter": {
                     event.preventDefault()
-                    const result = mapper.y(target.textContent ?? "")
-                    if (result.type === "explicit" && !isNaN(result.value)) {
-                        model.setValue(isDefined(guard) ? guard.guard(result.value) : result.value)
-                    }
                     target.blur()
                     break
                 }
