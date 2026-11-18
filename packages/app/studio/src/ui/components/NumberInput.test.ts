@@ -25,8 +25,8 @@ const setup = (step = 0.001, guard?: ValueGuard<number>) => {
     document.body.append(control)
     const input = control.firstElementChild as HTMLElement
     input.focus()
-    const key = (code: string, isComposing = false) => {
-        const event = new KeyboardEvent("keydown", {code, bubbles: true, cancelable: true, isComposing})
+    const key = (code: string, isComposing = false, character?: string) => {
+        const event = new KeyboardEvent("keydown", {code, key: character, bubbles: true, cancelable: true, isComposing})
         input.dispatchEvent(event)
         return event
     }
@@ -63,9 +63,23 @@ it("refuses nonfinite guard output and keeps finite commits undoable", () => {
     expect(model.getValue()).toBe(0.5)
 })
 
-it.each(["Period", "NumpadDecimal", "Home", "End", "Delete"])("allows native editing for %s", code => {
+it.each([["Period", "."], ["NumpadDecimal", "."], ["Home", "Home"], ["End", "End"], ["Delete", "Delete"],
+    ["Digit1", "1"], ["Numpad5", "5"], ["ArrowLeft", "ArrowLeft"], ["ArrowRight", "ArrowRight"], ["Backspace", "Backspace"]])(
+    "allows native editing for %s", (code, character) => {
+        const {key} = setup()
+        expect(key(code, false, character).defaultPrevented).toBe(false)
+    })
+
+it.each(["Period", "NumpadDecimal"])("refuses %s on an integer-step control", code => {
+    const {key} = setup(1)
+    expect(key(code, false, ".").defaultPrevented).toBe(true)
+    expect(key("Digit1", false, "1").defaultPrevented).toBe(false)
+    expect(key("ArrowLeft", false, "ArrowLeft").defaultPrevented).toBe(false)
+})
+
+it.each([["NumpadDecimal", ","], ["Period", ":"]])("refuses %s typing %s instead of truncating the draft", (code, character) => {
     const {key} = setup()
-    expect(key(code).defaultPrevented).toBe(false)
+    expect(key(code, false, character).defaultPrevented).toBe(true)
 })
 
 it("leaves composition Enter native without committing or reaching ancestors", () => {

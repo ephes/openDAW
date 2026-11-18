@@ -97,11 +97,49 @@ it("retains a repeated region, its loop phase and source reset after serializati
     }
 })
 
-it("refuses a loop span outside the available warp markers without changing the project", async () => {
-    const {region} = setup(PPQN.Bar, 0, false, PPQN.Bar * 2)
-    const before = new Uint8Array(project.toArrayBuffer())
-    await expect(AudioContentModifier.toNotStretched([region])).rejects.toThrow(/warp markers/i)
-    expect(new Uint8Array(project.toArrayBuffer())).toEqual(before)
+it("keeps the silent tail of a loop extended past the last warp marker", async () => {
+    const {box, region} = setup(PPQN.Bar * 3, PPQN.Bar + PPQN.Quarter, false, PPQN.Bar * 2)
+    const {editing, tempoMap} = project
+    editing.modify(await AudioContentModifier.toNotStretched([region]))
+    expect(box.timeBase.getValue()).toBe(TimeBase.Seconds)
+    expect(box.duration.getValue()).toBe(6)
+    expect(box.loopDuration.getValue()).toBe(4)
+    expect(box.loopOffset.getValue()).toBe(PPQN.Bar + PPQN.Quarter)
+    const passes = Array.from(LoopableRegion.locateLoops(region, region.position, region.complete))
+    expect(passes.map(pass => tempoMap.intervalToSeconds(pass.rawStart, pass.resultStart)
+        + region.waveformOffset.getValue())).toEqual([2.75, 0.25, 0.25])
+    expect(editing.undo()).toBe(true)
+    expect(box.loopDuration.getValue()).toBe(PPQN.Bar * 2)
+    expect(region.asPlayModePitchStretch.nonEmpty()).toBe(true)
+})
+
+it("keeps the silent lead-in of a loop that starts before the first warp marker", async () => {
+    const {box, region} = setup(PPQN.Bar, 0)
+    const first = region.asPlayModePitchStretch.unwrap().warpMarkers.first()
+    expect(first).not.toBeNull()
+    project.editing.modify(() => first?.box.position.setValue(PPQN.Quarter))
+    project.editing.modify(await AudioContentModifier.toNotStretched([region]))
+    expect(box.timeBase.getValue()).toBe(TimeBase.Seconds)
+    expect(box.duration.getValue()).toBe(2.5)
+    expect(box.loopDuration.getValue()).toBe(2.5)
+    expect(box.loopOffset.getValue()).toBe(0)
+    expect(box.waveformOffset.getValue()).toBe(-0.25)
+    expect(project.tempoMap.intervalToSeconds(region.position, region.position + PPQN.Quarter)
+        + region.waveformOffset.getValue()).toBe(0.25)
+})
+
+it("normalizes a stored loop phase beyond the loop span like playback does", async () => {
+    const {box, region} = setup(PPQN.Bar * 2 + PPQN.Quarter, PPQN.Bar * 3 + PPQN.Quarter)
+    const {editing, tempoMap} = project
+    const before = Array.from(LoopableRegion.locateLoops(region, region.position, region.complete))
+        .map(pass => pass.resultStart - pass.rawStart)
+    editing.modify(await AudioContentModifier.toNotStretched([region]))
+    expect(box.loopOffset.getValue()).toBe(PPQN.Quarter)
+    expect(box.loopDuration.getValue()).toBe(2)
+    const passes = Array.from(LoopableRegion.locateLoops(region, region.position, region.complete))
+    expect(passes.map(pass => tempoMap.intervalToSeconds(pass.rawStart, pass.resultStart)
+        + region.waveformOffset.getValue())).toEqual([0.75, 0.25, 0.25])
+    expect(before).toEqual([PPQN.Quarter, 0, 0])
 })
 
 it("closes transient detection progress when sample loading fails", async () => {

@@ -643,9 +643,11 @@ resources.
 
 For No Warp, a trimmed or repeated arrangement region keeps its arrangement end
 at the current tempo. The loop span comes from the warp markers, and the first
-pass retains its source phase without shifting later loop starts. A full,
-untrimmed pass adopts the native source span. Conversion refuses regions whose
-markers or stored fields cannot represent those extents.
+pass retains its source phase without shifting later loop starts. Stretched
+playback is silent before the first and after the last warp marker; No Warp keeps
+that lead-in and tail at the current tempo (a lead-in yields a negative waveform
+offset). A full, untrimmed pass adopts the native source span. Conversion refuses
+regions whose stored fields cannot represent those extents.
 
 Transient detection closes its progress dialog on success or failure. The audio
 editor uses the non-modal conversion path so another mode choice can supersede

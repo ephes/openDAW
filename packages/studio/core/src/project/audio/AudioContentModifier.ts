@@ -1,4 +1,4 @@
-import {assert, EmptyExec, Exec, isDefined, isInstanceOf, isNotNull, RuntimeNotifier, UUID} from "@opendaw/lib-std"
+import {assert, EmptyExec, Exec, isDefined, isInstanceOf, isNotNull, mod, Option, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {EventCollection, ppqn, seconds, TimeBase} from "@opendaw/lib-dsp"
 import {
     AudioPitchStretchBox,
@@ -147,20 +147,25 @@ export namespace AudioContentModifier {
 
     const toNativeRegionExtent = (adapter: AudioRegionBoxAdapter,
                                   markers: EventCollection<WarpMarkerBoxAdapter>): Exec => {
-        const {box, position, complete, duration, loopDuration, loopOffset, tempoMap} = adapter
-        const first = markers.first()
-        const last = markers.last()
-        assert(first !== null && last !== null && first.position <= 0 && last.position >= loopDuration,
-            "No Warp requires warp markers covering the loop")
-        assert(Number.isFinite(loopOffset) && loopOffset >= 0 && loopOffset < loopDuration,
+        const {box, position, complete, duration, loopDuration, tempoMap} = adapter
+        const first = Option.wrap(markers.first()).unwrap("No Warp requires warp markers")
+        const last = Option.wrap(markers.last()).unwrap("No Warp requires warp markers")
+        assert(Number.isFinite(adapter.loopOffset) && Number.isFinite(loopDuration) && loopDuration > 0,
             "No Warp requires a valid loop phase")
-        const sourceStart = warpPositionToSeconds(markers, 0)
-        const loopSeconds = Math.fround(warpPositionToSeconds(markers, loopDuration) - sourceStart)
+        const loopOffset = mod(adapter.loopOffset, loopDuration)
+        // Stretched playback is silent outside the markers; keep that lead-in and tail at the current tempo.
+        const sourceSeconds = (pulses: ppqn): seconds => pulses > last.position
+            ? last.seconds + tempoMap.intervalToSeconds(position + last.position, position + pulses)
+            : pulses < first.position
+                ? first.seconds - tempoMap.intervalToSeconds(position + pulses, position + first.position)
+                : warpPositionToSeconds(markers, pulses)
+        const sourceStart = sourceSeconds(0)
+        const loopSeconds = Math.fround(sourceSeconds(loopDuration) - sourceStart)
         // An untrimmed single pass still adopts the source's native length.
         const regionSeconds = duration === loopDuration && loopOffset === 0
             ? loopSeconds
             : Math.fround(tempoMap.intervalToSeconds(position, complete))
-        const phaseSeconds = warpPositionToSeconds(markers, loopOffset) - sourceStart
+        const phaseSeconds = sourceSeconds(loopOffset) - sourceStart
         // Native regions store their loop phase in pulses, even in the seconds time base.
         const startSeconds = tempoMap.ppqnToSeconds(position)
         const rawStartSeconds = startSeconds - phaseSeconds

@@ -97,6 +97,10 @@ export const PropertyTable = ({lifecycle, selection, modifyContext, editing}: Co
     )
 
     let focus: Nullable<NoteEventBoxAdapter> = null
+    const focusStrategy = () => {
+        const modifier: Option<NoteModifyStrategies> = modifyContext.modifier
+        return modifier.unwrapOrElse(NoteModifyStrategies.Identity).selectedModifyStrategy()
+    }
 
     const updateState = lifecycle.own(deferNextFrame(() => {
         if (selection.isEmpty()) {
@@ -122,8 +126,7 @@ export const PropertyTable = ({lifecycle, selection, modifyContext, editing}: Co
             playCurveInput.classList.toggle("invalid", !Arrays.satisfy(adapters, (a, b) => a.playCurve === b.playCurve))
 
             if (focus !== null) {
-                const modifier: Option<NoteModifyStrategies> = modifyContext.modifier
-                const strategy = modifier.unwrapOrElse(NoteModifyStrategies.Identity).selectedModifyStrategy()
+                const strategy = focusStrategy()
                 ignore = true
                 position.parameter.setValue(strategy.readPosition(focus))
                 duration.parameter.setValue(strategy.readComplete(focus) - strategy.readPosition(focus))
@@ -140,18 +143,28 @@ export const PropertyTable = ({lifecycle, selection, modifyContext, editing}: Co
 
     let ignore = false
     const timingSubscriptions = lifecycle.own(new Terminator())
+    const syncFocusTiming = () => {
+        if (focus !== null) {
+            const strategy = focusStrategy()
+            ignore = true
+            position.parameter.setValue(strategy.readPosition(focus))
+            duration.parameter.setValue(strategy.readComplete(focus) - strategy.readPosition(focus))
+            ignore = false
+        }
+        updateState.request()
+    }
     const selectionChanged = (adapter: Nullable<NoteEventBoxAdapter>) => {
         if (focus !== adapter) {
             timingSubscriptions.terminate()
             focus = adapter
             if (focus !== null) {
                 timingSubscriptions.ownAll(
-                    focus.box.position.subscribe(updateState.immediate),
-                    focus.box.duration.subscribe(updateState.immediate)
+                    focus.box.position.subscribe(syncFocusTiming),
+                    focus.box.duration.subscribe(syncFocusTiming)
                 )
             }
         }
-        updateState.immediate()
+        syncFocusTiming()
         resetTimingDraft.notify()
     }
     lifecycle.ownAll(...Object.values(PropertyParameters)

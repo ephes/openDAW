@@ -118,8 +118,13 @@ gesture owns the pending edit.
 Numeric text edits and arrow steps require finite values before and after any
 configured guard. A refused edit restores the current model display.
 
-Numeric inputs accept decimal keys and native caret editing. Composition owns its
-Enter key until composition ends. The mapper and guard validate the finished value.
+Numeric inputs accept native caret editing. Decimal keys work only in inputs
+with a fractional step (such as the waveform offset), so integer controls never
+receive a hidden fractional value. A decimal key that types another character
+than "." (for example the numpad comma of German layouts) is refused, so a draft
+is never truncated at the comma. Composition owns
+its Enter key until composition ends. The mapper and guard validate the finished
+value.
 
 Note timecode fields accept whole ticks only. Positions use the signed 32-bit
 range, and durations run from one tick to the signed 32-bit maximum. An invalid

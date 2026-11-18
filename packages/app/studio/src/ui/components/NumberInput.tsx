@@ -30,6 +30,7 @@ export const NumberInput = ({
                                 lifecycle, model, negativeWarning, className, maxChars, mapper, step, guard
                             }: Construct) => {
     const increment = step ?? 1.0
+    const fractional = !Number.isInteger(increment)
     maxChars ??= 3
     mapper ??= StringMapping.numeric({})
     const input: HTMLElement = (
@@ -119,6 +120,12 @@ export const NumberInput = ({
                     target.blur()
                     break
                 }
+                case "Period":
+                case "NumpadDecimal": {
+                    event.stopPropagation()
+                    if (!fractional || event.key !== ".") {event.preventDefault()}
+                    break
+                }
                 case "Digit0": case "Digit1": case "Digit2": case "Digit3": case "Digit4":
                 case "Digit5": case "Digit6": case "Digit7": case "Digit8": case "Digit9":
                 case "Numpad0": case "Numpad1": case "Numpad2": case "Numpad3": case "Numpad4":
@@ -127,8 +134,6 @@ export const NumberInput = ({
                 case "ArrowRight":
                 case "Minus":
                 case "NumpadSubtract":
-                case "Period":
-                case "NumpadDecimal":
                 case "Home":
                 case "End":
                 case "Delete":

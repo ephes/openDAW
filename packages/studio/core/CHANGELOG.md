@@ -7,7 +7,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 - Close transient detection progress on failure and allow the stretch selector to detect without a modal.
 
-- Preserve trimmed and repeated arrangement extents, native loop spans and source phase on No Warp conversion.
+- Preserve trimmed and repeated arrangement extents, native loop spans (including silent lead-ins and tails outside the warp markers) and source phase on No Warp conversion.
 
 - Import/export ordinary DAWproject arrangement markers with beat positions, labels and native hue colors (foreign colors map to the nearest hue), exporting markers of a disabled marker track and writing Arrangement children in DAWproject schema order; refuse unsupported attributes and native repeat/track semantics before publication.
 
