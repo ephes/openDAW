@@ -26,3 +26,27 @@ test("numeric input supports decimal typing, caret edits and tab commit", async 
     await page.keyboard.press("Enter")
     expect(await read()).toBe(2.5)
 })
+
+test("note timecode commits through Tab and outside clicks", async ({page}) => {
+    await page.goto("/")
+    await page.evaluate(async () => {
+        // @ts-expect-error Vite serves the synthetic source fixture.
+        Object.assign(window, {readTiming: (await import("/r145-input.ts")).timeCode()})
+    })
+    const read = () => page.evaluate(() => (window as unknown as {readTiming(): {position: number, duration: number}}).readTiming())
+    const fields = page.locator("#note-properties [contenteditable]")
+    const position = fields.nth(3)
+    const duration = fields.nth(7)
+    const outside = page.getByRole("button", {name: "Outside properties"})
+    await position.fill("42")
+    await page.keyboard.press("Tab")
+    expect(await read()).toEqual({position: 42, duration: 10})
+    await expect(position).toHaveText("042")
+    await duration.fill("70")
+    await outside.click()
+    expect(await read()).toEqual({position: 42, duration: 70})
+    await duration.fill("2147483648")
+    await outside.click()
+    expect(await read()).toEqual({position: 42, duration: 70})
+    await expect(duration).toHaveText("070")
+})

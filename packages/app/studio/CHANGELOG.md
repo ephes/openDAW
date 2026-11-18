@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Commit valid timecode drafts on blur and resync the digits on selection changes and undo.
+
 - Reject malformed or out-of-range note timecode edits before changing the graph.
 
 - Allow decimal keys and native caret editing in numeric inputs, including waveform offsets.

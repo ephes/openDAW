@@ -124,3 +124,7 @@ Enter key until composition ends; the mapper and guard validate the finished val
 Note timecode fields accept whole ticks only. Positions use the signed 32-bit
 range, and durations run from one tick to the signed 32-bit maximum. An invalid
 edit restores the displayed value from the model.
+
+Enter, Tab and clicking away settle note timecode edits using the same validation.
+Changing the note selection discards the pending draft. Undo restores both the
+note timing and its display.

@@ -69,3 +69,38 @@ it.each([Integer.MIN_VALUE, Integer.MAX_VALUE])("persists a boundary position %s
         reopened.terminate()
     }
 })
+
+it("commits on blur, restores invalid digits, and reflects one undo per edit", () => {
+    const {fixture, fields, enter, note} = setup()
+    const ticks = fields[7]
+    ticks.focus()
+    ticks.textContent = "77"
+    fields[3].focus()
+    expect(note.duration.getValue()).toBe(77)
+    expect(ticks.textContent).toBe("077")
+    enter(7, "88")
+    ticks.blur()
+    expect(note.duration.getValue()).toBe(88)
+    expect(fixture.editing.undo()).toBe(true)
+    expect(note.duration.getValue()).toBe(77)
+    expect(ticks.textContent).toBe("077")
+    ticks.focus()
+    ticks.textContent = "bad"
+    ticks.blur()
+    expect(ticks.textContent).toBe("077")
+    expect(fixture.editing.undo()).toBe(true)
+    expect(note.duration.getValue()).toBe(10)
+    expect(ticks.textContent).toBe("010")
+})
+
+it("drops a draft when the selected note changes before blur", () => {
+    const {fixture, fields, note} = setup()
+    const ticks = fields[3]
+    ticks.focus()
+    ticks.textContent = "77"
+    fixture.swap()
+    ticks.blur()
+    expect(note.position.getValue()).toBe(0)
+    expect(fixture.notes[3].position).toBe(6)
+    expect(ticks.textContent).toBe("006")
+})

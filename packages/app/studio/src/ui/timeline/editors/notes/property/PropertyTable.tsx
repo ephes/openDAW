@@ -1,5 +1,5 @@
 import css from "./PropertyTable.sass?inline"
-import {Arrays, Editing, Lifecycle, Nullable, Option, Selection} from "@opendaw/lib-std"
+import {Arrays, Editing, Lifecycle, Notifier, Nullable, Option, Selection, Terminator} from "@opendaw/lib-std"
 import {deferNextFrame, Html} from "@opendaw/lib-dom"
 import {TimeCodeInput} from "@/ui/components/TimeCodeInput.tsx"
 import {PropertyParameters} from "@/ui/timeline/editors/notes/property/PropertyParameters.ts"
@@ -24,13 +24,16 @@ type Construct = {
 
 export const PropertyTable = ({lifecycle, selection, modifyContext, editing}: Construct) => {
     const {position, duration, pitch, velocity, cent, chance, playCount, playCurve} = PropertyParameters
+    const resetTimingDraft = lifecycle.own(new Notifier<void>())
     const positionInput: Element = <TimeCodeInput lifecycle={lifecycle}
                                                   model={position.parameter}
+                                                  resetDraft={resetTimingDraft}
                                                   accepts={value => position.parameter.valueMapping.clamp(value) === value}
                                                   negativeWarning
                                                   oneBased/>
     const durationInput: Element = <TimeCodeInput lifecycle={lifecycle}
                                                   model={duration.parameter}
+                                                  resetDraft={resetTimingDraft}
                                                   accepts={value => duration.parameter.valueMapping.clamp(value) === value}
                                                   negativeWarning/>
     const pitchString = Inject.value(MidiKeys.toFullString(pitch.parameter.getValue()))
@@ -136,22 +139,33 @@ export const PropertyTable = ({lifecycle, selection, modifyContext, editing}: Co
     }))
 
     let ignore = false
+    const timingSubscriptions = lifecycle.own(new Terminator())
+    const selectionChanged = (adapter: Nullable<NoteEventBoxAdapter>) => {
+        if (focus !== adapter) {
+            timingSubscriptions.terminate()
+            focus = adapter
+            if (focus !== null) {
+                timingSubscriptions.ownAll(
+                    focus.box.position.subscribe(updateState.immediate),
+                    focus.box.duration.subscribe(updateState.immediate)
+                )
+            }
+        }
+        updateState.immediate()
+        resetTimingDraft.notify()
+    }
     lifecycle.ownAll(...Object.values(PropertyParameters)
             .map(({parameter, fieldName}) => parameter.subscribe(owner => {
                 if (ignore) {return}
+                const value = owner.getValue()
                 editing.modify(() =>
                     selection.selected()
-                        .forEach(adapter => adapter.box[fieldName].setValue(owner.getValue())))
+                        .forEach(adapter => adapter.box[fieldName].setValue(value)))
             })),
         selection.catchupAndSubscribe({
-            onSelected: (adapter: NoteEventBoxAdapter) => {
-                focus = adapter
-                updateState.request()
-            },
-            onDeselected: (adapter: NoteEventBoxAdapter) => {
-                if (focus === adapter) {focus = null}
-                updateState.request()
-            }
+            onSelected: selectionChanged,
+            onDeselected: (adapter: NoteEventBoxAdapter) =>
+                selectionChanged(focus === adapter ? selection.selected().at(-1) ?? null : focus)
         }),
         pitch.parameter.subscribe(owner => pitchString.value = MidiKeys.toFullString(owner.getValue())),
         modifyContext.subscribeUpdate(updateState.request)

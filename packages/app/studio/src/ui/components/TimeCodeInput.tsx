@@ -7,6 +7,7 @@ import {
     isRecord,
     Lifecycle,
     MutableObservableValue,
+    Observable,
     tryCatch
 } from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
@@ -23,9 +24,10 @@ type Construct = {
     signature?: [int, int]
     oneBased?: boolean
     accepts?: (value: ppqn) => boolean
+    resetDraft?: Observable<void>
 }
 
-export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, signature, oneBased, accepts}: Construct) => {
+export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, signature, oneBased, accepts, resetDraft}: Construct) => {
     const upper = signature?.at(0) ?? 4
     const lower = signature?.at(1) ?? 4
     const units = [
@@ -71,6 +73,7 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
             updateDigits()
         }
     }
+    if (isDefined(resetDraft)) {lifecycle.own(resetDraft.subscribe(updateDigits))}
     lifecycle.ownAll(
         model.subscribe(updateDigits),
         Events.subscribe(element, "focusin", (event: Event) => {
@@ -79,6 +82,9 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
         }),
         Events.subscribe(element, "focusout", (event: Event) => {
             if (!isInstanceOf(event.target, HTMLElement)) {return}
+            const index = inputs.indexOf(event.target)
+            if (index < 0) {return}
+            commitDraft(index, event.target.textContent ?? "")
             Html.unselectContent(event.target)
         }),
         Events.subscribe(element, "copy", (event: ClipboardEvent) => {
@@ -102,6 +108,10 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
             }
         }),
         Events.subscribe(element, "keydown", (event: KeyboardEvent) => {
+            if (event.isComposing) {
+                event.stopPropagation()
+                return
+            }
             if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {return}
             const target = event.target
             if (!isInstanceOf(target, HTMLElement)) {return}
@@ -121,6 +131,7 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
                 }
                 case "Enter": {
                     event.preventDefault()
+                    event.stopPropagation()
                     commitDraft(index, target.textContent ?? "")
                     Html.selectContent(target)
                     break
