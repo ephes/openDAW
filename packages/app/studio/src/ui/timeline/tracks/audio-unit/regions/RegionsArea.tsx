@@ -27,6 +27,7 @@ import {DragAndDrop} from "@/ui/DragAndDrop"
 import {AnyDragData} from "@/ui/AnyDragData"
 import {Dialogs} from "@/ui/components/dialogs"
 import {ClipboardManager, ElementCapturing, RegionsClipboard, TimelineRange} from "@opendaw/studio-core"
+import {regionFadeDrag} from "./RegionFadeDrag"
 import {RegionsShortcuts} from "@/ui/shortcuts/RegionsShortcuts"
 
 const className = Html.adoptStyleSheet(css, "RegionsArea")
@@ -289,7 +290,7 @@ export const RegionsArea = ({lifecycle, service, manager, scrollModel, scrollCon
                     case "fading-out": {
                         const audioRegion = target.region
                         const isFadeIn = target.part === "fading-in"
-                        const {position, duration, complete, fading} = audioRegion
+                        const {fading} = audioRegion
                         if (event.shiftKey) {
                             const slopeField = isFadeIn ? fading.inSlopeField : fading.outSlopeField
                             const originalSlope = slopeField.getValue()
@@ -304,33 +305,8 @@ export const RegionsArea = ({lifecycle, service, manager, scrollModel, scrollCon
                                 cancel: () => editing.modify(() => slopeField.setValue(originalSlope))
                             } satisfies Dragging.Process)
                         }
-                        const originalFadeIn = fading.in
-                        const originalFadeOut = fading.out
-                        return Option.wrap({
-                            update: (dragEvent: Dragging.Event) => {
-                                const pointerPpqn = range.xToUnit(dragEvent.clientX - clientRect.left)
-                                editing.modify(() => {
-                                    if (isFadeIn) {
-                                        const newFadeIn = clamp(pointerPpqn - position, 0, duration)
-                                        fading.inField.setValue(newFadeIn)
-                                        if (newFadeIn + fading.out > duration) {
-                                            fading.outField.setValue(duration - newFadeIn)
-                                        }
-                                    } else {
-                                        const newFadeOut = clamp(complete - pointerPpqn, 0, duration)
-                                        fading.outField.setValue(newFadeOut)
-                                        if (fading.in + newFadeOut > duration) {
-                                            fading.inField.setValue(duration - newFadeOut)
-                                        }
-                                    }
-                                }, false)
-                            },
-                            approve: () => editing.mark(),
-                            cancel: () => editing.modify(() => {
-                                fading.inField.setValue(originalFadeIn)
-                                fading.outField.setValue(originalFadeOut)
-                            })
-                        } satisfies Dragging.Process)
+                        return Option.wrap(regionFadeDrag(audioRegion, isFadeIn, editing,
+                            clientX => range.xToUnit(clientX - clientRect.left)))
                     }
                     default: {
                         return Unhandled(target)

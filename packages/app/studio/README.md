@@ -109,3 +109,8 @@ Duration and velocity/chance/cent drags preview and commit the original survivin
 note set and captured base values. New selections cannot redirect an active edit;
 detached, reparented or conflicting targets are excluded. Escape discards preview
 and approval remains one undo transaction. See [round 142](../../../plans/scout-round142-studio-boundaries.md).
+
+While dragging an audio region fade, the other fade is shortened only as much
+as the current overlap requires. Moving the handle back restores the other fade;
+cancelling restores both original lengths without adding an undo step when the
+gesture owns the pending edit.

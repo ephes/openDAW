@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Restore the opposite audio region fade as the dragged handle retreats from overlap.
+
 - Deselect all entries outside a shrinking timeline selection rectangle in the same update.
 
 - Live rooms share with peers only the samples and soundfonts the room project references, never the rest of local sample/soundfont storage.

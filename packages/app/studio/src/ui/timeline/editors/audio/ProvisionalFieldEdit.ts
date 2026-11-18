@@ -2,35 +2,34 @@ import {Editing, Exec, Subscription, tryCatch} from "@opendaw/lib-std"
 import {PrimitiveField} from "@opendaw/lib-box"
 
 /**
- * Owns the live writes of one drag gesture to one primitive field.
- * Writes stop once the field is detached or changed by anyone else. Approval marks one history step.
- * Cancellation restores the original value only while the field still holds this gesture's last write:
+ * Owns the live writes of one drag gesture to its primitive fields.
+ * Writes stop once any field is detached or changed by anyone else. Approval marks one history step.
+ * Cancellation restores the original values only while the fields still hold this gesture's last writes:
  * without interleaved editing it drops the gesture's pending modifications, otherwise (or if they were already
  * marked) it records a compensating step.
  */
 export class ProvisionalFieldEdit {
     readonly #editing: Editing
-    readonly #field: PrimitiveField<number>
-    readonly #original: number
+    readonly #fields: ReadonlyArray<{field: PrimitiveField<number>, original: number, expected: number}>
     readonly #subscription: Subscription
 
-    #expected: number
     #written: boolean = false
     #writing: boolean = false
     #interleaved: boolean = false
     #lost: boolean = false
     #settled: boolean = false
 
-    constructor(editing: Editing, field: PrimitiveField<number>) {
+    constructor(editing: Editing, field: PrimitiveField<number>, ...others: Array<PrimitiveField<number>>) {
         this.#editing = editing
-        this.#field = field
-        this.#original = field.getValue()
-        this.#expected = this.#original
+        this.#fields = [field, ...others].map(field => {
+            const original = field.getValue()
+            return {field, original, expected: original}
+        })
         this.#subscription = editing.subscribe(() => {if (!this.#writing) {this.#interleaved = true}})
     }
 
     get owned(): boolean {
-        return !this.#lost && !this.#settled && this.#field.isAttached() && this.#field.getValue() === this.#expected
+        return !this.#lost && !this.#settled && this.#fields.every(({field, expected}) => field.isAttached() && field.getValue() === expected)
     }
 
     write(modifier: Exec): void {
@@ -47,7 +46,7 @@ export class ProvisionalFieldEdit {
             this.#lost = true
             throw result.error
         }
-        this.#expected = this.#field.getValue()
+        this.#fields.forEach(entry => entry.expected = entry.field.getValue())
     }
 
     approve(): void {
@@ -63,8 +62,9 @@ export class ProvisionalFieldEdit {
         this.#settle()
         if (!restore) {return}
         if (!this.#interleaved) {this.#editing.revertPending()}
-        if (this.#field.isAttached() && this.#field.getValue() !== this.#original) {
-            this.#editing.modify(() => this.#field.setValue(this.#original))
+        const changed = this.#fields.filter(({field, original}) => field.isAttached() && field.getValue() !== original)
+        if (changed.length > 0) {
+            this.#editing.modify(() => changed.forEach(({field, original}) => field.setValue(original)))
         }
     }
 
