@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Allow decimal keys and native caret editing in numeric inputs, including waveform offsets.
+
 - Refuse nonfinite numeric text edits, arrow steps and guarded results.
 
 - Restore the opposite audio region fade as the dragged handle retreats from overlap.

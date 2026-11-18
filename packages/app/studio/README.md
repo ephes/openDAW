@@ -117,3 +117,6 @@ gesture owns the pending edit.
 
 Numeric text edits and arrow steps require finite values before and after any
 configured guard. A refused edit restores the current model display.
+
+Numeric inputs accept decimal keys and native caret editing. Composition owns its
+Enter key until composition ends; the mapper and guard validate the finished value.

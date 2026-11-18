@@ -93,22 +93,29 @@ export const NumberInput = ({
             }
         }),
         Events.subscribe(element, "keydown", (event: KeyboardEvent) => {
+            if (event.isComposing) {
+                event.stopPropagation()
+                return
+            }
             if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {return}
             const target = event.target
             if (!isInstanceOf(target, HTMLElement)) {return}
             switch (event.code) {
                 case "ArrowUp": {
                     event.preventDefault()
+                    event.stopPropagation()
                     stepDraft(increment)
                     break
                 }
                 case "ArrowDown": {
                     event.preventDefault()
+                    event.stopPropagation()
                     stepDraft(-increment)
                     break
                 }
                 case "Enter": {
                     event.preventDefault()
+                    event.stopPropagation()
                     target.blur()
                     break
                 }
@@ -116,16 +123,21 @@ export const NumberInput = ({
                 case "Digit5": case "Digit6": case "Digit7": case "Digit8": case "Digit9":
                 case "Numpad0": case "Numpad1": case "Numpad2": case "Numpad3": case "Numpad4":
                 case "Numpad5": case "Numpad6": case "Numpad7": case "Numpad8": case "Numpad9":
-                case "Tab":
                 case "ArrowLeft":
                 case "ArrowRight":
                 case "Minus":
                 case "NumpadSubtract":
+                case "Period":
+                case "NumpadDecimal":
+                case "Home":
+                case "End":
+                case "Delete":
                 case "Backspace": {
-                    break // Allow
+                    event.stopPropagation()
+                    break
                 }
+                case "Tab": break
                 default: {
-                    console.debug("ignore", event.code)
                     event.preventDefault()
                 }
             }

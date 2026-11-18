@@ -62,3 +62,25 @@ it("refuses nonfinite guard output and keeps finite commits undoable", () => {
     expect(fixture.editing.undo()).toBe(true)
     expect(model.getValue()).toBe(0.5)
 })
+
+it.each(["Period", "NumpadDecimal", "Home", "End", "Delete"])("allows native editing for %s", code => {
+    const {key} = setup()
+    expect(key(code).defaultPrevented).toBe(false)
+})
+
+it("leaves composition Enter native without committing or reaching ancestors", () => {
+    const {input, key, model} = setup()
+    const ancestor = vi.fn()
+    document.body.addEventListener("keydown", ancestor, {once: true})
+    input.textContent = "1.25"
+    try {
+        expect(key("Enter", true).defaultPrevented).toBe(false)
+        expect(ancestor).not.toHaveBeenCalled()
+        expect(model.getValue()).toBe(0.5)
+        expect(document.activeElement).toBe(input)
+        key("Enter")
+        expect(model.getValue()).toBe(1.25)
+    } finally {
+        document.body.removeEventListener("keydown", ancestor)
+    }
+})
