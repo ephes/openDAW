@@ -1,6 +1,6 @@
 import css from "./StretchSelector.sass?inline"
 import {Html} from "@opendaw/lib-dom"
-import {DefaultObservableValue, Lifecycle, panic} from "@opendaw/lib-std"
+import {DefaultObservableValue, Lifecycle, panic, RuntimeNotifier} from "@opendaw/lib-std"
 import {createElement} from "@opendaw/lib-jsx"
 import {IconSymbol} from "@opendaw/studio-enums"
 import {RadioGroup} from "@/ui/components/RadioGroup"
@@ -29,23 +29,46 @@ export const StretchSelector = ({lifecycle, project, reader}: Construct) => {
         return panic("Unknown PlayMode")
     }
     const playModeEnumValue = new DefaultObservableValue(toPlayModeEnum())
+    let generation = 0
+    let reflecting = false
+    const reflectMode = () => {
+        generation++
+        element.removeAttribute("aria-busy")
+        reflecting = true
+        try {
+            playModeEnumValue.setValue(toPlayModeEnum())
+        } finally {
+            reflecting = false
+        }
+    }
+    const convert = (mode: PlayModeEnum) => {
+        switch (mode) {
+            case PlayModeEnum.NoWarp: return AudioContentModifier.toNotStretched([audioContent])
+            case PlayModeEnum.Pitch: return AudioContentModifier.toPitchStretch([audioContent])
+            case PlayModeEnum.TimeStretch: return AudioContentModifier.toTimeStretch([audioContent], {showProgress: false})
+        }
+    }
     lifecycle.ownAll(
+        {terminate: () => {generation++; element.removeAttribute("aria-busy")}},
         playModeEnumValue.subscribe(async owner => {
-            const playModeEnum = owner.getValue()
-            if (playModeEnum === PlayModeEnum.NoWarp) {
-                const exec = await AudioContentModifier.toNotStretched([audioContent])
-                editing.modify(exec)
-            } else if (playModeEnum === PlayModeEnum.Pitch) {
-                const exec = await AudioContentModifier.toPitchStretch([audioContent])
-                editing.modify(exec)
-            } else if (playModeEnum === PlayModeEnum.TimeStretch) {
-                const exec = await AudioContentModifier.toTimeStretch([audioContent])
-                editing.modify(exec)
+            if (reflecting) {return}
+            const choice = ++generation
+            element.setAttribute("aria-busy", "true")
+            try {
+                const exec = await convert(owner.getValue())
+                if (choice === generation && audioContent.box.isAttached()) {editing.modify(exec)}
+            } catch (error) {
+                if (choice !== generation || !audioContent.box.isAttached()) {return}
+                reflectMode()
+                void RuntimeNotifier.info({headline: "Could not change stretch mode", message: String(error)})
+                    .catch(console.warn)
+            } finally {
+                if (choice === generation) {element.removeAttribute("aria-busy")}
             }
         }),
-        audioContent.box.playMode.subscribe(() => playModeEnumValue.setValue(toPlayModeEnum()))
+        audioContent.box.playMode.subscribe(reflectMode)
     )
-    return (
+    const element: HTMLElement = (
         <div className={className}>
             <RadioGroup lifecycle={lifecycle}
                         model={playModeEnumValue}
@@ -72,4 +95,5 @@ export const StretchSelector = ({lifecycle, project, reader}: Construct) => {
                                reader={reader}/>
         </div>
     )
+    return element
 }

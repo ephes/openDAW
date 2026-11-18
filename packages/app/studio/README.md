@@ -111,15 +111,15 @@ detached, reparented or conflicting targets are excluded. Escape discards previe
 and approval remains one undo transaction. See [round 142](../../../plans/scout-round142-studio-boundaries.md).
 
 While dragging an audio region fade, the other fade is shortened only as much
-as the current overlap requires. Moving the handle back restores the other fade;
-cancelling restores both original lengths without adding an undo step when the
+as the current overlap requires. Moving the handle back restores the other fade.
+Cancelling restores both original lengths without adding an undo step when the
 gesture owns the pending edit.
 
 Numeric text edits and arrow steps require finite values before and after any
 configured guard. A refused edit restores the current model display.
 
 Numeric inputs accept decimal keys and native caret editing. Composition owns its
-Enter key until composition ends; the mapper and guard validate the finished value.
+Enter key until composition ends. The mapper and guard validate the finished value.
 
 Note timecode fields accept whole ticks only. Positions use the signed 32-bit
 range, and durations run from one tick to the signed 32-bit maximum. An invalid
@@ -132,3 +132,7 @@ note timing and its display.
 Switching a trimmed or repeated audio region to No Warp keeps its arrangement
 boundary at the current tempo and converts its loop span and source phase
 separately. A full pass adopts the native source span.
+
+The stretch mode selector remains available during transient detection. A later
+choice or closing the editor supersedes pending work. If the latest conversion
+fails, the selector returns to the mode stored in the project.

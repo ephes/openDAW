@@ -646,3 +646,7 @@ at the current tempo. The loop span comes from the warp markers, and the first
 pass retains its source phase without shifting later loop starts. A full,
 untrimmed pass adopts the native source span. Conversion refuses regions whose
 markers or stored fields cannot represent those extents.
+
+Transient detection closes its progress dialog on success or failure. The audio
+editor uses the non-modal conversion path so another mode choice can supersede
+a pending request.

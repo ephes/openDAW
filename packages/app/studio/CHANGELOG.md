@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Honor the latest stretch mode choice and restore the radio selection after a conversion failure.
+
 - Keep trimmed and repeated region boundaries when switching to No Warp.
 
 - Commit valid timecode drafts on blur and resync the digits on selection changes and undo.

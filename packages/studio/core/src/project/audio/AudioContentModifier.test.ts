@@ -1,10 +1,11 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {Interpolation, LoopableRegion, PPQN, TimeBase} from "@opendaw/lib-dsp"
-import {Terminable, UUID} from "@opendaw/lib-std"
+import {RuntimeNotifier, Terminable, UUID} from "@opendaw/lib-std"
 import {AudioRegionBoxAdapter, InterpolationFieldAdapter, TrackType} from "@opendaw/studio-adapters"
 import {
     AudioFileBox, AudioPitchStretchBox, AudioRegionBox, TrackBox, ValueEventBox, ValueEventCollectionBox
 } from "@opendaw/studio-boxes"
+import {Workers} from "../../Workers"
 import {Project} from "../Project"
 import {ProjectEnv} from "../ProjectEnv"
 import {AudioContentHelpers} from "./AudioContentHelpers"
@@ -101,4 +102,21 @@ it("refuses a loop span outside the available warp markers without changing the 
     const before = new Uint8Array(project.toArrayBuffer())
     await expect(AudioContentModifier.toNotStretched([region])).rejects.toThrow(/warp markers/i)
     expect(new Uint8Array(project.toArrayBuffer())).toEqual(before)
+})
+
+it("closes transient detection progress when sample loading fails", async () => {
+    const {region} = setup(PPQN.Bar, 0)
+    const terminate = vi.fn()
+    const progress = vi.spyOn(RuntimeNotifier, "progress").mockReturnValue({message: "", terminate})
+    const worker = vi.spyOn(Workers, "Transients", "get").mockReturnValue({detect: vi.fn()})
+    const audioData = vi.spyOn(region.file, "audioData", "get").mockRejectedValue(new Error("synthetic load failure"))
+    try {
+        await expect(AudioContentModifier.toTimeStretch([region])).rejects.toThrow("synthetic load failure")
+        expect(terminate).toHaveBeenCalledTimes(1)
+        expect(region.asPlayModePitchStretch.nonEmpty()).toBe(true)
+    } finally {
+        progress.mockRestore()
+        audioData.mockRestore()
+        worker.mockRestore()
+    }
 })

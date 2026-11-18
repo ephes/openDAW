@@ -72,20 +72,18 @@ export namespace AudioContentModifier {
         })
     }
 
-    export const toTimeStretch = async (adapters: ReadonlyArray<AudioContentBoxAdapter>): Promise<Exec> => {
+    export const toTimeStretch = async (adapters: ReadonlyArray<AudioContentBoxAdapter>,
+                                        {showProgress = true} = {}): Promise<Exec> => {
         const audioAdapters = adapters.filter(adapter => adapter.asPlayModeTimeStretch.isEmpty())
         if (audioAdapters.length === 0) {return EmptyExec}
-        const handler = RuntimeNotifier.progress({headline: "Detecting Transients..."})
+        const handler = showProgress ? RuntimeNotifier.progress({headline: "Detecting Transients..."}) : undefined
         const tasks = await Promise.all(audioAdapters.map(async adapter => {
             if (adapter.file.transients.length() === 0) {
-                return {
-                    adapter,
-                    transients: await Workers.Transients.detect(await adapter.file.audioData)
-                }
+                const audioData = await adapter.file.audioData
+                return {adapter, transients: await Workers.Transients.detect(audioData)}
             }
             return {adapter}
-        }))
-        handler.terminate()
+        })).finally(() => handler?.terminate())
         return () => tasks.forEach(({adapter, transients}) => {
             const optPitchStretch = adapter.asPlayModePitchStretch
             const boxGraph = adapter.box.graph
