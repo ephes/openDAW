@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Keep trimmed and repeated region boundaries when switching to No Warp.
+
 - Commit valid timecode drafts on blur and resync the digits on selection changes and undo.
 
 - Reject malformed or out-of-range note timecode edits before changing the graph.

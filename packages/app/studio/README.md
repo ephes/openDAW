@@ -128,3 +128,7 @@ edit restores the displayed value from the model.
 Enter, Tab and clicking away settle note timecode edits using the same validation.
 Changing the note selection discards the pending draft. Undo restores both the
 note timing and its display.
+
+Switching a trimmed or repeated audio region to No Warp keeps its arrangement
+boundary at the current tempo and converts its loop span and source phase
+separately. A full pass adopts the native source span.

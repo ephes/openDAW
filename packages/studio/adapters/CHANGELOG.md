@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Expose the audio region tempo map for content conversions that preserve both timeline and source extents.
+
 - Keep filtered selection snapshots stable while their entries are selected or deselected.
 
 - Preserve stored signature events on base-meter edits while playback is disabled; refuse inserts at occupied snapped boundaries without changing the map.

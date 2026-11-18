@@ -17,7 +17,7 @@ import {
     Terminator,
     UUID
 } from "@opendaw/lib-std"
-import {EventCollection, ppqn, TimeBase, TimeBaseConverter} from "@opendaw/lib-dsp"
+import {EventCollection, ppqn, TempoMap, TimeBase, TimeBaseConverter} from "@opendaw/lib-dsp"
 import {Address, Field, PointerField, Propagation, Update} from "@opendaw/lib-box"
 import {Pointers} from "@opendaw/studio-enums"
 import {AudioRegionBox} from "@opendaw/studio-boxes"
@@ -189,6 +189,7 @@ export class AudioRegionBoxAdapter implements AudioContentBoxAdapter, LoopableRe
     get file(): AudioFileBoxAdapter {return this.#fileAdapter.unwrap("Cannot access file.")}
     get optFile(): Option<AudioFileBoxAdapter> {return this.#fileAdapter}
     get observableOptPlayMode(): ObservableOption<AudioPlayMode> {return this.#playMode}
+    get tempoMap(): TempoMap {return this.#context.tempoMap}
     get timeBase(): TimeBase {return asEnumValue(this.#box.timeBase.getValue(), TimeBase)}
     get waveformOffset(): MutableObservableValue<number> {return this.#box.waveformOffset}
     get isPlayModeNoStretch(): boolean {return this.#box.playMode.isEmpty()}

@@ -1,8 +1,7 @@
-import {EmptyExec, Exec, isDefined, isInstanceOf, isNotNull, RuntimeNotifier, UUID} from "@opendaw/lib-std"
+import {assert, EmptyExec, Exec, isDefined, isInstanceOf, isNotNull, RuntimeNotifier, UUID} from "@opendaw/lib-std"
 import {EventCollection, ppqn, seconds, TimeBase} from "@opendaw/lib-dsp"
 import {
     AudioPitchStretchBox,
-    AudioRegionBox,
     AudioTimeStretchBox,
     TransientMarkerBox,
     WarpMarkerBox
@@ -16,15 +15,21 @@ export namespace AudioContentModifier {
     export const toNotStretched = async (adapters: ReadonlyArray<AudioContentBoxAdapter>): Promise<Exec> => {
         const audioAdapters = adapters.filter(adapter => !adapter.isPlayModeNoStretch)
         if (audioAdapters.length === 0) {return EmptyExec}
-        return () => audioAdapters.forEach((adapter) => {
-            const audibleDuration = adapter.optWarpMarkers
-                .mapOr(warpMarkers => warpMarkers.last()?.seconds ?? 0, 0)
-            const loopOffsetSeconds = isInstanceOf(adapter, AudioRegionBoxAdapter)
-                ? adapter.optWarpMarkers.mapOr(warpMarkers => warpPositionToSeconds(warpMarkers, adapter.loopOffset), 0)
-                : 0
-            if (loopOffsetSeconds !== 0) {
-                adapter.box.waveformOffset.setValue(adapter.waveformOffset.getValue() + loopOffsetSeconds)
+        const conversions = audioAdapters.map(adapter => {
+            const {box} = adapter
+            if (adapter.timeBase === TimeBase.Seconds) {return {adapter, applyExtent: EmptyExec}}
+            const warpMarkers = adapter.optWarpMarkers.unwrap("No Warp requires warp markers")
+            if (isInstanceOf(adapter, AudioRegionBoxAdapter)) {
+                return {adapter, applyExtent: toNativeRegionExtent(adapter, warpMarkers)}
             }
+            const duration = warpMarkers.last()?.seconds ?? 0
+            return {adapter, applyExtent: () => {
+                box.duration.setValue(duration)
+                box.timeBase.setValue(TimeBase.Seconds)
+            }}
+        })
+        return () => conversions.forEach(({adapter, applyExtent}) => {
+            if (!adapter.box.isAttached() || adapter.isPlayModeNoStretch) {return}
             adapter.box.playMode.defer()
             adapter.asPlayModeTimeStretch.ifSome(({box}) => {
                 if (box.pointerHub.filter(Pointers.AudioPlayMode).length === 0) {box.delete()}
@@ -32,7 +37,7 @@ export namespace AudioContentModifier {
             adapter.asPlayModePitchStretch.ifSome(({box}) => {
                 if (box.pointerHub.filter(Pointers.AudioPlayMode).length === 0) {box.delete()}
             })
-            switchTimeBaseToSeconds(adapter, audibleDuration)
+            applyExtent()
         })
     }
 
@@ -142,16 +147,42 @@ export namespace AudioContentModifier {
         return {ppqn: adapter.duration, seconds: adapter.box.duration.getValue()}
     }
 
-    const switchTimeBaseToSeconds = ({box, timeBase}: AudioContentBoxAdapter, audibleDuration: seconds): void => {
-        if (timeBase === TimeBase.Seconds) {return}
-        box.timeBase.setValue(TimeBase.Seconds)
-        box.duration.setValue(audibleDuration)
-        box.accept({
-            visitAudioRegionBox: (box: AudioRegionBox) => {
-                box.loopOffset.setValue(0)
-                box.loopDuration.setValue(audibleDuration)
-            }
-        })
+    const toNativeRegionExtent = (adapter: AudioRegionBoxAdapter,
+                                  markers: EventCollection<WarpMarkerBoxAdapter>): Exec => {
+        const {box, position, complete, duration, loopDuration, loopOffset, tempoMap} = adapter
+        const first = markers.first()
+        const last = markers.last()
+        assert(first !== null && last !== null && first.position <= 0 && last.position >= loopDuration,
+            "No Warp requires warp markers covering the loop")
+        assert(Number.isFinite(loopOffset) && loopOffset >= 0 && loopOffset < loopDuration,
+            "No Warp requires a valid loop phase")
+        const sourceStart = warpPositionToSeconds(markers, 0)
+        const loopSeconds = Math.fround(warpPositionToSeconds(markers, loopDuration) - sourceStart)
+        // An untrimmed single pass still adopts the source's native length.
+        const regionSeconds = duration === loopDuration && loopOffset === 0
+            ? loopSeconds
+            : Math.fround(tempoMap.intervalToSeconds(position, complete))
+        const phaseSeconds = warpPositionToSeconds(markers, loopOffset) - sourceStart
+        // Native regions store their loop phase in pulses, even in the seconds time base.
+        const startSeconds = tempoMap.ppqnToSeconds(position)
+        const rawStartSeconds = startSeconds - phaseSeconds
+        // Match VaryingTempoMap's mirrored conversion for loop starts before zero.
+        const rawStart = Math.sign(rawStartSeconds) * tempoMap.secondsToPPQN(Math.abs(rawStartSeconds))
+        const nativeOffset = phaseSeconds === 0 ? 0 : Math.fround(position - rawStart)
+        const nativeLoopPulses = tempoMap.intervalToPPQN(startSeconds, startSeconds + loopSeconds)
+        const waveformOffset = Math.fround(adapter.waveformOffset.getValue() + sourceStart)
+        assert(Number.isFinite(loopSeconds) && loopSeconds > 0 && Number.isFinite(regionSeconds) && regionSeconds > 0
+            && Number.isFinite(nativeLoopPulses) && Number.isFinite(nativeOffset)
+            && nativeOffset >= 0 && nativeOffset < nativeLoopPulses
+            && Number.isFinite(phaseSeconds) && phaseSeconds >= 0 && phaseSeconds < loopSeconds
+            && Number.isFinite(waveformOffset), "No Warp cannot represent this region's extent")
+        return () => {
+            box.duration.setValue(regionSeconds)
+            box.loopDuration.setValue(loopSeconds)
+            box.loopOffset.setValue(nativeOffset)
+            box.waveformOffset.setValue(waveformOffset)
+            box.timeBase.setValue(TimeBase.Seconds)
+        }
     }
 
     const switchTimeBaseToMusical = (adapter: AudioContentBoxAdapter): void => {

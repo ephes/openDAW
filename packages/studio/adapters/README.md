@@ -161,3 +161,6 @@ Base-signature edits use stored events even when signature playback is disabled,
 
 Filtered and vertex selection enumeration returns a snapshot. Deselecting entries
 while iterating it updates the live selection without changing the enumeration.
+
+Audio region adapters expose the project tempo map to conversions involving
+both the arrangement boundary and native source time.

@@ -640,3 +640,9 @@ automation; non-beat collections refuse. Markers of a disabled marker track stil
 export (the toggle only suspends marker playback actions). Export refuses repeat
 play counts and markers outside the current arrangement track before writing any
 resources.
+
+For No Warp, a trimmed or repeated arrangement region keeps its arrangement end
+at the current tempo. The loop span comes from the warp markers, and the first
+pass retains its source phase without shifting later loop starts. A full,
+untrimmed pass adopts the native source span. Conversion refuses regions whose
+markers or stored fields cannot represent those extents.
