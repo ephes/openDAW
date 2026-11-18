@@ -1,5 +1,5 @@
 import {PrimitiveField} from "@opendaw/lib-box"
-import {DefaultParameter, int, StringMapping, ValueMapping} from "@opendaw/lib-std"
+import {DefaultParameter, int, Integer, StringMapping, ValueMapping} from "@opendaw/lib-std"
 import {NoteEventBox} from "@opendaw/studio-boxes"
 import {PPQN} from "@opendaw/lib-dsp"
 
@@ -13,7 +13,7 @@ export type NotePropertyParameter = {
 export const PropertyParameters = {
     position: {
         parameter: new DefaultParameter<int>(
-            ValueMapping.linearInteger(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+            ValueMapping.linearInteger(Integer.MIN_VALUE, Integer.MAX_VALUE),
             StringMapping.numeric(),
             "Position",
             0),
@@ -21,7 +21,7 @@ export const PropertyParameters = {
     },
     duration: {
         parameter: new DefaultParameter<int>(
-            ValueMapping.linearInteger(1, Number.MAX_SAFE_INTEGER),
+            ValueMapping.linearInteger(1, Integer.MAX_VALUE),
             StringMapping.numeric(),
             "Duration",
             PPQN.SemiQuaver),

@@ -22,14 +22,15 @@ type Construct = {
     negativeWarning?: boolean
     signature?: [int, int]
     oneBased?: boolean
+    accepts?: (value: ppqn) => boolean
 }
 
-export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, signature, oneBased}: Construct) => {
+export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, signature, oneBased, accepts}: Construct) => {
     const upper = signature?.at(0) ?? 4
     const lower = signature?.at(1) ?? 4
     const units = [
-        {amount: PPQN.Bar, maxChars: 3},
-        {amount: PPQN.Quarter, maxChars: 1},
+        {amount: PPQN.fromSignature(upper, lower), maxChars: 3},
+        {amount: PPQN.fromSignature(1, lower), maxChars: 1},
         {amount: PPQN.SemiQuaver, maxChars: 1},
         {amount: 1, maxChars: 3}
     ]
@@ -51,6 +52,24 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
         inputs[1].textContent = String(beats + unitOffset)
         inputs[2].textContent = String(semiquavers + unitOffset)
         inputs[3].textContent = String(ticks).padStart(3, "0")
+    }
+    const canCommit = (value: ppqn) => Number.isSafeInteger(value) && (accepts?.(value) ?? true)
+    const commit = (value: ppqn) => {
+        if (canCommit(value) && value !== model.getValue()) {model.setValue(value)}
+        updateDigits()
+    }
+    const commitDraft = (index: number, text: string) => {
+        const draft = text.trim()
+        const unit = /^[+-]?\d+$/.test(draft) ? Number(draft) : NaN
+        const value = model.getValue()
+        const {bars, beats, semiquavers, ticks} = PPQN.toParts(value, upper, lower)
+        const parts = [value < 0 ? bars : bars + unitOffset, beats + unitOffset, semiquavers + unitOffset, ticks]
+        const delta = (unit - parts[index]) * units[index].amount
+        if (Number.isSafeInteger(unit) && Number.isSafeInteger(delta)) {
+            commit(value + delta)
+        } else {
+            updateDigits()
+        }
     }
     lifecycle.ownAll(
         model.subscribe(updateDigits),
@@ -76,9 +95,9 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
                 const {status, value: json} = tryCatch<unknown>(() => JSON.parse(data))
                 if (status === "success" && isRecord(json) && Object.getPrototypeOf(json) === Object.prototype
                     && json.app === "openDAW" && json.content === "timecode"
-                    && typeof json.value === "number" && Number.isFinite(json.value)) {
+                    && typeof json.value === "number" && canCommit(json.value)) {
                     event.preventDefault()
-                    model.setValue(json.value)
+                    commit(json.value)
                 }
             }
         }),
@@ -90,31 +109,19 @@ export const TimeCodeInput = ({lifecycle, model, className, negativeWarning, sig
             switch (event.code) {
                 case "ArrowUp": {
                     event.preventDefault()
-                    model.setValue(model.getValue() + units[index].amount)
+                    commit(model.getValue() + units[index].amount)
                     Html.selectContent(target)
                     break
                 }
                 case "ArrowDown": {
                     event.preventDefault()
-                    model.setValue(model.getValue() - units[index].amount)
+                    commit(model.getValue() - units[index].amount)
                     Html.selectContent(target)
                     break
                 }
                 case "Enter": {
                     event.preventDefault()
-                    const unit = parseInt(target.textContent ?? "") | 0
-                    const prevValue = model.getValue()
-                    const {bars, beats, semiquavers, ticks} = PPQN.toParts(prevValue, upper, lower)
-                    const nextValue: int =
-                        units[0].amount * (index === 0 ? prevValue >= 0 ? unit - unitOffset : unit : bars)
-                        + units[1].amount * (index === 1 ? unit - unitOffset : beats)
-                        + units[2].amount * (index === 2 ? unit - unitOffset : semiquavers)
-                        + units[3].amount * (index === 3 ? unit : ticks)
-                    if (prevValue === nextValue) {
-                        updateDigits()
-                    } else {
-                        model.setValue(nextValue)
-                    }
+                    commitDraft(index, target.textContent ?? "")
                     Html.selectContent(target)
                     break
                 }

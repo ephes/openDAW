@@ -120,3 +120,7 @@ configured guard. A refused edit restores the current model display.
 
 Numeric inputs accept decimal keys and native caret editing. Composition owns its
 Enter key until composition ends; the mapper and guard validate the finished value.
+
+Note timecode fields accept whole ticks only. Positions use the signed 32-bit
+range, and durations run from one tick to the signed 32-bit maximum. An invalid
+edit restores the displayed value from the model.

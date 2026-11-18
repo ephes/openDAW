@@ -26,10 +26,12 @@ export const PropertyTable = ({lifecycle, selection, modifyContext, editing}: Co
     const {position, duration, pitch, velocity, cent, chance, playCount, playCurve} = PropertyParameters
     const positionInput: Element = <TimeCodeInput lifecycle={lifecycle}
                                                   model={position.parameter}
+                                                  accepts={value => position.parameter.valueMapping.clamp(value) === value}
                                                   negativeWarning
                                                   oneBased/>
     const durationInput: Element = <TimeCodeInput lifecycle={lifecycle}
                                                   model={duration.parameter}
+                                                  accepts={value => duration.parameter.valueMapping.clamp(value) === value}
                                                   negativeWarning/>
     const pitchString = Inject.value(MidiKeys.toFullString(pitch.parameter.getValue()))
     const pitchInput: Element = <NumberInput lifecycle={lifecycle}

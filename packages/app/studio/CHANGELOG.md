@@ -5,6 +5,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## Unreleased
 
+- Reject malformed or out-of-range note timecode edits before changing the graph.
+
 - Allow decimal keys and native caret editing in numeric inputs, including waveform offsets.
 
 - Refuse nonfinite numeric text edits, arrow steps and guarded results.
